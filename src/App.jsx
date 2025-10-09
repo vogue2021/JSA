@@ -1,0 +1,2399 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Calendar, Clock, School, FileText, CheckSquare, Plus,
+  ChevronRight, AlertCircle, Edit, Users, LogOut, Save,
+  X, User, Bell, Search, Filter, Download, Upload,
+  Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
+  GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
+  BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield
+} from 'lucide-react';
+
+// 登录注册页面组件
+const AuthPage = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    name: '',
+    studentId: '',
+    verificationCode: ''
+  });
+  const [showVerification, setShowVerification] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const handleSendVerificationCode = () => {
+    if (!validateEmail(formData.email)) {
+      setErrors({ email: '请输入有效的邮箱地址' });
+      return;
+    }
+    setShowVerification(true);
+    // 模拟发送验证码
+    alert('验证码已发送到您的邮箱（演示：验证码为 123456）');
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = {};
+
+    if (!formData.email) newErrors.email = '请输入邮箱';
+    else if (!validateEmail(formData.email)) newErrors.email = '邮箱格式不正确';
+
+    if (!formData.password) newErrors.password = '请输入密码';
+    else if (formData.password.length < 6) newErrors.password = '密码至少6位';
+
+    if (!isLogin) {
+      if (!formData.name) newErrors.name = '请输入姓名';
+      if (userType === 'student' && !formData.studentId) newErrors.studentId = '请输入学号';
+      if (formData.password !== formData.confirmPassword) {
+        newErrors.confirmPassword = '两次密码输入不一致';
+      }
+      if (!formData.verificationCode) {
+        newErrors.verificationCode = '请输入验证码';
+      } else if (formData.verificationCode !== '123456') {
+        newErrors.verificationCode = '验证码错误';
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    // 模拟登录
+    const userRole = userType; // 'student', 'teacher', or 'admin'
+    const userData = {
+      role: userRole,
+      name: formData.name || (userType === 'student' ? '张三' : userType === 'teacher' ? '李老师' : '管理员'),
+      email: formData.email,
+      studentId: userType === 'student' ? (formData.studentId || '2024001') : null,
+      teacherId: userType === 'teacher' ? `teacher_${Date.now()}` : null,
+      isAdmin: userType === 'admin'
+    };
+
+    onLogin(userData);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
+      <div className="max-w-5xl w-full grid lg:grid-cols-2 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* 左侧装饰面板 */}
+        <div className="hidden lg:flex flex-col justify-center items-center p-12 bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+          <div className="mb-8">
+            <div className="w-32 h-32 bg-white bg-opacity-20 rounded-full flex items-center justify-center mb-6">
+              <GraduationCap size={64} className="text-white" />
+            </div>
+            <h1 className="text-4xl font-bold mb-4">日本留学考学助手</h1>
+            <p className="text-blue-100 text-center">
+              专业的日本留学申请管理平台<br/>
+              让留学之路更加清晰高效
+            </p>
+          </div>
+
+          <div className="space-y-4 w-full max-w-sm">
+            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+              <Calendar className="text-white" size={24} />
+              <span>智能时间线管理</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+              <School className="text-white" size={24} />
+              <span>多校申请追踪</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+              <FileText className="text-white" size={24} />
+              <span>材料清单管理</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧登录/注册表单 */}
+        <div className="p-8 lg:p-12">
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              {isLogin ? '欢迎回来' : '创建账号'}
+            </h2>
+            <p className="text-gray-600">
+              {isLogin ? '登录您的账号继续管理留学申请' : '注册新账号开始您的留学之旅'}
+            </p>
+          </div>
+
+          {/* 角色选择 */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">我是</label>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setUserType('student')}
+                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                  ${userType === 'student' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 hover:border-gray-400'}`}
+              >
+                <User size={20} />
+                <span className="font-medium">学生</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserType('teacher')}
+                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                  ${userType === 'teacher' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-300 hover:border-gray-400'}`}
+              >
+                <GraduationCap size={20} />
+                <span className="font-medium">老师</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserType('admin')}
+                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                  ${userType === 'admin' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 hover:border-gray-400'}`}
+              >
+                <Shield size={20} />
+                <span className="font-medium">管理员</span>
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                      ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                    placeholder="请输入您的姓名"
+                  />
+                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                </div>
+
+                {userType === 'student' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">学号</label>
+                    <input
+                      type="text"
+                      value={formData.studentId}
+                      onChange={(e) => setFormData({...formData, studentId: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                        ${errors.studentId ? 'border-red-500' : 'border-gray-300'}`}
+                      placeholder="请输入学号"
+                    />
+                    {errors.studentId && <p className="text-red-500 text-xs mt-1">{errors.studentId}</p>}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                    ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="your@email.com"
+                />
+              </div>
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+            </div>
+
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.verificationCode}
+                    onChange={(e) => setFormData({...formData, verificationCode: e.target.value})}
+                    className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                      ${errors.verificationCode ? 'border-red-500' : 'border-gray-300'}`}
+                    placeholder="请输入验证码"
+                    disabled={!showVerification}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendVerificationCode}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                  >
+                    {showVerification ? '重新发送' : '获取验证码'}
+                  </button>
+                </div>
+                {errors.verificationCode && <p className="text-red-500 text-xs mt-1">{errors.verificationCode}</p>}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                    ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="••••••••"
+                />
+              </div>
+              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+            </div>
+
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <input
+                    type="password"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                      ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'}`}
+                    placeholder="••••••••"
+                  />
+                </div>
+                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className={`w-full py-3 rounded-lg font-semibold text-white transition flex items-center justify-center gap-2
+                ${userType === 'student' ? 'bg-blue-500 hover:bg-blue-600' :
+                  userType === 'teacher' ? 'bg-purple-500 hover:bg-purple-600' :
+                  'bg-red-500 hover:bg-red-600'}`}
+            >
+              {isLogin ? '登录' : '注册'}
+              <ArrowRight size={20} />
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-gray-600">
+              {isLogin ? '还没有账号？' : '已有账号？'}
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setErrors({});
+                }}
+                className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
+              >
+                {isLogin ? '立即注册' : '立即登录'}
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 主应用组件
+const MainApp = ({ user, onLogout }) => {
+  const [activeTab, setActiveTab] = useState('timeline');
+  const [showStudentList, setShowStudentList] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCategory, setFilterCategory] = useState('all');
+
+  // Modal states
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [showSchoolModal, setShowSchoolModal] = useState(false);
+  const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editingSchool, setEditingSchool] = useState(null);
+  const [editingMaterial, setEditingMaterial] = useState(null);
+
+  const [currentStudent, setCurrentStudent] = useState(
+    user.role === 'student'
+      ? {
+          id: 1,
+          name: user.name,
+          studentId: user.studentId,
+          email: user.email,
+          targetCountry: '日本',
+          targetLevel: '修士',
+          avatar: '👨‍🎓',
+          teacherId: null // Students don't have a teacherId assigned to themselves
+        }
+      : {
+          id: 1,
+          name: '张三',
+          studentId: '2024001',
+          targetCountry: '日本',
+          targetLevel: '修士',
+          email: 'zhangsan@example.com',
+          avatar: '👨‍🎓',
+          teacherId: user.teacherId || 'teacher_1' // Default teacher ID for initial student
+        }
+  );
+
+  // 检测屏幕大小
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
+
+  // 学生列表 (包含所有学生，老师只能看到自己的学生)
+  const [studentList, setStudentList] = useState([
+    { id: 1, name: '张三', studentId: '2024001', progress: 65, urgentTasks: 2, avatar: '👨‍🎓', teacherId: 'teacher_1' },
+    { id: 2, name: '李四', studentId: '2024002', progress: 45, urgentTasks: 4, avatar: '👩‍🎓', teacherId: 'teacher_1' },
+    { id: 3, name: '王五', studentId: '2024003', progress: 80, urgentTasks: 1, avatar: '👨‍🎓', teacherId: 'teacher_2' },
+    { id: 4, name: '赵六', studentId: '2024004', progress: 55, urgentTasks: 3, avatar: '👩‍🎓', teacherId: 'teacher_2' },
+  ]);
+
+  // 老师列表 (管理员使用)
+  const [teacherList] = useState([
+    { id: 'teacher_1', name: '李老师', email: 'li@school.com' },
+    { id: 'teacher_2', name: '王老师', email: 'wang@school.com' },
+  ]);
+
+  // 根据权限获取可见的学生列表
+  const getVisibleStudents = () => {
+    if (user.role === 'admin') {
+      return studentList; // 管理员看到所有学生
+    } else if (user.role === 'teacher') {
+      return studentList.filter(s => s.teacherId === user.teacherId); // 老师只看到自己的学生
+    }
+    return []; // 学生不需要看到学生列表
+  };
+
+  const [upcomingEvents, setUpcomingEvents] = useState([
+    { id: 1, type: 'exam', title: 'JLPT N1考试', date: '2025-12-07', daysLeft: 59, category: '日语考试', urgent: false, notes: '需要达到130分以上', completed: false, schoolId: null },
+    { id: 2, type: 'deadline', title: '东京大学出愿截止', date: '2025-11-15', daysLeft: 37, category: '出愿', urgent: true, notes: '记得提前准备材料', completed: false, schoolId: 1 },
+    { id: 3, type: 'exam', title: 'EJU考试(理科)', date: '2025-11-09', daysLeft: 31, category: '留考', urgent: true, notes: '目标分数700+', completed: false, schoolId: null },
+    { id: 4, type: 'contact', title: '京都大学教授邮件跟进', date: '2025-10-15', daysLeft: 6, category: '研究室联系', urgent: false, notes: '询问研究室招生情况', completed: false, schoolId: 2 },
+  ]);
+
+  const [schools, setSchools] = useState([
+    {
+      id: 1,
+      name: '东京大学',
+      type: '国立',
+      program: '工学研究科',
+      status: 'preparing',
+      applicationStartDate: '2025-10-01',
+      applicationEndDate: '2025-11-15',
+      examDate: '2025-12-20',
+      resultDate: '2026-01-30',
+      requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/graduate.html',
+      teacherNotes: '重点院校，需要JLPT N1和EJU高分',
+      materials: [
+        { name: '研究计划书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
+        { name: '推荐信', deadline: '2025-11-05', url: '' }
+      ]
+    },
+    {
+      id: 2,
+      name: '京都大学',
+      type: '国立',
+      program: '情报学研究科',
+      status: 'contacted',
+      applicationStartDate: '2025-10-15',
+      applicationEndDate: '2025-11-20',
+      examDate: '2026-01-10',
+      resultDate: '2026-02-15',
+      requirementsUrl: 'https://www.kyoto-u.ac.jp/ja/admissions/',
+      teacherNotes: '已联系田中教授，等待回复',
+      materials: [
+        { name: '志望理由书', deadline: '2025-11-15', url: '' }
+      ]
+    },
+    {
+      id: 3,
+      name: '早稻田大学',
+      type: '私立',
+      program: '基干理工学研究科',
+      status: 'preparing',
+      applicationStartDate: '2025-09-20',
+      applicationEndDate: '2025-10-31',
+      examDate: '2025-11-25',
+      resultDate: '2025-12-20',
+      requirementsUrl: 'https://www.waseda.jp/inst/admission/',
+      teacherNotes: '保底院校，英语成绩要求较低',
+      materials: []
+    },
+  ]);
+
+  const [checklist, setChecklist] = useState({
+    general: [
+      { id: 1, item: '毕业证书(日文翻译+公证)', completed: true, deadline: '2025-09-30', checkedBy: 'teacher', checkedAt: '2025-09-15', url: '' },
+      { id: 2, item: '成绩单(日文翻译+公证)', completed: false, deadline: '2025-09-30', checkedBy: null, checkedAt: null, url: '' },
+      { id: 3, item: '护照复印件', completed: false, deadline: '2025-08-31', checkedBy: null, checkedAt: null, url: '' },
+      { id: 4, item: 'JLPT成绩单', completed: false, deadline: '2025-10-15', checkedBy: null, checkedAt: null, url: '' },
+      { id: 5, item: '银行存款证明', completed: false, deadline: '2025-10-31', checkedBy: null, checkedAt: null, url: '' },
+    ],
+    schoolSpecific: {
+      '东京大学': [
+        { id: 101, item: '研究计划书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
+        { id: 102, item: '推荐信', completed: false, deadline: '2025-11-05', checkedBy: null, checkedAt: null, url: '' },
+      ],
+      '京都大学': [
+        { id: 201, item: '志望理由书', completed: false, deadline: '2025-11-15', checkedBy: null, checkedAt: null, url: '' },
+      ]
+    }
+  });
+
+  // 计算天数差
+  const calculateDaysLeft = (dateString) => {
+    const targetDate = new Date(dateString);
+    const today = new Date();
+    const diffTime = targetDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // 同步学校日期到时间线
+  const syncSchoolDatesToTimeline = (school, isNew = false) => {
+    const eventsToAdd = [];
+
+    if (school.applicationStartDate) {
+      eventsToAdd.push({
+        id: Date.now() + Math.random(),
+        type: 'deadline',
+        title: `${school.name} 出愿开始`,
+        date: school.applicationStartDate,
+        daysLeft: calculateDaysLeft(school.applicationStartDate),
+        category: '出愿',
+        urgent: calculateDaysLeft(school.applicationStartDate) <= 7,
+        notes: `${school.program} 出愿开始，请准备材料`,
+        completed: false,
+        schoolId: school.id
+      });
+    }
+
+    if (school.applicationEndDate) {
+      eventsToAdd.push({
+        id: Date.now() + Math.random() + 1,
+        type: 'deadline',
+        title: `${school.name} 出愿截止`,
+        date: school.applicationEndDate,
+        daysLeft: calculateDaysLeft(school.applicationEndDate),
+        category: '出愿',
+        urgent: true,
+        notes: `${school.program} 出愿截止，务必在此之前提交`,
+        completed: false,
+        schoolId: school.id
+      });
+    }
+
+    if (school.examDate) {
+      eventsToAdd.push({
+        id: Date.now() + Math.random() + 2,
+        type: 'exam',
+        title: `${school.name} 入学考试`,
+        date: school.examDate,
+        daysLeft: calculateDaysLeft(school.examDate),
+        category: '考试',
+        urgent: calculateDaysLeft(school.examDate) <= 14,
+        notes: `${school.program} 入学考试`,
+        completed: false,
+        schoolId: school.id
+      });
+    }
+
+    if (school.resultDate) {
+      eventsToAdd.push({
+        id: Date.now() + Math.random() + 3,
+        type: 'deadline',
+        title: `${school.name} 合格发表`,
+        date: school.resultDate,
+        daysLeft: calculateDaysLeft(school.resultDate),
+        category: '合格发表',
+        urgent: false,
+        notes: `${school.program} 合格发表日`,
+        completed: false,
+        schoolId: school.id
+      });
+    }
+
+    if (isNew) {
+      setUpcomingEvents(prev => [...prev, ...eventsToAdd]);
+    } else {
+      setUpcomingEvents(prev => {
+        const filtered = prev.filter(e => e.schoolId !== school.id);
+        return [...filtered, ...eventsToAdd];
+      });
+    }
+  };
+
+  // 同步学校材料到材料清单
+  const syncSchoolMaterialsToChecklist = (school, materials) => {
+    const newChecklist = {...checklist};
+
+    if (!newChecklist.schoolSpecific[school.name]) {
+      newChecklist.schoolSpecific[school.name] = [];
+    }
+
+    const schoolMaterials = materials.map((material, index) => ({
+      id: Date.now() + index,
+      item: material.name,
+      completed: false,
+      deadline: material.deadline || school.applicationEndDate,
+      checkedBy: null,
+      checkedAt: null,
+      url: material.url || ''
+    }));
+
+    newChecklist.schoolSpecific[school.name] = schoolMaterials;
+    setChecklist(newChecklist);
+  };
+
+  // 计算学校的任务完成度（基于材料完成情况）
+  const calculateSchoolProgress = (schoolName) => {
+    const generalCompleted = checklist.general.filter(item => item.completed).length;
+    const generalTotal = checklist.general.length;
+
+    const schoolMaterials = checklist.schoolSpecific[schoolName] || [];
+    const schoolCompleted = schoolMaterials.filter(item => item.completed).length;
+    const schoolTotal = schoolMaterials.length;
+
+    const totalCompleted = generalCompleted + schoolCompleted;
+    const totalItems = generalTotal + schoolTotal;
+
+    return {
+      completed: totalCompleted,
+      total: totalItems,
+      percentage: totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0
+    };
+  };
+
+  // 过滤事件
+  const filteredEvents = upcomingEvents
+    .filter(event => {
+      const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = filterCategory === 'all' || event.category === filterCategory;
+      return matchesSearch && matchesFilter;
+    })
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+
+  const getStatusColor = (status) => {
+    const colors = {
+      preparing: 'bg-blue-100 text-blue-700 border-blue-200',
+      contacted: 'bg-green-100 text-green-700 border-green-200',
+      submitted: 'bg-purple-100 text-purple-700 border-purple-200',
+      admitted: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    };
+    return colors[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+  };
+
+  const getStatusText = (status) => {
+    const texts = {
+      preparing: '准备中',
+      contacted: '已联系',
+      submitted: '已提交',
+      admitted: '已合格',
+    };
+    return texts[status] || '未开始';
+  };
+
+  const getTypeColor = (type) => {
+    const colors = {
+      exam: 'bg-red-50 border-red-200',
+      deadline: 'bg-orange-50 border-orange-200',
+      contact: 'bg-blue-50 border-blue-200',
+      document: 'bg-green-50 border-green-200',
+    };
+    return colors[type] || 'bg-gray-50 border-gray-200';
+  };
+
+  const getTypeIcon = (type) => {
+    const icons = {
+      exam: '📝',
+      deadline: '⏰',
+      contact: '✉️',
+      document: '📄',
+    };
+    return icons[type] || '📌';
+  };
+
+  // 删除事件
+  const handleDeleteEvent = (eventId) => {
+    if (window.confirm('确定要删除这个事项吗？')) {
+      setUpcomingEvents(upcomingEvents.filter(e => e.id !== eventId));
+    }
+  };
+
+  // 删除学校
+  const handleDeleteSchool = (schoolId) => {
+    if (window.confirm('确定要删除这个学校吗？这将同时删除相关的时间线事件和材料清单。')) {
+      const school = schools.find(s => s.id === schoolId);
+      if (school) {
+        setSchools(schools.filter(s => s.id !== schoolId));
+        setUpcomingEvents(prev => prev.filter(e => e.schoolId !== schoolId));
+        const newChecklist = {...checklist};
+        delete newChecklist.schoolSpecific[school.name];
+        setChecklist(newChecklist);
+      }
+    }
+  };
+
+  // 删除材料
+  const handleDeleteMaterial = (type, itemId, schoolName = null) => {
+    if (window.confirm('确定要删除这个材料项吗？')) {
+      const newChecklist = {...checklist};
+      if (type === 'general') {
+        newChecklist.general = checklist.general.filter(item => item.id !== itemId);
+      } else if (schoolName) {
+        newChecklist.schoolSpecific[schoolName] = newChecklist.schoolSpecific[schoolName].filter(
+          item => item.id !== itemId
+        );
+      }
+      setChecklist(newChecklist);
+    }
+  };
+
+  // 处理材料勾选
+  const handleMaterialCheck = (type, itemId, checked, schoolName = null) => {
+    const newChecklist = {...checklist};
+    const currentTime = new Date().toISOString().split('T')[0];
+
+    if (type === 'general') {
+      newChecklist.general = checklist.general.map(item =>
+        item.id === itemId
+          ? {...item, completed: checked, checkedBy: user.role, checkedAt: checked ? currentTime : null}
+          : item
+      );
+    } else if (schoolName) {
+      newChecklist.schoolSpecific[schoolName] = newChecklist.schoolSpecific[schoolName].map(item =>
+        item.id === itemId
+          ? {...item, completed: checked, checkedBy: user.role, checkedAt: checked ? currentTime : null}
+          : item
+      );
+    }
+
+    setChecklist(newChecklist);
+  };
+
+  // 事件编辑/新增Modal
+  const EventModal = () => {
+    const [formData, setFormData] = useState(
+      editingEvent || {
+        title: '',
+        type: 'exam',
+        category: '日语考试',
+        date: '',
+        urgent: false,
+        notes: '',
+        completed: false
+      }
+    );
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      const eventData = {
+        ...formData,
+        daysLeft: calculateDaysLeft(formData.date),
+        schoolId: null
+      };
+
+      if (editingEvent) {
+        setUpcomingEvents(upcomingEvents.map(event =>
+          event.id === editingEvent.id ? { ...eventData, id: editingEvent.id, schoolId: event.schoolId } : event
+        ));
+      } else {
+        setUpcomingEvents([...upcomingEvents, { ...eventData, id: Date.now() }]);
+      }
+
+      setShowEventModal(false);
+      setEditingEvent(null);
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+          <div className="p-6 border-b flex items-center justify-between">
+            <h3 className="font-bold text-xl">{editingEvent ? '编辑事项' : '添加新事项'}</h3>
+            <button
+              onClick={() => {
+                setShowEventModal(false);
+                setEditingEvent(null);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">标题</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({...formData, title: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">类型</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="exam">考试</option>
+                  <option value="deadline">截止日期</option>
+                  <option value="contact">联系</option>
+                  <option value="document">文档</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">分类</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({...formData, category: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="日语考试">日语考试</option>
+                  <option value="出愿">出愿</option>
+                  <option value="留考">留考</option>
+                  <option value="研究室联系">研究室联系</option>
+                  <option value="材料准备">材料准备</option>
+                  <option value="考试">考试</option>
+                  <option value="合格发表">合格发表</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">日期</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">备注</label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                rows="3"
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.urgent}
+                  onChange={(e) => setFormData({...formData, urgent: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <span>紧急事项</span>
+              </label>
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.completed}
+                  onChange={(e) => setFormData({...formData, completed: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <span>已完成</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+              >
+                {editingEvent ? '保存修改' : '添加事项'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEventModal(false);
+                  setEditingEvent(null);
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // 学校编辑/新增Modal
+  const SchoolModal = () => {
+    const [formData, setFormData] = useState(
+      editingSchool || {
+        name: '',
+        type: '国立',
+        program: '',
+        status: 'preparing',
+        applicationStartDate: '',
+        applicationEndDate: '',
+        examDate: '',
+        resultDate: '',
+        requirementsUrl: '',
+        teacherNotes: '',
+        materials: []
+      }
+    );
+
+    const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+
+      let schoolData = {...formData};
+
+      if (editingSchool) {
+        setSchools(schools.map(school =>
+          school.id === editingSchool.id ? { ...schoolData, id: editingSchool.id } : school
+        ));
+        syncSchoolDatesToTimeline(schoolData);
+      } else {
+        schoolData = { ...schoolData, id: Date.now() };
+        setSchools([...schools, schoolData]);
+        syncSchoolDatesToTimeline(schoolData, true);
+      }
+
+      if (formData.materials && formData.materials.length > 0) {
+        syncSchoolMaterialsToChecklist(schoolData, formData.materials);
+      }
+
+      setShowSchoolModal(false);
+      setEditingSchool(null);
+    };
+
+    const addMaterial = () => {
+      if (newMaterial.name.trim()) {
+        setFormData({
+          ...formData,
+          materials: [...(formData.materials || []), { ...newMaterial, id: Date.now() }]
+        });
+        setNewMaterial({ name: '', deadline: '', url: '' });
+      }
+    };
+
+    const removeMaterial = (index) => {
+      setFormData({
+        ...formData,
+        materials: formData.materials.filter((_, i) => i !== index)
+      });
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+          <div className="p-6 border-b flex items-center justify-between">
+            <h3 className="font-bold text-xl">{editingSchool ? '编辑学校' : '添加新学校'}</h3>
+            <button
+              onClick={() => {
+                setShowSchoolModal(false);
+                setEditingSchool(null);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">学校名称</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">学校类型</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="国立">国立</option>
+                  <option value="公立">公立</option>
+                  <option value="私立">私立</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">研究科/学部</label>
+                <input
+                  type="text"
+                  value={formData.program}
+                  onChange={(e) => setFormData({...formData, program: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">申请状态</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="preparing">准备中</option>
+                  <option value="contacted">已联系</option>
+                  <option value="submitted">已提交</option>
+                  <option value="admitted">已合格</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                募集要项URL
+                <span className="text-gray-500 text-xs ml-2">（学校官方招生信息链接）</span>
+              </label>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="url"
+                  value={formData.requirementsUrl}
+                  onChange={(e) => setFormData({...formData, requirementsUrl: e.target.value})}
+                  className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://www.university.ac.jp/admissions"
+                />
+                {formData.requirementsUrl && (
+                  <a
+                    href={formData.requirementsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-500 hover:text-blue-600"
+                  >
+                    <ExternalLink size={18} />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-sm text-gray-700">重要日期</h4>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">出愿开始日期</label>
+                  <input
+                    type="date"
+                    value={formData.applicationStartDate}
+                    onChange={(e) => setFormData({...formData, applicationStartDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">出愿截止日期</label>
+                  <input
+                    type="date"
+                    value={formData.applicationEndDate}
+                    onChange={(e) => setFormData({...formData, applicationEndDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">考试日期</label>
+                  <input
+                    type="date"
+                    value={formData.examDate}
+                    onChange={(e) => setFormData({...formData, examDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">合格发表日期</label>
+                  <input
+                    type="date"
+                    value={formData.resultDate}
+                    onChange={(e) => setFormData({...formData, resultDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">所需材料（将同步到材料清单）</label>
+              <div className="space-y-2 mb-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newMaterial.name}
+                    onChange={(e) => setNewMaterial({...newMaterial, name: e.target.value})}
+                    placeholder="材料名称"
+                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="date"
+                    value={newMaterial.deadline}
+                    onChange={(e) => setNewMaterial({...newMaterial, deadline: e.target.value})}
+                    className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="url"
+                    value={newMaterial.url}
+                    onChange={(e) => setNewMaterial({...newMaterial, url: e.target.value})}
+                    placeholder="参考链接(可选)"
+                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addMaterial}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {formData.materials?.map((material, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-lg text-sm"
+                  >
+                    <span>{material.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">{material.deadline}</span>
+                      {material.url && (
+                        <a
+                          href={material.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-600"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeMaterial(index)}
+                        className="text-red-600 hover:bg-red-100 p-1 rounded"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">老师备注</label>
+              <textarea
+                value={formData.teacherNotes}
+                onChange={(e) => setFormData({...formData, teacherNotes: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                rows="3"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+              >
+                {editingSchool ? '保存修改' : '添加学校'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSchoolModal(false);
+                  setEditingSchool(null);
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // 材料编辑/新增Modal
+  const MaterialModal = () => {
+    const [formData, setFormData] = useState(
+      editingMaterial || {
+        item: '',
+        type: 'general',
+        school: schools[0]?.name || '东京大学',
+        completed: false,
+        deadline: '',
+        url: '',
+        checkedBy: null,
+        checkedAt: null
+      }
+    );
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      const newChecklist = {...checklist};
+
+      if (formData.type === 'general') {
+        if (editingMaterial) {
+          newChecklist.general = checklist.general.map(item =>
+            item.id === editingMaterial.id
+              ? { ...item, item: formData.item, deadline: formData.deadline, url: formData.url, completed: formData.completed }
+              : item
+          );
+        } else {
+          newChecklist.general.push({
+            id: Date.now(),
+            item: formData.item,
+            deadline: formData.deadline,
+            url: formData.url,
+            completed: formData.completed,
+            checkedBy: formData.completed ? user.role : null,
+            checkedAt: formData.completed ? new Date().toISOString().split('T')[0] : null
+          });
+        }
+      } else {
+        if (!newChecklist.schoolSpecific[formData.school]) {
+          newChecklist.schoolSpecific[formData.school] = [];
+        }
+
+        if (editingMaterial) {
+          newChecklist.schoolSpecific[formData.school] =
+            newChecklist.schoolSpecific[formData.school].map(item =>
+              item.id === editingMaterial.id
+                ? { ...item, item: formData.item, deadline: formData.deadline, url: formData.url, completed: formData.completed }
+                : item
+            );
+        } else {
+          newChecklist.schoolSpecific[formData.school].push({
+            id: Date.now(),
+            item: formData.item,
+            deadline: formData.deadline,
+            url: formData.url,
+            completed: formData.completed,
+            checkedBy: formData.completed ? user.role : null,
+            checkedAt: formData.completed ? new Date().toISOString().split('T')[0] : null
+          });
+        }
+      }
+
+      setChecklist(newChecklist);
+      setShowMaterialModal(false);
+      setEditingMaterial(null);
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
+          <div className="p-6 border-b flex items-center justify-between">
+            <h3 className="font-bold text-xl">{editingMaterial ? '编辑材料' : '添加新材料'}</h3>
+            <button
+              onClick={() => {
+                setShowMaterialModal(false);
+                setEditingMaterial(null);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">材料名称</label>
+              <input
+                type="text"
+                value={formData.item}
+                onChange={(e) => setFormData({...formData, item: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">材料类型</label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData({...formData, type: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="general">通用材料</option>
+                <option value="school">学校专用</option>
+              </select>
+            </div>
+
+            {formData.type === 'school' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">选择学校</label>
+                <select
+                  value={formData.school}
+                  onChange={(e) => setFormData({...formData, school: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  {schools.map(school => (
+                    <option key={school.id} value={school.name}>{school.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium mb-2">截止日期</label>
+              <input
+                type="date"
+                value={formData.deadline}
+                onChange={(e) => setFormData({...formData, deadline: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                参考链接
+                <span className="text-gray-500 text-xs ml-2">（模板或参考资料）</span>
+              </label>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) => setFormData({...formData, url: e.target.value})}
+                  className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://example.com/template.pdf"
+                />
+                {formData.url && (
+                  <a
+                    href={formData.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-500 hover:text-blue-600"
+                  >
+                    <ExternalLink size={18} />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.completed}
+                  onChange={(e) => setFormData({...formData, completed: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <span>已完成</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+              >
+                {editingMaterial ? '保存修改' : '添加材料'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMaterialModal(false);
+                  setEditingMaterial(null);
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // 学生列表弹窗 (老师和管理员专用)
+  const StudentListModal = () => {
+    const visibleStudents = getVisibleStudents();
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col animate-scale-in">
+          <div className="p-6 border-b flex items-center justify-between bg-gradient-to-r from-purple-500 to-blue-500 text-white">
+            <h3 className="font-bold text-xl">
+              {user.role === 'admin' ? '所有学生' : '我的学生'}
+            </h3>
+            <button
+              onClick={() => setShowStudentList(false)}
+              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="overflow-y-auto flex-1 p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {visibleStudents.map(student => (
+                <div
+                  key={student.id}
+                  onClick={() => {
+                    setCurrentStudent({
+                      ...student,
+                      targetCountry: '日本',
+                      targetLevel: '修士',
+                      email: `${student.name.toLowerCase()}@example.com`
+                    });
+                    setShowStudentList(false);
+                  }}
+                  className="p-4 border-2 rounded-lg hover:border-blue-400 hover:shadow-lg cursor-pointer transition-all bg-white"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="text-3xl">{student.avatar}</div>
+                      <div>
+                        <div className="font-semibold text-lg">{student.name}</div>
+                        <div className="text-sm text-gray-500">{student.studentId}</div>
+                        {user.role === 'admin' && (
+                          <div className="text-xs text-gray-400">
+                            负责老师: {teacherList.find(t => t.id === student.teacherId)?.name || '未分配'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {student.urgentTasks > 0 && (
+                      <span className="bg-red-100 text-red-700 text-xs px-3 py-1 rounded-full font-semibold">
+                        {student.urgentTasks}个紧急
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">整体进度</span>
+                      <span className="font-semibold">{student.progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all"
+                        style={{ width: `${student.progress}%` }}
+                      />
+                    </div>
+                    {(user.role === 'teacher' || user.role === 'admin') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowTransferModal(true);
+                        }}
+                        className="mt-2 w-full bg-orange-500 text-white py-1 rounded text-sm hover:bg-orange-600"
+                      >
+                        转移学生
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-4 border-t bg-gray-50">
+            <button
+              onClick={() => setShowAddStudentModal(true)}
+              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+            >
+              <Plus size={18} />
+              添加新学生
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 学生转移弹窗
+  const TransferModal = () => {
+    const [selectedTeacher, setSelectedTeacher] = useState('');
+
+    const handleTransfer = () => {
+      if (selectedTeacher && currentStudent) {
+        setStudentList(prev => prev.map(s =>
+          s.id === currentStudent.id ? { ...s, teacherId: selectedTeacher } : s
+        ));
+        setShowTransferModal(false);
+        alert(`已将学生 ${currentStudent.name} 转移给 ${teacherList.find(t => t.id === selectedTeacher)?.name}`);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
+          <div className="p-6 border-b">
+            <h3 className="font-bold text-xl">转移学生</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              将学生 {currentStudent?.name} 转移给其他老师
+            </p>
+          </div>
+          <div className="p-6">
+            <label className="block text-sm font-medium mb-2">选择目标老师</label>
+            <select
+              value={selectedTeacher}
+              onChange={(e) => setSelectedTeacher(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">请选择老师</option>
+              {teacherList
+                .filter(t => t.id !== user.teacherId)
+                .map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name} ({teacher.email})
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="p-6 border-t flex gap-3">
+            <button
+              onClick={handleTransfer}
+              disabled={!selectedTeacher}
+              className="flex-1 bg-orange-500 text-white py-2 rounded-lg font-semibold hover:bg-orange-600 disabled:bg-gray-300"
+            >
+              确认转移
+            </button>
+            <button
+              onClick={() => setShowTransferModal(false)}
+              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 添加学生弹窗
+  const AddStudentModal = () => {
+    const [newStudent, setNewStudent] = useState({
+      name: '',
+      studentId: '',
+      email: '',
+      teacherId: user.role === 'teacher' ? user.teacherId : ''
+    });
+
+    const handleAddStudent = () => {
+      if (newStudent.name && newStudent.studentId) {
+        const student = {
+          id: Date.now(),
+          name: newStudent.name,
+          studentId: newStudent.studentId,
+          email: newStudent.email || `${newStudent.name.toLowerCase()}@example.com`,
+          progress: 0,
+          urgentTasks: 0,
+          avatar: '👨‍🎓',
+          teacherId: newStudent.teacherId || user.teacherId,
+          targetCountry: '日本',
+          targetLevel: '修士'
+        };
+        setStudentList(prev => [...prev, student]);
+        setShowAddStudentModal(false);
+        setNewStudent({ name: '', studentId: '', email: '', teacherId: user.teacherId || '' });
+        alert(`已添加学生 ${student.name}`);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
+          <div className="p-6 border-b">
+            <h3 className="font-bold text-xl">添加新学生</h3>
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">学生姓名</label>
+              <input
+                type="text"
+                value={newStudent.name}
+                onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="请输入学生姓名"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">学号</label>
+              <input
+                type="text"
+                value={newStudent.studentId}
+                onChange={(e) => setNewStudent({ ...newStudent, studentId: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="请输入学号"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">邮箱（可选）</label>
+              <input
+                type="email"
+                value={newStudent.email}
+                onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="请输入邮箱"
+              />
+            </div>
+            {user.role === 'admin' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">分配给老师</label>
+                <select
+                  value={newStudent.teacherId}
+                  onChange={(e) => setNewStudent({ ...newStudent, teacherId: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">请选择老师</option>
+                  {teacherList.map(teacher => (
+                    <option key={teacher.id} value={teacher.id}>
+                      {teacher.name} ({teacher.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="p-6 border-t flex gap-3">
+            <button
+              onClick={handleAddStudent}
+              disabled={!newStudent.name || !newStudent.studentId}
+              className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-300"
+            >
+              添加学生
+            </button>
+            <button
+              onClick={() => {
+                setShowAddStudentModal(false);
+                setNewStudent({ name: '', studentId: '', email: '', teacherId: user.teacherId || '' });
+              }}
+              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 时间线页面
+  const TimelineView = () => (
+    <div className="space-y-6">
+      {/* 搜索和筛选栏 */}
+      <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="搜索事项..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">所有分类</option>
+            <option value="日语考试">日语考试</option>
+            <option value="出愿">出愿</option>
+            <option value="留考">留考</option>
+            <option value="研究室联系">研究室联系</option>
+            <option value="材料准备">材料准备</option>
+            <option value="考试">考试</option>
+            <option value="合格发表">合格发表</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 概览卡片 */}
+      <div className={`bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-600' : 'from-blue-500 to-purple-600'} text-white p-6 lg:p-8 rounded-xl shadow-lg`}>
+        <h2 className="text-2xl lg:text-3xl font-bold mb-2">考学进度概览</h2>
+        <p className="text-blue-100 text-sm lg:text-base">
+          {user.role === 'teacher'
+            ? `正在查看: ${currentStudent.name} (${currentStudent.studentId})`
+            : `你有 ${filteredEvents.filter(e => e.urgent).length} 个紧急事项需要关注`
+          }
+        </p>
+        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="text-2xl font-bold">{filteredEvents.length}</div>
+            <div className="text-xs opacity-90">待办事项</div>
+          </div>
+          <div className="bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="text-2xl font-bold">{schools.length}</div>
+            <div className="text-xs opacity-90">目标学校</div>
+          </div>
+          <div className="bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="text-2xl font-bold">
+              {filteredEvents.filter(e => e.daysLeft <= 7).length}
+            </div>
+            <div className="text-xs opacity-90">本周任务</div>
+          </div>
+          <div className="bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="text-2xl font-bold">
+              {filteredEvents.filter(e => e.urgent).length}
+            </div>
+            <div className="text-xs opacity-90">紧急事项</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 事件列表 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filteredEvents.map(event => (
+          <div
+            key={event.id}
+            className={`border-2 rounded-xl p-4 lg:p-5 ${getTypeColor(event.type)}
+              transition-all hover:shadow-lg cursor-pointer ${event.completed ? 'opacity-60' : ''}`}
+            onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">{getTypeIcon(event.type)}</span>
+                  <span className="text-xs font-semibold px-2 py-1 bg-white rounded">
+                    {event.category}
+                  </span>
+                  {event.urgent && (
+                    <span className="flex items-center gap-1 text-xs text-red-600 font-semibold">
+                      <AlertCircle size={14} />
+                      紧急
+                    </span>
+                  )}
+                  {event.schoolId && (
+                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                      学校关联
+                    </span>
+                  )}
+                </div>
+                <h3 className={`font-bold text-lg mb-1 ${event.completed ? 'line-through' : ''}`}>
+                  {event.title}
+                </h3>
+                <p className="text-sm text-gray-600">{event.date}</p>
+              </div>
+              <div className="text-right">
+                <div className={`text-3xl font-bold ${
+                  event.daysLeft <= 0 ? 'text-gray-600' :
+                  event.daysLeft <= 7 ? 'text-red-600' :
+                  event.daysLeft <= 30 ? 'text-orange-600' : 'text-gray-700'
+                }`}>
+                  {event.daysLeft <= 0 ? '已过期' : event.daysLeft}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {event.daysLeft <= 0 ? '' : '天后'}
+                </div>
+              </div>
+            </div>
+
+            {(selectedEventId === event.id || !isMobile) && event.notes && (
+              <div className="mt-3 p-3 bg-white bg-opacity-70 rounded-lg animate-slide-up">
+                <p className="text-sm text-gray-700">{event.notes}</p>
+                {user.role === 'teacher' && !event.schoolId && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newEvents = upcomingEvents.map(ev =>
+                          ev.id === event.id ? {...ev, completed: !ev.completed} : ev
+                        );
+                        setUpcomingEvents(newEvents);
+                      }}
+                      className="flex-1 bg-green-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-600 flex items-center justify-center gap-1"
+                    >
+                      <Check size={16} />
+                      {event.completed ? '标记未完成' : '标记完成'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingEvent(event);
+                        setShowEventModal(true);
+                      }}
+                      className="flex-1 bg-blue-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-600 flex items-center justify-center gap-1"
+                    >
+                      <Edit size={16} />
+                      编辑
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEvent(event.id);
+                      }}
+                      className="flex-1 bg-red-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-600 flex items-center justify-center gap-1"
+                    >
+                      <Trash2 size={16} />
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {(user.role === 'teacher' || user.role === 'admin') && (
+        <button
+          onClick={() => {
+            setEditingEvent(null);
+            setShowEventModal(true);
+          }}
+          className="w-full bg-gradient-to-r from-purple-500 to-blue-600 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+        >
+          <Plus size={20} />
+          为该学生添加新事项
+        </button>
+      )}
+    </div>
+  );
+
+  // 学校管理页面
+  const SchoolsView = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">志愿学校</h2>
+        {(user.role === 'teacher' || user.role === 'admin') && (
+          <button
+            onClick={() => {
+              setEditingSchool(null);
+              setShowSchoolModal(true);
+            }}
+            className="bg-gradient-to-r from-purple-500 to-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:shadow-lg transition flex items-center gap-2"
+          >
+            <Plus size={16} />
+            添加学校
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {schools.map(school => {
+          const progress = calculateSchoolProgress(school.name);
+          return (
+            <div key={school.id} className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-xl transition-all card-hover">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="font-bold text-xl">{school.name}</h3>
+                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full">
+                      {school.type}
+                    </span>
+                  </div>
+                  <span className={`inline-block text-xs px-3 py-1 rounded-full border ${getStatusColor(school.status)}`}>
+                    {getStatusText(school.status)}
+                  </span>
+                  <p className="text-sm text-gray-600 mt-2">{school.program}</p>
+                </div>
+                {(user.role === 'teacher' || user.role === 'admin') && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingSchool(school);
+                        setShowSchoolModal(true);
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSchool(school.id)}
+                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {/* 募集要项链接 */}
+                {school.requirementsUrl && (
+                  <a
+                    href={school.requirementsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm"
+                  >
+                    <BookOpen size={16} />
+                    查看募集要项
+                    <ExternalLink size={14} />
+                  </a>
+                )}
+
+                {/* 日期信息 */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-green-50 p-2 rounded">
+                    <div className="text-gray-600">出愿开始</div>
+                    <div className="font-semibold">{school.applicationStartDate}</div>
+                  </div>
+                  <div className="bg-orange-50 p-2 rounded">
+                    <div className="text-gray-600">出愿截止</div>
+                    <div className="font-semibold">{school.applicationEndDate}</div>
+                  </div>
+                  <div className="bg-blue-50 p-2 rounded">
+                    <div className="text-gray-600">考试日期</div>
+                    <div className="font-semibold">{school.examDate}</div>
+                  </div>
+                  <div className="bg-purple-50 p-2 rounded">
+                    <div className="text-gray-600">合格发表</div>
+                    <div className="font-semibold">{school.resultDate}</div>
+                  </div>
+                </div>
+
+                {user.role === 'teacher' && school.teacherNotes && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="text-xs text-gray-600 mb-1 font-semibold">老师备注:</div>
+                    <div className="text-sm text-gray-700">{school.teacherNotes}</div>
+                  </div>
+                )}
+
+                {/* 材料准备进度 - 与材料清单同步 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-600">材料准备进度</span>
+                    <span className="text-sm font-semibold">
+                      {progress.completed}/{progress.total} 完成 ({progress.percentage}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-500' : 'from-blue-500 to-purple-500'} h-2 rounded-full transition-all`}
+                      style={{ width: `${progress.percentage}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // 材料清单页面
+  const ChecklistView = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">材料清单</h2>
+        <div className="flex gap-2">
+          <button className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition flex items-center gap-2">
+            <Download size={16} />
+            导出清单
+          </button>
+          {(user.role === 'teacher' || user.role === 'admin') && (
+            <>
+              <button className="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 transition flex items-center gap-2">
+                <Upload size={16} />
+                上传材料
+              </button>
+              <button
+                onClick={() => {
+                  setEditingMaterial(null);
+                  setShowMaterialModal(true);
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition flex items-center gap-2"
+              >
+                <Plus size={16} />
+                添加材料
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 通用材料 */}
+      <div className="bg-white border-2 border-gray-200 rounded-xl p-5">
+        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+          <FileText size={20} />
+          通用材料
+          <span className="text-sm text-gray-500 font-normal">
+            ({checklist.general.filter(i => i.completed).length}/{checklist.general.length})
+          </span>
+        </h3>
+        <div className="space-y-3">
+          {checklist.general.map((item) => (
+            <div
+              key={item.id}
+              className={`flex items-center gap-3 p-3 rounded-lg border transition-all
+                ${item.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
+            >
+              <input
+                type="checkbox"
+                className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                checked={item.completed}
+                onChange={(e) => handleMaterialCheck('general', item.id, e.target.checked)}
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className={`${item.completed ? 'line-through text-gray-400' : ''}`}>
+                    {item.item}
+                  </span>
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:text-blue-600"
+                    >
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  截止: {item.deadline}
+                  {item.completed && item.checkedBy && (
+                    <span className="ml-2">
+                      · {item.checkedBy === 'teacher' ? '老师勾选' : '学生勾选'} ({item.checkedAt})
+                    </span>
+                  )}
+                </div>
+              </div>
+              {item.completed && (
+                <div className="flex items-center gap-2">
+                  {item.checkedBy === 'teacher' ? (
+                    <GraduationCap className="text-purple-500" size={20} />
+                  ) : (
+                    <UserCheck className="text-blue-500" size={20} />
+                  )}
+                  <Check className="text-green-500" size={20} />
+                </div>
+              )}
+              {(user.role === 'teacher' || user.role === 'admin') && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setEditingMaterial({...item, type: 'general'});
+                      setShowMaterialModal(true);
+                    }}
+                    className="p-1 hover:bg-blue-100 rounded"
+                  >
+                    <Edit2 size={16} className="text-blue-600" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteMaterial('general', item.id)}
+                    className="p-1 hover:bg-red-100 rounded"
+                  >
+                    <Trash2 size={16} className="text-red-600" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 学校专用材料 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => (
+          <div key={schoolName} className="bg-white border-2 border-gray-200 rounded-xl p-5">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <School size={20} />
+              {schoolName}
+              <span className="text-sm text-gray-500 font-normal">
+                ({materials.filter(i => i.completed).length}/{materials.length})
+              </span>
+            </h3>
+            <div className="space-y-3">
+              {materials.map((item) => (
+                <div
+                  key={item.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all
+                    ${item.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                    checked={item.completed}
+                    onChange={(e) => handleMaterialCheck('school', item.id, e.target.checked, schoolName)}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`${item.completed ? 'line-through text-gray-400' : ''}`}>
+                        {item.item}
+                      </span>
+                      {item.url && (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-600"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      截止: {item.deadline}
+                      {item.completed && item.checkedBy && (
+                        <span className="ml-2">
+                          · {item.checkedBy === 'teacher' ? '老师勾选' : '学生勾选'} ({item.checkedAt})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {item.completed && (
+                    <div className="flex items-center gap-2">
+                      {item.checkedBy === 'teacher' ? (
+                        <GraduationCap className="text-purple-500" size={20} />
+                      ) : (
+                        <UserCheck className="text-blue-500" size={20} />
+                      )}
+                      <Check className="text-green-500" size={20} />
+                    </div>
+                  )}
+                  {(user.role === 'teacher' || user.role === 'admin') && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          setEditingMaterial({...item, type: 'school', school: schoolName});
+                          setShowMaterialModal(true);
+                        }}
+                        className="p-1 hover:bg-blue-100 rounded"
+                      >
+                        <Edit2 size={16} className="text-blue-600" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMaterial('school', item.id, schoolName)}
+                        className="p-1 hover:bg-red-100 rounded"
+                      >
+                        <Trash2 size={16} className="text-red-600" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 进度统计 */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border-2 border-gray-200">
+        <h3 className="font-bold text-lg mb-4">材料准备总进度</h3>
+        <div className="space-y-4">
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm font-medium">通用材料</span>
+              <span className="text-sm font-bold">
+                {Math.round(checklist.general.filter(i => i.completed).length / checklist.general.length * 100)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all"
+                style={{ width: `${checklist.general.filter(i => i.completed).length / checklist.general.length * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => (
+            <div key={schoolName}>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium">{schoolName}</span>
+                <span className="text-sm font-bold">
+                  {Math.round(materials.filter(i => i.completed).length / materials.length * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full transition-all"
+                  style={{ width: `${materials.filter(i => i.completed).length / materials.length * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const tabs = [
+    { id: 'timeline', label: '时间线', icon: Clock },
+    { id: 'schools', label: '学校', icon: School },
+    { id: 'checklist', label: '材料', icon: CheckSquare },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto">
+          <div className="px-4 lg:px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {isMobile && (
+                  <button
+                    onClick={() => setShowMobileMenu(!showMobileMenu)}
+                    className="p-2 hover:bg-gray-100 rounded-lg lg:hidden"
+                  >
+                    <Menu size={24} />
+                  </button>
+                )}
+                <div>
+                  <h1 className="text-xl lg:text-2xl font-bold text-gray-800">
+                    日本留学考学助手
+                  </h1>
+                  <p className="text-xs lg:text-sm text-gray-500">
+                    {user.role === 'teacher' ? '老师管理端' :
+                     user.role === 'admin' ? '管理员端' : '学生查看端'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 lg:gap-4">
+                {/* 通知按钮 */}
+                <button className="p-2 hover:bg-gray-100 rounded-lg relative">
+                  <Bell size={20} />
+                  {filteredEvents.filter(e => e.urgent).length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                  )}
+                </button>
+
+                {(user.role === 'teacher' || user.role === 'admin') && (
+                  <button
+                    onClick={() => setShowStudentList(true)}
+                    className={`p-2 ${user.role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-purple-50 text-purple-600'} rounded-lg hover:opacity-80`}
+                  >
+                    <Users size={20} />
+                  </button>
+                )}
+
+                {/* 用户菜单 */}
+                <div className="relative group">
+                  <button className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg">
+                    <div className="text-2xl">{currentStudent.avatar}</div>
+                    {!isMobile && (
+                      <>
+                        <span className="font-medium">{user.name}</span>
+                        <ChevronDown size={16} />
+                      </>
+                    )}
+                  </button>
+
+                  {/* 下拉菜单 */}
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                    <div className="p-3 border-b">
+                      <div className="text-sm font-medium">{user.name}</div>
+                      <div className="text-xs text-gray-500">{user.email}</div>
+                      {user.role === 'student' && (
+                        <div className="text-xs text-gray-500">学号: {user.studentId}</div>
+                      )}
+                    </div>
+                    <button className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                      <Settings size={16} />
+                      设置
+                    </button>
+                    <button className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                      <HelpCircle size={16} />
+                      帮助中心
+                    </button>
+                    <button
+                      onClick={onLogout}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                    >
+                      <LogOut size={16} />
+                      退出登录
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 角色提示 */}
+            <div className={`mt-3 p-2 rounded-lg flex items-center gap-2 ${
+              user.role === 'teacher' ? 'bg-purple-50 text-purple-700' :
+              user.role === 'admin' ? 'bg-red-50 text-red-700' :
+              'bg-blue-50 text-blue-700'
+            }`}>
+              <Shield size={16} />
+              <span className="text-sm">
+                您当前以{user.role === 'teacher' ? '老师' :
+                        user.role === 'admin' ? '管理员' : '学生'}身份登录
+                {(user.role === 'teacher' || user.role === 'admin') && currentStudent.name !== user.name && ` · 正在查看学生: ${currentStudent.name}`}
+              </span>
+            </div>
+          </div>
+
+          {/* Desktop Tabs */}
+          {!isMobile && (
+            <div className="px-4 lg:px-6">
+              <div className="flex gap-1">
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-2 px-4 py-3 font-medium transition-all relative
+                        ${isActive
+                          ? user.role === 'teacher'
+                            ? 'text-purple-600'
+                            : 'text-blue-600'
+                          : 'text-gray-600 hover:text-gray-900'
+                        }
+                        ${isActive ? 'tab-active' : ''}`}
+                    >
+                      <Icon size={18} />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Sidebar */}
+      {isMobile && showMobileMenu && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowMobileMenu(false)} />
+          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+            <div className={`p-4 bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-600' : 'from-blue-500 to-purple-600'} text-white`}>
+              <h2 className="text-xl font-bold">菜单</h2>
+            </div>
+            <div className="flex-1 py-4">
+              {tabs.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setShowMobileMenu(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-6 py-3 transition
+                      ${isActive
+                        ? `${user.role === 'teacher' ? 'bg-purple-50 text-purple-600 border-r-4 border-purple-600' : 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'}`
+                        : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                  >
+                    <Icon size={20} />
+                    <span className="font-medium">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content Area */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6 lg:py-8">
+        {activeTab === 'timeline' && <TimelineView />}
+        {activeTab === 'schools' && <SchoolsView />}
+        {activeTab === 'checklist' && <ChecklistView />}
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      {isMobile && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
+          <div className="flex justify-around py-2">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition ${
+                    isActive
+                      ? user.role === 'teacher'
+                        ? 'text-purple-600 bg-purple-50'
+                        : 'text-blue-600 bg-blue-50'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon size={24} />
+                  <span className="text-xs mt-1 font-medium">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showStudentList && <StudentListModal />}
+      {showEventModal && <EventModal />}
+      {showSchoolModal && <SchoolModal />}
+      {showMaterialModal && <MaterialModal />}
+      {showTransferModal && <TransferModal />}
+      {showAddStudentModal && <AddStudentModal />}
+    </div>
+  );
+};
+
+// 根组件
+const JapanStudyApp = () => {
+  const [user, setUser] = useState(null);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    // 这里可以保存到 localStorage 实现持久化
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+  };
+
+  // 检查是否有已登录用户
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  return user ? (
+    <MainApp user={user} onLogout={handleLogout} />
+  ) : (
+    <AuthPage onLogin={handleLogin} />
+  );
+};
+
+export default JapanStudyApp;
