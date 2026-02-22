@@ -1,0 +1,348 @@
+// Schools Routes
+// 学校管理路由
+
+const express = require('express');
+const router = express.Router();
+const db = require('../config/db');
+
+// Get all schools for a student
+// 获取学生的所有志愿学校
+router.get('/student/:studentId', async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+
+    const schools = await db('schools')
+      .where('student_id', studentId)
+      .orderBy('created_at', 'desc');
+
+    // Parse materials JSON
+    schools.forEach(school => {
+      if (school.materials) {
+        school.materials = JSON.parse(school.materials);
+      }
+    });
+
+    res.json({
+      success: true,
+      data: schools
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get single school
+// 获取单个学校详情
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const school = await db('schools')
+      .where('id', id)
+      .first();
+
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: '学校不存在'
+      });
+    }
+
+    // Parse materials JSON
+    if (school.materials) {
+      school.materials = JSON.parse(school.materials);
+    }
+
+    res.json({
+      success: true,
+      data: school
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Create new school
+// 添加新学校
+router.post('/', async (req, res, next) => {
+  try {
+    const {
+      student_id,
+      name,
+      type,
+      program,
+      status,
+      application_start_date,
+      application_end_date,
+      exam_date,
+      result_date,
+      requirements_url,
+      teacher_notes,
+      materials
+    } = req.body;
+
+    // Validation
+    if (!student_id || !name || !type || !program || !application_start_date ||
+        !application_end_date || !exam_date || !result_date) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少必填字段'
+      });
+    }
+
+    const [schoolId] = await db('schools').insert({
+      student_id,
+      name,
+      type,
+      program,
+      status: status || 'preparing',
+      application_start_date,
+      application_end_date,
+      exam_date,
+      result_date,
+      requirements_url,
+      teacher_notes,
+      materials: materials ? JSON.stringify(materials) : null
+    });
+
+    // Get the created school
+    const school = await db('schools').where('id', schoolId).first();
+
+    if (school.materials) {
+      school.materials = JSON.parse(school.materials);
+    }
+
+    // Auto-create timeline events
+    const events = [];
+
+    if (application_start_date) {
+      events.push({
+        student_id,
+        school_id: schoolId,
+        type: 'deadline',
+        title: `${name} 出愿开始`,
+        date: application_start_date,
+        category: '出愿',
+        notes: `${program} 出愿开始，请准备材料`,
+        completed: false
+      });
+    }
+
+    if (application_end_date) {
+      events.push({
+        student_id,
+        school_id: schoolId,
+        type: 'deadline',
+        title: `${name} 出愿截止`,
+        date: application_end_date,
+        category: '出愿',
+        urgent: true,
+        notes: `${program} 出愿截止，务必在此之前提交`,
+        completed: false
+      });
+    }
+
+    if (exam_date) {
+      events.push({
+        student_id,
+        school_id: schoolId,
+        type: 'exam',
+        title: `${name} 入学考试`,
+        date: exam_date,
+        category: '考试',
+        notes: `${program} 入学考试`,
+        completed: false
+      });
+    }
+
+    if (result_date) {
+      events.push({
+        student_id,
+        school_id: schoolId,
+        type: 'deadline',
+        title: `${name} 合格发表`,
+        date: result_date,
+        category: '合格发表',
+        notes: `${program} 合格发表日`,
+        completed: false
+      });
+    }
+
+    if (events.length > 0) {
+      await db('events').insert(events);
+    }
+
+    // Auto-create materials if provided
+    if (materials && materials.length > 0) {
+      const materialRecords = materials.map(mat => ({
+        student_id,
+        school_id: schoolId,
+        item: mat.name,
+        type: 'school',
+        deadline: mat.deadline || application_end_date,
+        url: mat.url || null,
+        completed: false
+      }));
+      await db('materials').insert(materialRecords);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: '学校添加成功',
+      data: school
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update school
+// 更新学校信息
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      type,
+      program,
+      status,
+      application_start_date,
+      application_end_date,
+      exam_date,
+      result_date,
+      requirements_url,
+      teacher_notes,
+      materials
+    } = req.body;
+
+    const school = await db('schools').where('id', id).first();
+
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: '学校不存在'
+      });
+    }
+
+    const updateData = {
+      name: name || school.name,
+      type: type || school.type,
+      program: program || school.program,
+      status: status || school.status,
+      application_start_date: application_start_date || school.application_start_date,
+      application_end_date: application_end_date || school.application_end_date,
+      exam_date: exam_date || school.exam_date,
+      result_date: result_date || school.result_date,
+      requirements_url: requirements_url !== undefined ? requirements_url : school.requirements_url,
+      teacher_notes: teacher_notes !== undefined ? teacher_notes : school.teacher_notes,
+      materials: materials ? JSON.stringify(materials) : school.materials
+    };
+
+    await db('schools').where('id', id).update(updateData);
+
+    // Update related timeline events
+    await db('events').where('school_id', id).del();
+
+    const events = [];
+    const student_id = school.student_id;
+
+    if (updateData.application_start_date) {
+      events.push({
+        student_id,
+        school_id: id,
+        type: 'deadline',
+        title: `${updateData.name} 出愿开始`,
+        date: updateData.application_start_date,
+        category: '出愿',
+        notes: `${updateData.program} 出愿开始，请准备材料`,
+        completed: false
+      });
+    }
+
+    if (updateData.application_end_date) {
+      events.push({
+        student_id,
+        school_id: id,
+        type: 'deadline',
+        title: `${updateData.name} 出愿截止`,
+        date: updateData.application_end_date,
+        category: '出愿',
+        urgent: true,
+        notes: `${updateData.program} 出愿截止，务必在此之前提交`,
+        completed: false
+      });
+    }
+
+    if (updateData.exam_date) {
+      events.push({
+        student_id,
+        school_id: id,
+        type: 'exam',
+        title: `${updateData.name} 入学考试`,
+        date: updateData.exam_date,
+        category: '考试',
+        notes: `${updateData.program} 入学考试`,
+        completed: false
+      });
+    }
+
+    if (updateData.result_date) {
+      events.push({
+        student_id,
+        school_id: id,
+        type: 'deadline',
+        title: `${updateData.name} 合格发表`,
+        date: updateData.result_date,
+        category: '合格发表',
+        notes: `${updateData.program} 合格发表日`,
+        completed: false
+      });
+    }
+
+    if (events.length > 0) {
+      await db('events').insert(events);
+    }
+
+    const updatedSchool = await db('schools').where('id', id).first();
+    if (updatedSchool.materials) {
+      updatedSchool.materials = JSON.parse(updatedSchool.materials);
+    }
+
+    res.json({
+      success: true,
+      message: '学校信息更新成功',
+      data: updatedSchool
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete school
+// 删除学校（级联删除相关事件和材料）
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const school = await db('schools').where('id', id).first();
+
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: '学校不存在'
+      });
+    }
+
+    // Delete related events and materials (cascade handled by foreign key)
+    await db('schools').where('id', id).del();
+
+    res.json({
+      success: true,
+      message: '学校删除成功'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

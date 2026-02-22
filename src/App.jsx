@@ -5,11 +5,82 @@ import {
   X, User, Bell, Search, Filter, Download, Upload,
   Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
-  BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield
+  BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
+  LayoutGrid, LayoutList, UserCircle
 } from 'lucide-react';
+import { schoolsAPI, eventsAPI, materialsAPI } from './services/api';
+import { AppProvider, useApp } from './context/AppContext';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import Notification from './components/common/Notification';
+import StudentProfile from './components/StudentProfile';
+import TimelineLinear from './components/TimelineLinear';
+import TeacherManagement from './components/TeacherManagement';
+import SchoolDatabase from './components/SchoolDatabase';
+import SettingsPage from './components/SettingsPage';
+import CalendarView from './components/CalendarView';
+import UpcomingSchools from './components/UpcomingSchools';
+import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
+
+// ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 
 // 登录注册页面组件
-const AuthPage = ({ onLogin }) => {
+const AuthPage = ({ onLogin, allUsers, studentList }) => {
+  // 用户账号数据库
+  const [users] = useState([
+    // 管理员账号
+    {
+      id: 'admin1',
+      email: 'admin@jsa.com',
+      password: 'admin123',
+      role: 'admin',
+      name: '系统管理员'
+    },
+    // 老师账号
+    {
+      id: 'teacher1',
+      email: 'wang@school.com',
+      password: 'wang123',
+      role: 'teacher',
+      teacherId: 'teacher_1',
+      name: '王老师'
+    },
+    {
+      id: 'teacher2',
+      email: 'li@school.com',
+      password: 'li123',
+      role: 'teacher',
+      teacherId: 'teacher_2',
+      name: '李老师'
+    },
+    // 学生账号（已注册的）
+    {
+      id: 'student1',
+      email: 'zhangsan@example.com',
+      password: 'zhang123',
+      role: 'student',
+      studentId: '2024001',
+      name: '张三'
+    }
+  ]);
+
+  // 动态获取所有学生记录
+  const getAllStudentRecords = () => {
+    // 如果有传入的studentList，优先使用
+    if (studentList && studentList.length > 0) {
+      return studentList.map(s => ({
+        studentId: s.studentId,
+        name: s.name,
+        hasAccount: allUsers.some(u => u.studentId === s.studentId),
+        teacherId: s.teacherId
+      }));
+    }
+    // 否则返回默认数据
+    return [
+      { studentId: '2024001', name: '张三', hasAccount: true, teacherId: 'teacher_1' },
+      { studentId: '2024002', name: '李四', hasAccount: false, teacherId: 'teacher_1' },
+      { studentId: '2024003', name: '王五', hasAccount: false, teacherId: 'teacher_2' },
+    ];
+  };
   const [isLogin, setIsLogin] = useState(true);
   const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
   const [formData, setFormData] = useState({
@@ -48,8 +119,21 @@ const AuthPage = ({ onLogin }) => {
     else if (formData.password.length < 6) newErrors.password = '密码至少6位';
 
     if (!isLogin) {
+      // 注册逻辑
       if (!formData.name) newErrors.name = '请输入姓名';
-      if (userType === 'student' && !formData.studentId) newErrors.studentId = '请输入学号';
+      if (userType === 'student') {
+        if (!formData.studentId) {
+          newErrors.studentId = '请输入学号';
+        } else {
+          // 验证学号是否存在且未注册
+          const studentRecord = getAllStudentRecords().find(s => s.studentId === formData.studentId);
+          if (!studentRecord) {
+            newErrors.studentId = '学号不存在，请联系管理员';
+          } else if (studentRecord.hasAccount) {
+            newErrors.studentId = '该学号已被注册';
+          }
+        }
+      }
       if (formData.password !== formData.confirmPassword) {
         newErrors.confirmPassword = '两次密码输入不一致';
       }
@@ -58,25 +142,54 @@ const AuthPage = ({ onLogin }) => {
       } else if (formData.verificationCode !== '123456') {
         newErrors.verificationCode = '验证码错误';
       }
+
+      if (Object.keys(newErrors).length === 0) {
+        // 注册成功，创建新用户
+        const studentRecord = userType === 'student' ?
+          getAllStudentRecords().find(s => s.studentId === formData.studentId) : null;
+
+        const userData = {
+          role: userType,
+          name: formData.name,
+          email: formData.email,
+          studentId: userType === 'student' ? formData.studentId : null,
+          teacherId: userType === 'teacher' ? `teacher_${Date.now()}` :
+                     userType === 'student' && studentRecord ? studentRecord.teacherId : null,
+          isAdmin: userType === 'admin'
+        };
+        onLogin(userData);
+        return;
+      }
+    } else {
+      // 登录逻辑 - 验证密码
+      if (Object.keys(newErrors).length === 0) {
+        const user = allUsers.find(u =>
+          u.email === formData.email &&
+          u.password === formData.password &&
+          u.role === userType
+        );
+
+        if (user) {
+          const userData = {
+            role: user.role,
+            name: user.name,
+            email: user.email,
+            studentId: user.studentId || null,
+            teacherId: user.teacherId || null,
+            isAdmin: user.role === 'admin'
+          };
+          onLogin(userData);
+          return;
+        } else {
+          newErrors.password = '邮箱或密码错误';
+        }
+      }
     }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
-
-    // 模拟登录
-    const userRole = userType; // 'student', 'teacher', or 'admin'
-    const userData = {
-      role: userRole,
-      name: formData.name || (userType === 'student' ? '张三' : userType === 'teacher' ? '李老师' : '管理员'),
-      email: formData.email,
-      studentId: userType === 'student' ? (formData.studentId || '2024001') : null,
-      teacherId: userType === 'teacher' ? `teacher_${Date.now()}` : null,
-      isAdmin: userType === 'admin'
-    };
-
-    onLogin(userData);
   };
 
   return (
@@ -115,50 +228,58 @@ const AuthPage = ({ onLogin }) => {
         <div className="p-8 lg:p-12">
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-800 mb-2">
-              {isLogin ? '欢迎回来' : '创建账号'}
+              {isLogin ? '欢迎回来' : '学生注册'}
             </h2>
             <p className="text-gray-600">
-              {isLogin ? '登录您的账号继续管理留学申请' : '注册新账号开始您的留学之旅'}
+              {isLogin ? '登录您的账号继续管理留学申请' : '学生使用学号注册账号'}
             </p>
           </div>
 
-          {/* 角色选择 */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">我是</label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setUserType('student')}
-                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                  ${userType === 'student' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 hover:border-gray-400'}`}
-              >
-                <User size={20} />
-                <span className="font-medium">学生</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserType('teacher')}
-                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                  ${userType === 'teacher' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-300 hover:border-gray-400'}`}
-              >
-                <GraduationCap size={20} />
-                <span className="font-medium">老师</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserType('admin')}
-                className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                  ${userType === 'admin' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 hover:border-gray-400'}`}
-              >
-                <Shield size={20} />
-                <span className="font-medium">管理员</span>
-              </button>
+          {/* 角色选择 - 只在登录页显示 */}
+          {isLogin && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">我是</label>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUserType('student')}
+                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                    ${userType === 'student' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 hover:border-gray-400'}`}
+                >
+                  <User size={20} />
+                  <span className="font-medium">学生</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserType('teacher')}
+                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                    ${userType === 'teacher' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-300 hover:border-gray-400'}`}
+                >
+                  <GraduationCap size={20} />
+                  <span className="font-medium">老师</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserType('admin')}
+                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
+                    ${userType === 'admin' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 hover:border-gray-400'}`}
+                >
+                  <Shield size={20} />
+                  <span className="font-medium">管理员</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
               <>
+                {/* 注册提示信息 */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    <strong>提示：</strong>只有学生可以自主注册账号。老师和管理员账号需由系统管理员创建。
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
                   <input
@@ -277,19 +398,56 @@ const AuthPage = ({ onLogin }) => {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-gray-600">
-              {isLogin ? '还没有账号？' : '已有账号？'}
-              <button
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setErrors({});
-                }}
-                className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
-              >
-                {isLogin ? '立即注册' : '立即登录'}
-              </button>
-            </p>
+            {/* 只有学生可以注册 */}
+            {isLogin && userType === 'student' && (
+              <p className="text-gray-600">
+                还没有账号？
+                <button
+                  onClick={() => {
+                    setIsLogin(false);
+                    setErrors({});
+                  }}
+                  className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
+                >
+                  立即注册
+                </button>
+              </p>
+            )}
+            {!isLogin && (
+              <p className="text-gray-600">
+                已有账号？
+                <button
+                  onClick={() => {
+                    setIsLogin(true);
+                    setErrors({});
+                  }}
+                  className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
+                >
+                  立即登录
+                </button>
+              </p>
+            )}
           </div>
+
+          {/* 测试账号提示 */}
+          {isLogin && (
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg text-xs text-gray-600">
+              <p className="font-semibold mb-2">测试账号：</p>
+              {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
+              {userType === 'teacher' && (
+                <>
+                  <p>王老师: wang@school.com / wang123</p>
+                  <p>李老师: li@school.com / li123</p>
+                </>
+              )}
+              {userType === 'student' && (
+                <>
+                  <p>张三: zhangsan@example.com / zhang123</p>
+                  <p className="mt-1 text-gray-500">未注册学号: 2024002（李四）</p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -297,14 +455,231 @@ const AuthPage = ({ onLogin }) => {
 };
 
 // 主应用组件
-const MainApp = ({ user, onLogout }) => {
+const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStudentList }) => {
+  const { hasPermission, showNotification } = useApp();
+  // 先初始化 currentStudent - 从 localStorage 恢复或使用默认值
+  const [currentStudent, setCurrentStudent] = useState(() => {
+    // 尝试从 localStorage 恢复上次选择的学生
+    const savedStudent = localStorage.getItem('currentStudent');
+    if (savedStudent) {
+      try {
+        return JSON.parse(savedStudent);
+      } catch (e) {
+        console.error('Failed to parse saved student:', e);
+      }
+    }
+
+    // 如果没有保存的学生,使用默认值
+    if (user.role === 'student') {
+      return {
+        id: 1,
+        name: user.name,
+        studentId: user.studentId,
+        email: user.email,
+        targetCountry: '日本',
+        targetLevel: '修士',
+        avatar: '👨‍🎓',
+        teacherId: user.teacherId
+      };
+    } else {
+      return {
+        id: 1,
+        name: '张三',
+        studentId: '2024001',
+        targetCountry: '日本',
+        targetLevel: '修士',
+        email: 'zhangsan@example.com',
+        avatar: '👨‍🎓',
+        teacherId: user.teacherId || 'teacher_1'
+      };
+    }
+  });
+
   const [activeTab, setActiveTab] = useState('timeline');
+  const [settingsInitTab, setSettingsInitTab] = useState(null);
   const [showStudentList, setShowStudentList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [timelineViewMode, setTimelineViewMode] = useState('card'); // 'card' or 'linear'
+  const [showStudentProfile, setShowStudentProfile] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // 学生数据存储（按学生ID隔离）
+  const [studentData, setStudentData] = useState(() => {
+    const saved = localStorage.getItem('studentData');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // 获取当前学生的数据
+  const getStudentDataKey = () => {
+    return currentStudent?.studentId || 'default';
+  };
+
+  // 获取或初始化学生数据
+  const getOrInitStudentData = () => {
+    const key = getStudentDataKey();
+    if (!studentData || !studentData[key]) {
+      return {
+        events: [
+          { id: 1, type: 'exam', title: 'JLPT N1考试', date: '2025-12-07', daysLeft: 59, category: '日语考试', urgent: false, notes: '需要达到130分以上', completed: false, schoolId: null },
+          { id: 2, type: 'deadline', title: '东京大学出愿截止', date: '2025-11-15', daysLeft: 37, category: '出愿', urgent: true, notes: '记得提前准备材料', completed: false, schoolId: 1 },
+          { id: 3, type: 'exam', title: 'EJU考试(理科)', date: '2025-11-09', daysLeft: 31, category: '留考', urgent: true, notes: '目标分数700+', completed: false, schoolId: null },
+          { id: 4, type: 'contact', title: '京都大学教授邮件跟进', date: '2025-10-15', daysLeft: 6, category: '研究室联系', urgent: false, notes: '询问研究室招生情况', completed: false, schoolId: 2 },
+        ],
+        schools: [
+          {
+            id: 1,
+            name: '东京大学',
+            type: '国立',
+            program: '工学研究科',
+            status: 'preparing',
+            applicationStartDate: '2025-10-01',
+            applicationEndDate: '2025-11-15',
+            examDate: '2025-12-20',
+            resultDate: '2026-01-30',
+            requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/graduate.html',
+            teacherNotes: '重点院校，需要JLPT N1和EJU高分',
+            materials: [
+              { name: '研究计划书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
+              { name: '推荐信', deadline: '2025-11-05', url: '' }
+            ]
+          },
+          {
+            id: 2,
+            name: '京都大学',
+            type: '国立',
+            program: '情报学研究科',
+            status: 'contacted',
+            applicationStartDate: '2025-10-15',
+            applicationEndDate: '2025-11-20',
+            examDate: '2026-01-10',
+            resultDate: '2026-02-15',
+            requirementsUrl: 'https://www.kyoto-u.ac.jp/ja/admissions/',
+            teacherNotes: '已联系田中教授，等待回复',
+            materials: [
+              { name: '志望理由书', deadline: '2025-11-15', url: '' }
+            ]
+          },
+          {
+            id: 3,
+            name: '早稻田大学',
+            type: '私立',
+            program: '基干理工学研究科',
+            status: 'preparing',
+            applicationStartDate: '2025-09-20',
+            applicationEndDate: '2025-10-31',
+            examDate: '2025-11-25',
+            resultDate: '2025-12-20',
+            requirementsUrl: 'https://www.waseda.jp/inst/admission/',
+            teacherNotes: '保底院校，英语成绩要求较低',
+            materials: []
+          },
+        ],
+        checklist: {
+          general: [
+            { id: 1, item: '毕业证书(日文翻译+公证)', completed: true, deadline: '2025-09-30', checkedBy: 'teacher', checkedAt: '2025-09-15', url: '' },
+            { id: 2, item: '成绩单(日文翻译+公证)', completed: false, deadline: '2025-09-30', checkedBy: null, checkedAt: null, url: '' },
+            { id: 3, item: '护照复印件', completed: false, deadline: '2025-08-31', checkedBy: null, checkedAt: null, url: '' },
+            { id: 4, item: 'JLPT成绩单', completed: false, deadline: '2025-10-15', checkedBy: null, checkedAt: null, url: '' },
+            { id: 5, item: '银行存款证明', completed: false, deadline: '2025-10-31', checkedBy: null, checkedAt: null, url: '' },
+          ],
+          schoolSpecific: {
+            '东京大学': [
+              { id: 101, item: '研究计划书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
+              { id: 102, item: '推荐信', completed: false, deadline: '2025-11-05', checkedBy: null, checkedAt: null, url: '' },
+            ],
+            '京都大学': [
+              { id: 201, item: '志望理由书', completed: false, deadline: '2025-11-15', checkedBy: null, checkedAt: null, url: '' },
+            ]
+          }
+        }
+      };
+    }
+    return studentData[key];
+  };
+
+  // 获取当前学生的数据 - 使用useMemo确保响应式更新
+  const currentStudentData = React.useMemo(() => {
+    try {
+      return getOrInitStudentData();
+    } catch (error) {
+      console.error('Error getting student data:', error);
+      // 返回默认数据以防出错
+      return {
+        events: [],
+        schools: [],
+        checklist: { general: [], schoolSpecific: {} }
+      };
+    }
+  }, [studentData, currentStudent?.studentId]);
+
+  const upcomingEvents = currentStudentData.events || [];
+  const schools = currentStudentData.schools || [];
+  const checklist = currentStudentData.checklist || {};
+
+  // 设置事件更新函数
+  const setUpcomingEvents = (newEvents) => {
+    const key = getStudentDataKey();
+
+    setStudentData(prev => {
+      // 使用 prev 中的最新数据，而不是可能过时的 currentStudentData
+      const currentData = prev[key] || getOrInitStudentData();
+      const resolvedEvents = typeof newEvents === 'function' ? newEvents(currentData.events || upcomingEvents) : newEvents;
+      const updated = {
+        ...prev,
+        [key]: {
+          ...currentData,
+          events: resolvedEvents
+        }
+      };
+      localStorage.setItem('studentData', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // 设置学校更新函数
+  const setSchools = (newSchools) => {
+    const key = getStudentDataKey();
+
+    setStudentData(prev => {
+      // 使用 prev 中的最新数据
+      const currentData = prev[key] || getOrInitStudentData();
+      const currentSchools = currentData.schools || schools;
+      const resolvedSchools = typeof newSchools === 'function' ? newSchools(currentSchools) : newSchools;
+      const updated = {
+        ...prev,
+        [key]: {
+          ...currentData,
+          schools: resolvedSchools
+        }
+      };
+      localStorage.setItem('studentData', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // 设置清单更新函数
+  const setChecklist = (newChecklist) => {
+    const key = getStudentDataKey();
+
+    setStudentData(prev => {
+      // 使用 prev 中的最新数据，而不是可能过时的 currentStudentData
+      const currentData = prev[key] || getOrInitStudentData();
+      const resolvedChecklist = typeof newChecklist === 'function' ? newChecklist(currentData.checklist || checklist) : newChecklist;
+      const updated = {
+        ...prev,
+        [key]: {
+          ...currentData,
+          checklist: resolvedChecklist
+        }
+      };
+      localStorage.setItem('studentData', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Modal states
   const [showEventModal, setShowEventModal] = useState(false);
@@ -312,33 +687,24 @@ const MainApp = ({ user, onLogout }) => {
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showAddTeacherModal, setShowAddTeacherModal] = useState(false);
+  const [showAccountManagementModal, setShowAccountManagementModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsModalInitTab, setSettingsModalInitTab] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingSchool, setEditingSchool] = useState(null);
   const [editingMaterial, setEditingMaterial] = useState(null);
 
-  const [currentStudent, setCurrentStudent] = useState(
-    user.role === 'student'
-      ? {
-          id: 1,
-          name: user.name,
-          studentId: user.studentId,
-          email: user.email,
-          targetCountry: '日本',
-          targetLevel: '修士',
-          avatar: '👨‍🎓',
-          teacherId: null // Students don't have a teacherId assigned to themselves
-        }
-      : {
-          id: 1,
-          name: '张三',
-          studentId: '2024001',
-          targetCountry: '日本',
-          targetLevel: '修士',
-          email: 'zhangsan@example.com',
-          avatar: '👨‍🎓',
-          teacherId: user.teacherId || 'teacher_1' // Default teacher ID for initial student
-        }
-  );
+  // 注意：此应用使用localStorage作为数据存储，不依赖后端API
+  // 数据会通过studentData state自动管理和持久化
+
+  // 保存当前学生到 localStorage
+  useEffect(() => {
+    if (currentStudent) {
+      localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
+    }
+  }, [currentStudent]);
 
   // 检测屏幕大小
   useEffect(() => {
@@ -352,105 +718,70 @@ const MainApp = ({ user, onLogout }) => {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // 学生列表 (包含所有学生，老师只能看到自己的学生)
-  const [studentList, setStudentList] = useState([
-    { id: 1, name: '张三', studentId: '2024001', progress: 65, urgentTasks: 2, avatar: '👨‍🎓', teacherId: 'teacher_1' },
-    { id: 2, name: '李四', studentId: '2024002', progress: 45, urgentTasks: 4, avatar: '👩‍🎓', teacherId: 'teacher_1' },
-    { id: 3, name: '王五', studentId: '2024003', progress: 80, urgentTasks: 1, avatar: '👨‍🎓', teacherId: 'teacher_2' },
-    { id: 4, name: '赵六', studentId: '2024004', progress: 55, urgentTasks: 3, avatar: '👩‍🎓', teacherId: 'teacher_2' },
-  ]);
 
-  // 老师列表 (管理员使用)
-  const [teacherList] = useState([
-    { id: 'teacher_1', name: '李老师', email: 'li@school.com' },
-    { id: 'teacher_2', name: '王老师', email: 'wang@school.com' },
-  ]);
+  // 老师列表 (动态从allUsers中获取)
+  const getTeacherList = () => {
+    return allUsers
+      .filter(u => u.role === 'teacher')
+      .map(u => ({
+        id: u.teacherId,
+        name: u.name,
+        email: u.email
+      }));
+  };
+
+  // 动态获取所有学生列表
+  const getAllStudents = () => {
+    // 从allUsers中获取所有学生用户
+    const studentUsers = allUsers.filter(u => u.role === 'student');
+
+    // 合并静态studentList和动态用户数据
+    const mergedStudents = [];
+
+    // 首先添加studentList中的学生（保留详细信息）
+    studentList.forEach(s => {
+      mergedStudents.push(s);
+    });
+
+    // 然后检查是否有新注册的学生不在studentList中
+    studentUsers.forEach(user => {
+      if (!studentList.find(s => s.studentId === user.studentId)) {
+        // 添加新注册的学生
+        mergedStudents.push({
+          id: Date.now() + Math.random(),
+          name: user.name,
+          studentId: user.studentId,
+          progress: 0,
+          urgentTasks: 0,
+          avatar: '👨‍🎓',
+          teacherId: user.teacherId || 'teacher_1',
+          email: user.email
+        });
+      }
+    });
+
+    return mergedStudents;
+  };
 
   // 根据权限获取可见的学生列表
   const getVisibleStudents = () => {
+    const allStudents = getAllStudents();
+
     if (user.role === 'admin') {
-      return studentList; // 管理员看到所有学生
+      return allStudents; // 管理员看到所有学生
     } else if (user.role === 'teacher') {
-      return studentList.filter(s => s.teacherId === user.teacherId); // 老师只看到自己的学生
+      return allStudents.filter(s => s.teacherId === user.teacherId); // 老师只看到自己的学生
     }
     return []; // 学生不需要看到学生列表
   };
 
-  const [upcomingEvents, setUpcomingEvents] = useState([
-    { id: 1, type: 'exam', title: 'JLPT N1考试', date: '2025-12-07', daysLeft: 59, category: '日语考试', urgent: false, notes: '需要达到130分以上', completed: false, schoolId: null },
-    { id: 2, type: 'deadline', title: '东京大学出愿截止', date: '2025-11-15', daysLeft: 37, category: '出愿', urgent: true, notes: '记得提前准备材料', completed: false, schoolId: 1 },
-    { id: 3, type: 'exam', title: 'EJU考试(理科)', date: '2025-11-09', daysLeft: 31, category: '留考', urgent: true, notes: '目标分数700+', completed: false, schoolId: null },
-    { id: 4, type: 'contact', title: '京都大学教授邮件跟进', date: '2025-10-15', daysLeft: 6, category: '研究室联系', urgent: false, notes: '询问研究室招生情况', completed: false, schoolId: 2 },
-  ]);
-
-  const [schools, setSchools] = useState([
-    {
-      id: 1,
-      name: '东京大学',
-      type: '国立',
-      program: '工学研究科',
-      status: 'preparing',
-      applicationStartDate: '2025-10-01',
-      applicationEndDate: '2025-11-15',
-      examDate: '2025-12-20',
-      resultDate: '2026-01-30',
-      requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/graduate.html',
-      teacherNotes: '重点院校，需要JLPT N1和EJU高分',
-      materials: [
-        { name: '研究计划书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
-        { name: '推荐信', deadline: '2025-11-05', url: '' }
-      ]
-    },
-    {
-      id: 2,
-      name: '京都大学',
-      type: '国立',
-      program: '情报学研究科',
-      status: 'contacted',
-      applicationStartDate: '2025-10-15',
-      applicationEndDate: '2025-11-20',
-      examDate: '2026-01-10',
-      resultDate: '2026-02-15',
-      requirementsUrl: 'https://www.kyoto-u.ac.jp/ja/admissions/',
-      teacherNotes: '已联系田中教授，等待回复',
-      materials: [
-        { name: '志望理由书', deadline: '2025-11-15', url: '' }
-      ]
-    },
-    {
-      id: 3,
-      name: '早稻田大学',
-      type: '私立',
-      program: '基干理工学研究科',
-      status: 'preparing',
-      applicationStartDate: '2025-09-20',
-      applicationEndDate: '2025-10-31',
-      examDate: '2025-11-25',
-      resultDate: '2025-12-20',
-      requirementsUrl: 'https://www.waseda.jp/inst/admission/',
-      teacherNotes: '保底院校，英语成绩要求较低',
-      materials: []
-    },
-  ]);
-
-  const [checklist, setChecklist] = useState({
-    general: [
-      { id: 1, item: '毕业证书(日文翻译+公证)', completed: true, deadline: '2025-09-30', checkedBy: 'teacher', checkedAt: '2025-09-15', url: '' },
-      { id: 2, item: '成绩单(日文翻译+公证)', completed: false, deadline: '2025-09-30', checkedBy: null, checkedAt: null, url: '' },
-      { id: 3, item: '护照复印件', completed: false, deadline: '2025-08-31', checkedBy: null, checkedAt: null, url: '' },
-      { id: 4, item: 'JLPT成绩单', completed: false, deadline: '2025-10-15', checkedBy: null, checkedAt: null, url: '' },
-      { id: 5, item: '银行存款证明', completed: false, deadline: '2025-10-31', checkedBy: null, checkedAt: null, url: '' },
-    ],
-    schoolSpecific: {
-      '东京大学': [
-        { id: 101, item: '研究计划书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
-        { id: 102, item: '推荐信', completed: false, deadline: '2025-11-05', checkedBy: null, checkedAt: null, url: '' },
-      ],
-      '京都大学': [
-        { id: 201, item: '志望理由书', completed: false, deadline: '2025-11-15', checkedBy: null, checkedAt: null, url: '' },
-      ]
-    }
-  });
+  // 生成学号
+  const generateStudentId = () => {
+    const year = new Date().getFullYear();
+    const existingIds = studentList.map(s => parseInt(s.studentId));
+    const maxId = Math.max(...existingIds, year * 1000);
+    return String(maxId + 1);
+  };
 
   // 计算天数差
   const calculateDaysLeft = (dateString) => {
@@ -557,22 +888,16 @@ const MainApp = ({ user, onLogout }) => {
     setChecklist(newChecklist);
   };
 
-  // 计算学校的任务完成度（基于材料完成情况）
+  // 计算学校的任务完成度（只基于学校专用材料）
   const calculateSchoolProgress = (schoolName) => {
-    const generalCompleted = checklist.general.filter(item => item.completed).length;
-    const generalTotal = checklist.general.length;
-
-    const schoolMaterials = checklist.schoolSpecific[schoolName] || [];
+    const schoolMaterials = checklist.schoolSpecific?.[schoolName] || [];
     const schoolCompleted = schoolMaterials.filter(item => item.completed).length;
     const schoolTotal = schoolMaterials.length;
 
-    const totalCompleted = generalCompleted + schoolCompleted;
-    const totalItems = generalTotal + schoolTotal;
-
     return {
-      completed: totalCompleted,
-      total: totalItems,
-      percentage: totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0
+      completed: schoolCompleted,
+      total: schoolTotal,
+      percentage: schoolTotal > 0 ? Math.round((schoolCompleted / schoolTotal) * 100) : 0
     };
   };
 
@@ -635,13 +960,22 @@ const MainApp = ({ user, onLogout }) => {
   // 删除学校
   const handleDeleteSchool = (schoolId) => {
     if (window.confirm('确定要删除这个学校吗？这将同时删除相关的时间线事件和材料清单。')) {
-      const school = schools.find(s => s.id === schoolId);
-      if (school) {
+      // 找到要删除的学校
+      const schoolToDelete = schools.find(s => s.id === schoolId);
+
+      if (schoolToDelete) {
+        // 删除学校
         setSchools(schools.filter(s => s.id !== schoolId));
-        setUpcomingEvents(prev => prev.filter(e => e.schoolId !== schoolId));
+
+        // 删除相关的时间线事件（学校关联的事件）
+        setUpcomingEvents(upcomingEvents.filter(e => e.schoolId !== schoolId));
+
+        // 删除学校专用材料清单
         const newChecklist = {...checklist};
-        delete newChecklist.schoolSpecific[school.name];
-        setChecklist(newChecklist);
+        if (newChecklist.schoolSpecific && newChecklist.schoolSpecific[schoolToDelete.name]) {
+          delete newChecklist.schoolSpecific[schoolToDelete.name];
+          setChecklist(newChecklist);
+        }
       }
     }
   };
@@ -718,7 +1052,7 @@ const MainApp = ({ user, onLogout }) => {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
           <div className="p-6 border-b flex items-center justify-between">
             <h3 className="font-bold text-xl">{editingEvent ? '编辑事项' : '添加新事项'}</h3>
@@ -850,7 +1184,13 @@ const MainApp = ({ user, onLogout }) => {
     const [formData, setFormData] = useState(
       editingSchool || {
         name: '',
+        nameJa: '',
         type: '国立',
+        location: '',
+        website: '',
+        ranking: '',
+        difficulty: '普通',
+        acceptanceRate: '',
         program: '',
         status: 'preparing',
         applicationStartDate: '',
@@ -858,31 +1198,98 @@ const MainApp = ({ user, onLogout }) => {
         examDate: '',
         resultDate: '',
         requirementsUrl: '',
+        requirements: '',
         teacherNotes: '',
         materials: []
       }
     );
 
     const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
+    const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
+    const [schoolSuggestions, setSchoolSuggestions] = useState([]);
+
+    // 从学校信息库获取匹配的学校
+    const getSchoolDbSuggestions = (query) => {
+      try {
+        const saved = localStorage.getItem('schoolDatabase');
+        if (!saved) return [];
+        const dbSchools = JSON.parse(saved);
+        if (!query) return dbSchools.slice(0, 10);
+        return dbSchools.filter(s =>
+          s.name.includes(query) || (s.nameJa && s.nameJa.includes(query))
+        ).slice(0, 10);
+      } catch { return []; }
+    };
+
+    // 选择学校信息库中的学校后自动填充
+    const handleSelectDbSchool = (dbSchool) => {
+      setFormData(prev => ({
+        ...prev,
+        name: dbSchool.name,
+        nameJa: dbSchool.nameJa || prev.nameJa,
+        type: dbSchool.type || prev.type,
+        location: dbSchool.location || prev.location,
+        website: dbSchool.website || prev.website,
+        ranking: dbSchool.ranking || prev.ranking,
+        difficulty: dbSchool.difficulty || prev.difficulty,
+        acceptanceRate: dbSchool.acceptanceRate || prev.acceptanceRate,
+        requirements: dbSchool.requirements || prev.requirements,
+        program: (dbSchool.programs && dbSchool.programs[0]) || prev.program,
+        applicationStartDate: dbSchool.applicationStartDate || prev.applicationStartDate,
+        applicationEndDate: dbSchool.applicationEndDate || prev.applicationEndDate,
+        examDate: dbSchool.examDate || prev.examDate,
+        resultDate: dbSchool.resultDate || prev.resultDate,
+        requirementsUrl: dbSchool.requirementsUrl || dbSchool.website || prev.requirementsUrl,
+      }));
+      setShowSchoolSuggestions(false);
+    };
 
     const handleSubmit = (e) => {
       e.preventDefault();
 
-      let schoolData = {...formData};
+      const schoolData = {
+        name: formData.name,
+        nameJa: formData.nameJa,
+        type: formData.type,
+        location: formData.location,
+        website: formData.website,
+        ranking: formData.ranking,
+        difficulty: formData.difficulty,
+        acceptanceRate: formData.acceptanceRate,
+        program: formData.program,
+        status: formData.status,
+        applicationStartDate: formData.applicationStartDate,
+        applicationEndDate: formData.applicationEndDate,
+        examDate: formData.examDate,
+        resultDate: formData.resultDate,
+        requirementsUrl: formData.requirementsUrl,
+        requirements: formData.requirements,
+        teacherNotes: formData.teacherNotes,
+        materials: formData.materials || []
+      };
 
       if (editingSchool) {
+        // 更新现有学校
+        const updatedSchool = { ...schoolData, id: editingSchool.id };
         setSchools(schools.map(school =>
-          school.id === editingSchool.id ? { ...schoolData, id: editingSchool.id } : school
+          school.id === editingSchool.id ? updatedSchool : school
         ));
-        syncSchoolDatesToTimeline(schoolData);
+        // 同步更新时间线事件
+        syncSchoolDatesToTimeline(updatedSchool, false);
+        // 同步更新材料清单
+        if (schoolData.materials && schoolData.materials.length > 0) {
+          syncSchoolMaterialsToChecklist(updatedSchool, schoolData.materials);
+        }
       } else {
-        schoolData = { ...schoolData, id: Date.now() };
-        setSchools([...schools, schoolData]);
-        syncSchoolDatesToTimeline(schoolData, true);
-      }
-
-      if (formData.materials && formData.materials.length > 0) {
-        syncSchoolMaterialsToChecklist(schoolData, formData.materials);
+        // 添加新学校
+        const newSchool = { ...schoolData, id: Date.now() };
+        setSchools([...schools, newSchool]);
+        // 同步新增时间线事件
+        syncSchoolDatesToTimeline(newSchool, true);
+        // 同步新增材料清单
+        if (schoolData.materials && schoolData.materials.length > 0) {
+          syncSchoolMaterialsToChecklist(newSchool, schoolData.materials);
+        }
       }
 
       setShowSchoolModal(false);
@@ -907,7 +1314,7 @@ const MainApp = ({ user, onLogout }) => {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
           <div className="p-6 border-b flex items-center justify-between">
             <h3 className="font-bold text-xl">{editingSchool ? '编辑学校' : '添加新学校'}</h3>
@@ -924,17 +1331,52 @@ const MainApp = ({ user, onLogout }) => {
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">学校名称</label>
+              <div className="relative">
+                <label className="block text-sm font-medium mb-2">学校名称 (中文) *</label>
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => {
+                    setFormData({...formData, name: e.target.value});
+                    const suggestions = getSchoolDbSuggestions(e.target.value);
+                    setSchoolSuggestions(suggestions);
+                    setShowSchoolSuggestions(suggestions.length > 0);
+                  }}
+                  onFocus={() => {
+                    const suggestions = getSchoolDbSuggestions(formData.name);
+                    setSchoolSuggestions(suggestions);
+                    setShowSchoolSuggestions(suggestions.length > 0);
+                  }}
+                  onBlur={() => setTimeout(() => setShowSchoolSuggestions(false), 200)}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入或从信息库选择"
                   required
                 />
+                {showSchoolSuggestions && schoolSuggestions.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <div className="px-3 py-1.5 text-xs text-gray-400 border-b bg-gray-50">从学校信息库选择（点击自动补全）</div>
+                    {schoolSuggestions.map(s => (
+                      <button key={s.id} type="button"
+                        onMouseDown={(e) => { e.preventDefault(); handleSelectDbSchool(s); }}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between text-sm border-b last:border-0">
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-xs text-gray-400">{s.type} {s.location || ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium mb-2">学校名称 (日文)</label>
+                <input type="text" value={formData.nameJa || ''}
+                  onChange={(e) => setFormData({...formData, nameJa: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="例: 東京大学" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">学校类型</label>
                 <select
@@ -947,11 +1389,51 @@ const MainApp = ({ user, onLogout }) => {
                   <option value="私立">私立</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">难度</label>
+                <select value={formData.difficulty || '普通'}
+                  onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <option value="极难">极难</option><option value="难">难</option>
+                  <option value="普通">普通</option><option value="容易">容易</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">排名</label>
+                <input type="number" value={formData.ranking || ''}
+                  onChange={(e) => setFormData({...formData, ranking: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="日本排名" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">录取率</label>
+                <input type="text" value={formData.acceptanceRate || ''}
+                  onChange={(e) => setFormData({...formData, acceptanceRate: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="例: 约10%" />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">研究科/学部</label>
+                <label className="block text-sm font-medium mb-2">地点</label>
+                <input type="text" value={formData.location || ''}
+                  onChange={(e) => setFormData({...formData, location: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="例: 东京都文京区" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">官网链接</label>
+                <input type="url" value={formData.website || ''}
+                  onChange={(e) => setFormData({...formData, website: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://..." />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">研究科/学部 *</label>
                 <input
                   type="text"
                   value={formData.program}
@@ -974,6 +1456,14 @@ const MainApp = ({ user, onLogout }) => {
                   <option value="admitted">已合格</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">申请要求</label>
+              <input type="text" value={formData.requirements || ''}
+                onChange={(e) => setFormData({...formData, requirements: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="例: 日语N1 + EJU高分 + 校内考" />
             </div>
 
             <div>
@@ -1169,6 +1659,15 @@ const MainApp = ({ user, onLogout }) => {
       }
     );
 
+    // 确保使用最新的schools列表，当schools变化时更新默认学校
+    React.useEffect(() => {
+      if (!editingMaterial && formData.type === 'school' && schools.length > 0) {
+        if (!schools.find(s => s.name === formData.school)) {
+          setFormData(prev => ({...prev, school: schools[0].name}));
+        }
+      }
+    }, [schools]);
+
     const handleSubmit = (e) => {
       e.preventDefault();
       const newChecklist = {...checklist};
@@ -1222,7 +1721,7 @@ const MainApp = ({ user, onLogout }) => {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
           <div className="p-6 border-b flex items-center justify-between">
             <h3 className="font-bold text-xl">{editingMaterial ? '编辑材料' : '添加新材料'}</h3>
@@ -1353,92 +1852,342 @@ const MainApp = ({ user, onLogout }) => {
   // 学生列表弹窗 (老师和管理员专用)
   const StudentListModal = () => {
     const visibleStudents = getVisibleStudents();
+    const [studentListView, setStudentListView] = useState('card'); // 'card', 'list', 'table'
+    const [studentSearch, setStudentSearch] = useState('');
+    const [studentFilter, setStudentFilter] = useState('all'); // 'all', '文科', '理科', 'unassigned'
+    const [transferStudentId, setTransferStudentId] = useState(null);
+    const [transferTargetTeacher, setTransferTargetTeacher] = useState('');
+    const [editingStudentId, setEditingStudentId] = useState(null);
+    const [editTagInput, setEditTagInput] = useState('');
+
+    const handleUpdateStudentSubject = (studentId, subject) => {
+      setStudentList(prev => prev.map(s => s.id === studentId ? { ...s, subject } : s));
+      if (showNotification) showNotification(`已更新文理科为: ${subject || '未指定'}`);
+    };
+
+    const handleAddStudentTag = (studentId, tag) => {
+      if (!tag.trim()) return;
+      setStudentList(prev => prev.map(s => {
+        if (s.id !== studentId) return s;
+        const tags = [...(s.tags || [])];
+        if (!tags.includes(tag.trim())) tags.push(tag.trim());
+        return { ...s, tags };
+      }));
+      setEditTagInput('');
+    };
+
+    const handleRemoveStudentTag = (studentId, tag) => {
+      setStudentList(prev => prev.map(s => {
+        if (s.id !== studentId) return s;
+        return { ...s, tags: (s.tags || []).filter(t => t !== tag) };
+      }));
+    };
+
+    const filteredStudentList = visibleStudents.filter(s => {
+      const matchSearch = !studentSearch || s.name.includes(studentSearch) || s.studentId.includes(studentSearch);
+      const matchFilter = studentFilter === 'all' ||
+        (studentFilter === 'unassigned' && (!s.teacherId || s.teacherId === 'unassigned')) ||
+        (studentFilter === '文科' && s.subject === '文科') ||
+        (studentFilter === '理科' && s.subject === '理科');
+      return matchSearch && matchFilter;
+    });
+
+    const handleInlineTransfer = (student) => {
+      if (transferTargetTeacher) {
+        setStudentList(prev => prev.map(s =>
+          s.id === student.id ? { ...s, teacherId: transferTargetTeacher } : s
+        ));
+        setTransferStudentId(null);
+        setTransferTargetTeacher('');
+        if (showNotification) showNotification(`已将 ${student.name} 转移给 ${getTeacherList().find(t => t.id === transferTargetTeacher)?.name}`);
+      }
+    };
+
+    const selectStudent = (student) => {
+      setCurrentStudent({
+        ...student,
+        targetCountry: '日本',
+        targetLevel: student.targetLevel || '修士',
+        email: student.email || `${student.name.toLowerCase()}@example.com`
+      });
+      setShowStudentList(false);
+    };
+
+    // 学生tag列表
+    const allTags = [...new Set(visibleStudents.flatMap(s => s.tags || []).filter(Boolean))];
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col animate-scale-in">
-          <div className="p-6 border-b flex items-center justify-between bg-gradient-to-r from-purple-500 to-blue-500 text-white">
+        <div className="bg-white rounded-xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-scale-in">
+          <div className="p-4 sm:p-6 border-b flex items-center justify-between bg-gradient-to-r from-purple-500 to-blue-500 text-white">
             <h3 className="font-bold text-xl">
               {user.role === 'admin' ? '所有学生' : '我的学生'}
+              <span className="text-sm font-normal ml-2 text-white/70">({filteredStudentList.length}人)</span>
             </h3>
-            <button
-              onClick={() => setShowStudentList(false)}
-              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition"
-            >
+            <button onClick={() => setShowStudentList(false)} className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition">
               <X size={20} />
             </button>
           </div>
-          <div className="overflow-y-auto flex-1 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {visibleStudents.map(student => (
-                <div
-                  key={student.id}
-                  onClick={() => {
-                    setCurrentStudent({
-                      ...student,
-                      targetCountry: '日本',
-                      targetLevel: '修士',
-                      email: `${student.name.toLowerCase()}@example.com`
-                    });
-                    setShowStudentList(false);
-                  }}
-                  className="p-4 border-2 rounded-lg hover:border-blue-400 hover:shadow-lg cursor-pointer transition-all bg-white"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="text-3xl">{student.avatar}</div>
-                      <div>
-                        <div className="font-semibold text-lg">{student.name}</div>
-                        <div className="text-sm text-gray-500">{student.studentId}</div>
-                        {user.role === 'admin' && (
-                          <div className="text-xs text-gray-400">
-                            负责老师: {teacherList.find(t => t.id === student.teacherId)?.name || '未分配'}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {student.urgentTasks > 0 && (
-                      <span className="bg-red-100 text-red-700 text-xs px-3 py-1 rounded-full font-semibold">
-                        {student.urgentTasks}个紧急
-                      </span>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">整体进度</span>
-                      <span className="font-semibold">{student.progress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all"
-                        style={{ width: `${student.progress}%` }}
-                      />
-                    </div>
-                    {(user.role === 'teacher' || user.role === 'admin') && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowTransferModal(true);
-                        }}
-                        className="mt-2 w-full bg-orange-500 text-white py-1 rounded text-sm hover:bg-orange-600"
-                      >
-                        转移学生
-                      </button>
-                    )}
-                  </div>
-                </div>
+
+          {/* 搜索 + 筛选 + 视图切换 */}
+          <div className="p-4 border-b bg-gray-50 space-y-3">
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input type="text" placeholder="搜索学生姓名/学号..." value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div className="flex bg-gray-200 rounded-lg p-0.5">
+                <button onClick={() => setStudentListView('card')}
+                  className={`p-1.5 rounded-md transition ${studentListView === 'card' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
+                  <LayoutGrid size={16} />
+                </button>
+                <button onClick={() => setStudentListView('list')}
+                  className={`p-1.5 rounded-md transition ${studentListView === 'list' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
+                  <LayoutList size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['all', '文科', '理科', 'unassigned'].map(f => (
+                <button key={f} onClick={() => setStudentFilter(f)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                    studentFilter === f ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'
+                  }`}>
+                  {f === 'all' ? '全部' : f === 'unassigned' ? '待分配' : f}
+                </button>
+              ))}
+              {allTags.map(tag => (
+                <span key={tag} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">
+                  {tag}
+                </span>
               ))}
             </div>
           </div>
-          <div className="p-4 border-t bg-gray-50">
-            <button
-              onClick={() => setShowAddStudentModal(true)}
-              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
-            >
-              <Plus size={18} />
-              添加新学生
-            </button>
+
+          <div className="overflow-y-auto flex-1 p-4">
+            {/* 卡片视图 */}
+            {studentListView === 'card' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredStudentList.map(student => (
+                  <div key={student.id}
+                    className="p-4 border-2 rounded-lg hover:border-blue-400 hover:shadow-lg cursor-pointer transition-all bg-white"
+                  >
+                    <div onClick={() => selectStudent(student)}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="text-3xl">{student.avatar}</div>
+                          <div>
+                            <div className="font-semibold text-lg">{student.name}</div>
+                            <div className="text-sm text-gray-500">{student.studentId}</div>
+                            {user.role === 'admin' && (
+                              <div className="text-xs text-gray-400">
+                                负责老师: {getTeacherList().find(t => t.id === student.teacherId)?.name || '待分配'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {student.subject && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                            }`}>{student.subject}</span>
+                          )}
+                          {student.urgentTasks > 0 && (
+                            <span className="bg-red-100 text-red-700 text-xs px-3 py-0.5 rounded-full font-semibold">
+                              {student.urgentTasks}个紧急
+                            </span>
+                          )}
+                          {(student.tags || []).map(tag => (
+                            <span key={tag} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full">{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">整体进度</span>
+                          <span className="font-semibold">{student.progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all"
+                            style={{ width: `${student.progress}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* 内联编辑标签/文理科 */}
+                    {(user.role === 'teacher' || user.role === 'admin') && (
+                      <div className="mt-3 pt-3 border-t">
+                        {editingStudentId === student.id ? (
+                          <div className="space-y-2 animate-fade-in">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500 w-14 flex-shrink-0">文/理科</span>
+                              <select value={student.subject || ''} onChange={e => handleUpdateStudentSubject(student.id, e.target.value)}
+                                className="flex-1 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-purple-400">
+                                <option value="">未指定</option>
+                                <option value="文科">文科</option>
+                                <option value="理科">理科</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {(student.tags || []).map(tag => (
+                                  <span key={tag} className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] flex items-center gap-1">
+                                    {tag}
+                                    <button onClick={() => handleRemoveStudentTag(student.id, tag)} className="hover:text-red-500"><X size={10} /></button>
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex gap-1">
+                                <input type="text" value={editTagInput} onChange={e => setEditTagInput(e.target.value)}
+                                  placeholder="添加标签..." className="flex-1 px-2 py-1 border rounded text-xs"
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddStudentTag(student.id, editTagInput); }}} />
+                                <button onClick={() => handleAddStudentTag(student.id, editTagInput)}
+                                  className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600"><Plus size={12} /></button>
+                              </div>
+                            </div>
+                            <button onClick={() => setEditingStudentId(null)}
+                              className="w-full text-gray-500 hover:bg-gray-100 py-1 rounded text-xs">收起</button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); setEditingStudentId(student.id); setEditTagInput(''); }}
+                              className="flex-1 text-purple-600 hover:bg-purple-50 py-1.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-1">
+                              <Edit2 size={14} /> 编辑信息
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setTransferStudentId(student.id); }}
+                              className="flex-1 text-orange-600 hover:bg-orange-50 py-1.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-1">
+                              <ArrowRight size={14} /> 转移学生
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* 内联转移 */}
+                    {(user.role === 'teacher' || user.role === 'admin') && transferStudentId === student.id && editingStudentId !== student.id && (
+                      <div className="mt-2 pt-2 border-t">
+                        <div className="flex gap-2 items-center animate-fade-in">
+                          <select value={transferTargetTeacher} onChange={e => setTransferTargetTeacher(e.target.value)}
+                            className="flex-1 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400">
+                            <option value="">选择老师</option>
+                            {getTeacherList().filter(t => t.id !== student.teacherId).map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          <button onClick={() => handleInlineTransfer(student)} disabled={!transferTargetTeacher}
+                            className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:bg-gray-300 transition">
+                            确认
+                          </button>
+                          <button onClick={() => { setTransferStudentId(null); setTransferTargetTeacher(''); }}
+                            className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg text-sm">
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 列表视图 */}
+            {studentListView === 'list' && (
+              <div className="space-y-2">
+                {filteredStudentList.map(student => (
+                  <div key={student.id}
+                    className="flex items-center gap-4 p-3 border rounded-lg hover:border-blue-400 hover:shadow-sm cursor-pointer transition-all bg-white"
+                  >
+                    <div className="text-2xl flex-shrink-0" onClick={() => selectStudent(student)}>{student.avatar}</div>
+                    <div className="flex-1 min-w-0" onClick={() => selectStudent(student)}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold truncate">{student.name}</span>
+                        <span className="text-xs text-gray-400">{student.studentId}</span>
+                        {student.subject && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                          }`}>{student.subject}</span>
+                        )}
+                        {(student.tags || []).map(tag => (
+                          <span key={tag} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full">{tag}</span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                        <span>进度: {student.progress}%</span>
+                        {user.role === 'admin' && <span>老师: {getTeacherList().find(t => t.id === student.teacherId)?.name || '待分配'}</span>}
+                        {student.urgentTasks > 0 && <span className="text-red-600">{student.urgentTasks}个紧急</span>}
+                      </div>
+                    </div>
+                    <div className="w-24 flex-shrink-0">
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full" style={{ width: `${student.progress}%` }} />
+                      </div>
+                    </div>
+                    {(user.role === 'teacher' || user.role === 'admin') && (
+                      transferStudentId === student.id ? (
+                        <div className="flex gap-1 items-center flex-shrink-0">
+                          <select value={transferTargetTeacher} onChange={e => setTransferTargetTeacher(e.target.value)}
+                            className="px-2 py-1 border rounded text-xs w-20">
+                            <option value="">选择</option>
+                            {getTeacherList().filter(t => t.id !== student.teacherId).map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          <button onClick={() => handleInlineTransfer(student)} disabled={!transferTargetTeacher}
+                            className="px-2 py-1 bg-orange-500 text-white rounded text-xs disabled:bg-gray-300">OK</button>
+                          <button onClick={() => { setTransferStudentId(null); setTransferTargetTeacher(''); }}
+                            className="px-1 py-1 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                        </div>
+                      ) : editingStudentId === student.id ? (
+                        <div className="flex gap-1 items-center flex-shrink-0 animate-fade-in">
+                          <select value={student.subject || ''} onChange={e => handleUpdateStudentSubject(student.id, e.target.value)}
+                            className="px-1 py-1 border rounded text-xs w-14">
+                            <option value="">科</option><option value="文科">文</option><option value="理科">理</option>
+                          </select>
+                          <input type="text" value={editTagInput} onChange={e => setEditTagInput(e.target.value)} placeholder="标签"
+                            className="px-1 py-1 border rounded text-xs w-16"
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddStudentTag(student.id, editTagInput); }}} />
+                          <button onClick={() => handleAddStudentTag(student.id, editTagInput)}
+                            className="px-1 py-1 bg-green-500 text-white rounded text-xs"><Plus size={12} /></button>
+                          <button onClick={() => setEditingStudentId(null)}
+                            className="px-1 py-1 text-gray-400 hover:text-gray-600"><Check size={14} /></button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => { setEditingStudentId(student.id); setEditTagInput(''); }}
+                            className="text-purple-500 hover:bg-purple-50 p-2 rounded-lg" title="编辑信息">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => setTransferStudentId(student.id)}
+                            className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg" title="转移学生">
+                            <ArrowRight size={16} />
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {filteredStudentList.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <Users size={48} className="mx-auto mb-4 text-gray-300" />
+                <p>暂无匹配的学生</p>
+              </div>
+            )}
           </div>
+          {/* 只有管理员可以添加学生 */}
+          {user.role === 'admin' && (
+            <div className="p-4 border-t bg-gray-50">
+              <button
+                onClick={() => setShowAddStudentModal(true)}
+                className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+              >
+                <Plus size={18} />
+                添加新学生
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1454,12 +2203,12 @@ const MainApp = ({ user, onLogout }) => {
           s.id === currentStudent.id ? { ...s, teacherId: selectedTeacher } : s
         ));
         setShowTransferModal(false);
-        alert(`已将学生 ${currentStudent.name} 转移给 ${teacherList.find(t => t.id === selectedTeacher)?.name}`);
+        if (showNotification) showNotification(`已将 ${currentStudent.name} 转移给 ${getTeacherList().find(t => t.id === selectedTeacher)?.name}`);
       }
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
           <div className="p-6 border-b">
             <h3 className="font-bold text-xl">转移学生</h3>
@@ -1475,7 +2224,7 @@ const MainApp = ({ user, onLogout }) => {
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">请选择老师</option>
-              {teacherList
+              {getTeacherList()
                 .filter(t => t.id !== user.teacherId)
                 .map(teacher => (
                   <option key={teacher.id} value={teacher.id}>
@@ -1506,101 +2255,250 @@ const MainApp = ({ user, onLogout }) => {
 
   // 添加学生弹窗
   const AddStudentModal = () => {
+    const newStudentId = generateStudentId();
     const [newStudent, setNewStudent] = useState({
       name: '',
-      studentId: '',
       email: '',
-      teacherId: user.role === 'teacher' ? user.teacherId : ''
+      teacherId: user.role === 'admin' ? '' : (user.teacherId || 'teacher_1'),
+      subject: '',
+      tags: [],
     });
+    const [newTag, setNewTag] = useState('');
 
     const handleAddStudent = () => {
-      if (newStudent.name && newStudent.studentId) {
+      if (newStudent.name) {
         const student = {
           id: Date.now(),
           name: newStudent.name,
-          studentId: newStudent.studentId,
+          studentId: newStudentId,
           email: newStudent.email || `${newStudent.name.toLowerCase()}@example.com`,
           progress: 0,
           urgentTasks: 0,
           avatar: '👨‍🎓',
-          teacherId: newStudent.teacherId || user.teacherId,
+          teacherId: newStudent.teacherId || 'unassigned',
           targetCountry: '日本',
-          targetLevel: '修士'
+          targetLevel: '修士',
+          subject: newStudent.subject,
+          tags: newStudent.tags,
         };
         setStudentList(prev => [...prev, student]);
         setShowAddStudentModal(false);
-        setNewStudent({ name: '', studentId: '', email: '', teacherId: user.teacherId || '' });
-        alert(`已添加学生 ${student.name}`);
+        if (showNotification) showNotification(`学生 ${newStudent.name} 已添加，学号：${newStudentId}`);
       }
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
           <div className="p-6 border-b">
             <h3 className="font-bold text-xl">添加新学生</h3>
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">学生姓名</label>
-              <input
-                type="text"
-                value={newStudent.name}
-                onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入学生姓名"
-              />
+              <label className="block text-sm font-medium mb-2">学号（自动生成）</label>
+              <input type="text" value={newStudentId} disabled
+                className="w-full px-3 py-2 border rounded-lg bg-gray-100 text-gray-600" />
+              <p className="text-xs text-gray-500 mt-1">学生需要使用此学号进行账号注册</p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">学号</label>
-              <input
-                type="text"
-                value={newStudent.studentId}
-                onChange={(e) => setNewStudent({ ...newStudent, studentId: e.target.value })}
+              <label className="block text-sm font-medium mb-2">学生姓名 *</label>
+              <input type="text" value={newStudent.name}
+                onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入学号"
-              />
+                placeholder="请输入学生姓名" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">邮箱（可选）</label>
-              <input
-                type="email"
-                value={newStudent.email}
+              <input type="email" value={newStudent.email}
                 onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入邮箱"
-              />
+                placeholder="请输入邮箱" />
             </div>
-            {user.role === 'admin' && (
-              <div>
-                <label className="block text-sm font-medium mb-2">分配给老师</label>
-                <select
-                  value={newStudent.teacherId}
-                  onChange={(e) => setNewStudent({ ...newStudent, teacherId: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">请选择老师</option>
-                  {teacherList.map(teacher => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.name} ({teacher.email})
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <label className="block text-sm font-medium mb-2">文科/理科</label>
+              <select value={newStudent.subject}
+                onChange={(e) => setNewStudent({ ...newStudent, subject: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">未指定</option>
+                <option value="文科">文科</option>
+                <option value="理科">理科</option>
+              </select>
+            </div>
+            {/* 分配老师（含"待分配"选项） */}
+            <div>
+              <label className="block text-sm font-medium mb-2">分配给老师</label>
+              <select value={newStudent.teacherId}
+                onChange={(e) => setNewStudent({ ...newStudent, teacherId: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">待分配老师</option>
+                {getTeacherList().map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name} ({teacher.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* 标签 */}
+            <div>
+              <label className="block text-sm font-medium mb-2">标签</label>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {(newStudent.tags || []).map((tag, i) => (
+                  <span key={i} className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs flex items-center gap-1">
+                    {tag}
+                    <button onClick={() => setNewStudent({ ...newStudent, tags: newStudent.tags.filter((_, idx) => idx !== i) })}
+                      className="hover:text-red-500"><X size={10} /></button>
+                  </span>
+                ))}
               </div>
-            )}
+              <div className="flex gap-2">
+                <input type="text" value={newTag} onChange={e => setNewTag(e.target.value)}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="添加标签（如：重点关注）"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newTag.trim()) {
+                      e.preventDefault();
+                      setNewStudent({ ...newStudent, tags: [...(newStudent.tags || []), newTag.trim()] });
+                      setNewTag('');
+                    }
+                  }} />
+                <button onClick={() => { if (newTag.trim()) { setNewStudent({ ...newStudent, tags: [...(newStudent.tags || []), newTag.trim()] }); setNewTag(''); }}}
+                  className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
+                  <Plus size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 border-t flex gap-3">
+            <button onClick={handleAddStudent} disabled={!newStudent.name}
+              className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-300">
+              添加学生
+            </button>
+            <button onClick={() => setShowAddStudentModal(false)}
+              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300">
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 添加老师弹窗（仅管理员可用）
+  const AddTeacherModal = () => {
+    const [newTeacher, setNewTeacher] = useState({
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: ''
+    });
+    const [errors, setErrors] = useState({});
+
+    const handleAddTeacher = () => {
+      const newErrors = {};
+
+      if (!newTeacher.name) newErrors.name = '请输入老师姓名';
+      if (!newTeacher.email) newErrors.email = '请输入邮箱';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newTeacher.email)) {
+        newErrors.email = '邮箱格式不正确';
+      }
+      if (!newTeacher.password) newErrors.password = '请输入密码';
+      else if (newTeacher.password.length < 6) newErrors.password = '密码至少6位';
+      if (newTeacher.password !== newTeacher.confirmPassword) {
+        newErrors.confirmPassword = '两次密码输入不一致';
+      }
+
+      // 检查邮箱是否已被使用
+      if (allUsers.find(u => u.email === newTeacher.email)) {
+        newErrors.email = '该邮箱已被使用';
+      }
+
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+      }
+
+      // 创建新老师账号
+      const newTeacherId = `teacher_${Date.now()}`;
+      const teacherAccount = {
+        id: `teacher${allUsers.length + 1}`,
+        email: newTeacher.email,
+        password: newTeacher.password,
+        role: 'teacher',
+        teacherId: newTeacherId,
+        name: newTeacher.name,
+        createdAt: new Date().toISOString()
+      };
+
+      setAllUsers(prev => [...prev, teacherAccount]);
+      setShowAddTeacherModal(false);
+      alert(`老师账号 ${newTeacher.name} 已成功创建！\n登录邮箱：${newTeacher.email}`);
+      setNewTeacher({ name: '', email: '', password: '', confirmPassword: '' });
+      setErrors({});
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
+          <div className="p-6 border-b">
+            <h3 className="font-bold text-xl">添加新老师账号</h3>
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">老师姓名</label>
+              <input
+                type="text"
+                value={newTeacher.name}
+                onChange={(e) => setNewTeacher({ ...newTeacher, name: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-500' : ''}`}
+                placeholder="请输入老师姓名"
+              />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">登录邮箱</label>
+              <input
+                type="email"
+                value={newTeacher.email}
+                onChange={(e) => setNewTeacher({ ...newTeacher, email: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.email ? 'border-red-500' : ''}`}
+                placeholder="teacher@school.com"
+              />
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">设置密码</label>
+              <input
+                type="password"
+                value={newTeacher.password}
+                onChange={(e) => setNewTeacher({ ...newTeacher, password: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.password ? 'border-red-500' : ''}`}
+                placeholder="至少6位密码"
+              />
+              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">确认密码</label>
+              <input
+                type="password"
+                value={newTeacher.confirmPassword}
+                onChange={(e) => setNewTeacher({ ...newTeacher, confirmPassword: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.confirmPassword ? 'border-red-500' : ''}`}
+                placeholder="再次输入密码"
+              />
+              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+            </div>
           </div>
           <div className="p-6 border-t flex gap-3">
             <button
-              onClick={handleAddStudent}
-              disabled={!newStudent.name || !newStudent.studentId}
-              className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-300"
+              onClick={handleAddTeacher}
+              className="flex-1 bg-purple-500 text-white py-2 rounded-lg font-semibold hover:bg-purple-600"
             >
-              添加学生
+              创建老师账号
             </button>
             <button
               onClick={() => {
-                setShowAddStudentModal(false);
-                setNewStudent({ name: '', studentId: '', email: '', teacherId: user.teacherId || '' });
+                setShowAddTeacherModal(false);
+                setNewTeacher({ name: '', email: '', password: '', confirmPassword: '' });
+                setErrors({});
               }}
               className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
             >
@@ -1612,7 +2510,345 @@ const MainApp = ({ user, onLogout }) => {
     );
   };
 
-  // 时间线页面
+  // 修改密码弹窗
+  const ChangePasswordModal = () => {
+    const [passwordData, setPasswordData] = useState({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    const [errors, setErrors] = useState({});
+    const [showSuccess, setShowSuccess] = useState(false);
+
+    const handleChangePassword = () => {
+      const newErrors = {};
+
+      // 查找当前用户
+      const currentUser = allUsers.find(u => u.email === user.email && u.role === user.role);
+
+      if (!passwordData.currentPassword) {
+        newErrors.currentPassword = '请输入当前密码';
+      } else if (!currentUser || currentUser.password !== passwordData.currentPassword) {
+        newErrors.currentPassword = '当前密码不正确';
+      }
+
+      if (!passwordData.newPassword) {
+        newErrors.newPassword = '请输入新密码';
+      } else if (passwordData.newPassword.length < 6) {
+        newErrors.newPassword = '新密码至少6位';
+      }
+
+      if (passwordData.newPassword !== passwordData.confirmPassword) {
+        newErrors.confirmPassword = '两次密码输入不一致';
+      }
+
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+      }
+
+      // 更新密码
+      setAllUsers(prev => prev.map(u =>
+        u.email === user.email && u.role === user.role
+          ? { ...u, password: passwordData.newPassword }
+          : u
+      ));
+
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setErrors({});
+        setShowSuccess(false);
+      }, 1500);
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
+          <div className="p-6 border-b">
+            <h3 className="font-bold text-xl">修改密码</h3>
+            <p className="text-sm text-gray-600 mt-1">请输入当前密码并设置新密码</p>
+          </div>
+
+          {showSuccess ? (
+            <div className="p-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check size={32} className="text-green-600" />
+                </div>
+                <p className="text-green-600 font-semibold">密码修改成功！</p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">当前密码</label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                    errors.currentPassword ? 'border-red-500' : ''
+                  }`}
+                  placeholder="请输入当前密码"
+                />
+                {errors.currentPassword && <p className="text-red-500 text-xs mt-1">{errors.currentPassword}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">新密码</label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                    errors.newPassword ? 'border-red-500' : ''
+                  }`}
+                  placeholder="请输入新密码（至少6位）"
+                />
+                {errors.newPassword && <p className="text-red-500 text-xs mt-1">{errors.newPassword}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">确认新密码</label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                    errors.confirmPassword ? 'border-red-500' : ''
+                  }`}
+                  placeholder="请再次输入新密码"
+                />
+                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+              </div>
+            </div>
+          )}
+
+          {!showSuccess && (
+            <div className="p-6 border-t flex gap-3">
+              <button
+                onClick={handleChangePassword}
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+              >
+                确认修改
+              </button>
+              <button
+                onClick={() => {
+                  setShowChangePasswordModal(false);
+                  setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                  setErrors({});
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+              >
+                取消
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 账号管理弹窗（仅管理员可用）
+  const AccountManagementModal = () => {
+    const [filterType, setFilterType] = useState('all'); // 'all', 'student', 'teacher', 'admin'
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showPasswords, setShowPasswords] = useState(false);
+
+    // 过滤和搜索账号
+    const getFilteredAccounts = () => {
+      let filtered = allUsers;
+
+      // 按角色过滤
+      if (filterType !== 'all') {
+        filtered = filtered.filter(u => u.role === filterType);
+      }
+
+      // 搜索过滤
+      if (searchQuery) {
+        filtered = filtered.filter(u =>
+          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (u.studentId && u.studentId.includes(searchQuery)) ||
+          (u.teacherId && u.teacherId.includes(searchQuery))
+        );
+      }
+
+      return filtered;
+    };
+
+    const filteredAccounts = getFilteredAccounts();
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
+          <div className="p-6 border-b bg-gradient-to-r from-red-500 to-purple-500 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-xl">账号管理系统</h3>
+                <p className="text-sm mt-1 opacity-90">管理所有用户账号和权限</p>
+              </div>
+              <button
+                onClick={() => setShowAccountManagementModal(false)}
+                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition"
+              >
+                <X size={24} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-6">
+            {/* 统计信息 - 可点击快速筛选 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <button
+                onClick={() => setFilterType('all')}
+                className={`p-4 rounded-lg transition cursor-pointer ${
+                  filterType === 'all' ? 'bg-gray-600 text-white' : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className="text-2xl font-bold">{allUsers.length}</div>
+                <div className="text-sm">全部账号</div>
+              </button>
+              <button
+                onClick={() => setFilterType('student')}
+                className={`p-4 rounded-lg transition cursor-pointer ${
+                  filterType === 'student' ? 'bg-blue-600 text-white' : 'bg-blue-50 hover:bg-blue-100'
+                }`}
+              >
+                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'student').length}</div>
+                <div className="text-sm">学生账号</div>
+              </button>
+              <button
+                onClick={() => setFilterType('teacher')}
+                className={`p-4 rounded-lg transition cursor-pointer ${
+                  filterType === 'teacher' ? 'bg-purple-600 text-white' : 'bg-purple-50 hover:bg-purple-100'
+                }`}
+              >
+                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'teacher').length}</div>
+                <div className="text-sm">老师账号</div>
+              </button>
+              <button
+                onClick={() => setFilterType('admin')}
+                className={`p-4 rounded-lg transition cursor-pointer ${
+                  filterType === 'admin' ? 'bg-red-600 text-white' : 'bg-red-50 hover:bg-red-100'
+                }`}
+              >
+                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'admin').length}</div>
+                <div className="text-sm">管理员账号</div>
+              </button>
+            </div>
+
+            {/* 搜索栏和密码显示切换 */}
+            <div className="mb-4 flex gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="搜索姓名、邮箱、学号或教师ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                onClick={() => setShowPasswords(!showPasswords)}
+                className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+                  showPasswords ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {showPasswords ? <Eye size={18} /> : <Eye size={18} />}
+                {showPasswords ? '隐藏密码' : '显示密码'}
+              </button>
+            </div>
+
+            {/* 账号列表 */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg">
+                {filterType === 'all' ? '所有账号' :
+                 filterType === 'student' ? '学生账号' :
+                 filterType === 'teacher' ? '老师账号' : '管理员账号'}
+                {searchQuery && ` (搜索: ${searchQuery})`}
+                <span className="text-sm text-gray-500 ml-2">共 {filteredAccounts.length} 个</span>
+              </h4>
+              <div className="space-y-2">
+                {filteredAccounts.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    没有找到匹配的账号
+                  </div>
+                ) : (
+                  filteredAccounts.map(account => (
+                    <div key={account.id} className="border rounded-lg p-4 hover:bg-gray-50 transition">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              account.role === 'admin' ? 'bg-red-100 text-red-700' :
+                              account.role === 'teacher' ? 'bg-purple-100 text-purple-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {account.role === 'admin' ? '管理员' :
+                               account.role === 'teacher' ? '老师' : '学生'}
+                            </div>
+                            <div className="font-medium">{account.name}</div>
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">{account.email}</div>
+                          <div className="text-xs text-gray-500 mt-1 space-y-1">
+                            {account.studentId && <div>学号: {account.studentId}</div>}
+                            {account.teacherId && <div>教师ID: {account.teacherId}</div>}
+                            {showPasswords && (
+                              <div className="flex items-center gap-2">
+                                <span>密码: </span>
+                                <code className="bg-gray-100 px-2 py-0.5 rounded text-red-600 font-mono">
+                                  {account.password}
+                                </code>
+                              </div>
+                            )}
+                            {account.createdAt && (
+                              <div>创建时间: {new Date(account.createdAt).toLocaleDateString()}</div>
+                            )}
+                          </div>
+                        </div>
+                        {account.role !== 'admin' && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
+                                setAllUsers(prev => prev.filter(u => u.id !== account.id));
+                              }
+                            }}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 border-t bg-gray-50 flex gap-3">
+            <button
+              onClick={() => setShowAddTeacherModal(true)}
+              className="flex-1 bg-purple-500 text-white py-3 rounded-lg font-semibold hover:bg-purple-600 flex items-center justify-center gap-2"
+            >
+              <Plus size={18} />
+              添加老师账号
+            </button>
+            <button
+              onClick={() => setShowAccountManagementModal(false)}
+              className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const TimelineView = () => (
     <div className="space-y-6">
       {/* 搜索和筛选栏 */}
@@ -1642,6 +2878,76 @@ const MainApp = ({ user, onLogout }) => {
             <option value="考试">考试</option>
             <option value="合格发表">合格发表</option>
           </select>
+          {/* 视图切换 */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setTimelineViewMode('card')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                timelineViewMode === 'card' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <LayoutGrid size={16} /> 卡片
+            </button>
+            <button
+              onClick={() => setTimelineViewMode('linear')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                timelineViewMode === 'linear' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <LayoutList size={16} /> 线形
+            </button>
+            <button
+              onClick={() => setTimelineViewMode('calendar')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                timelineViewMode === 'calendar' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Calendar size={16} /> 日历
+            </button>
+          </div>
+          {/* 导出按钮 */}
+          {hasPermission('export_data') && (
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-sm font-medium"
+            >
+              <Download size={16} /> 导出
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-20">
+                <button
+                  onClick={() => {
+                    const studentInfo = studentList.find(s => s.studentId === currentStudent.studentId) || currentStudent;
+                    exportStudentToCSV(studentInfo, currentStudentData);
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                >
+                  <FileText size={16} /> 导出学生信息 (CSV)
+                </button>
+                <button
+                  onClick={() => {
+                    exportEventsToICS(upcomingEvents, currentStudent.name);
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                >
+                  <Calendar size={16} /> 导出日历 (.ics)
+                </button>
+                <button
+                  onClick={() => {
+                    exportChecklistToPDF(currentStudent, checklist, schools);
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                >
+                  <Download size={16} /> 导出材料清单 (PDF)
+                </button>
+              </div>
+            )}
+          </div>
+          )}
         </div>
       </div>
 
@@ -1678,13 +2984,14 @@ const MainApp = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* 事件列表 */}
+      {/* 事件列表 - 卡片视图 */}
+      {timelineViewMode === 'card' && (
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {filteredEvents.map(event => (
           <div
             key={event.id}
             className={`border-2 rounded-xl p-4 lg:p-5 ${getTypeColor(event.type)}
-              transition-all hover:shadow-lg cursor-pointer ${event.completed ? 'opacity-60' : ''}`}
+              transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer ${event.completed ? 'opacity-60' : ''}`}
             onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
           >
             <div className="flex items-start justify-between mb-3">
@@ -1725,11 +3032,11 @@ const MainApp = ({ user, onLogout }) => {
               </div>
             </div>
 
-            {(selectedEventId === event.id || !isMobile) && event.notes && (
+            {(selectedEventId === event.id || !isMobile) && (
               <div className="mt-3 p-3 bg-white bg-opacity-70 rounded-lg animate-slide-up">
-                <p className="text-sm text-gray-700">{event.notes}</p>
-                {user.role === 'teacher' && !event.schoolId && (
-                  <div className="mt-3 flex gap-2">
+                {event.notes && <p className="text-sm text-gray-700 mb-3">{event.notes}</p>}
+                {(user.role === 'teacher' || user.role === 'admin') && (
+                  <div className="flex gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1771,6 +3078,43 @@ const MainApp = ({ user, onLogout }) => {
           </div>
         ))}
       </div>
+      )}
+
+      {/* 事件列表 - 线形视图 */}
+      {timelineViewMode === 'linear' && (
+        <TimelineLinear
+          events={filteredEvents}
+          user={user}
+          onToggleComplete={(eventId) => {
+            const newEvents = upcomingEvents.map(ev =>
+              ev.id === eventId ? {...ev, completed: !ev.completed} : ev
+            );
+            setUpcomingEvents(newEvents);
+          }}
+          onEdit={(event) => {
+            setEditingEvent(event);
+            setShowEventModal(true);
+          }}
+          onDelete={handleDeleteEvent}
+        />
+      )}
+
+      {/* 事件列表 - 日历视图 */}
+      {timelineViewMode === 'calendar' && (
+        <CalendarView
+          events={filteredEvents}
+          onUpdateEvent={(eventId, updates) => {
+            const newEvents = upcomingEvents.map(ev =>
+              ev.id === eventId ? {...ev, ...updates} : ev
+            );
+            setUpcomingEvents(newEvents);
+          }}
+          onAddEvent={(newEvent) => {
+            setUpcomingEvents(prev => [...prev, { ...newEvent, id: Date.now() }]);
+          }}
+          user={user}
+        />
+      )}
 
       {(user.role === 'teacher' || user.role === 'admin') && (
         <button
@@ -1916,7 +3260,9 @@ const MainApp = ({ user, onLogout }) => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">材料清单</h2>
         <div className="flex gap-2">
-          <button className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition flex items-center gap-2">
+          <button
+            onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition flex items-center gap-2">
             <Download size={16} />
             导出清单
           </button>
@@ -1938,6 +3284,47 @@ const MainApp = ({ user, onLogout }) => {
               </button>
             </>
           )}
+        </div>
+      </div>
+
+      {/* 进度统计 - 移到顶部 */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border-2 border-gray-200">
+        <h3 className="font-bold text-lg mb-4">材料准备总进度</h3>
+        <div className="space-y-4">
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm font-medium">通用材料</span>
+              <span className="text-sm font-bold">
+                {checklist.general ? Math.round(checklist.general.filter(i => i.completed).length / checklist.general.length * 100) : 0}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all"
+                style={{ width: checklist.general && checklist.general.length > 0 ? `${checklist.general.filter(i => i.completed).length / checklist.general.length * 100}%` : '0%' }}
+              />
+            </div>
+          </div>
+
+          {checklist.schoolSpecific && Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => {
+            const schoolProgress = calculateSchoolProgress(schoolName);
+            return (
+            <div key={schoolName}>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium">{schoolName}</span>
+                <span className="text-sm font-bold">
+                  {schoolProgress.completed}/{schoolProgress.total} 完成 ({schoolProgress.percentage}%)
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full transition-all"
+                  style={{ width: `${schoolProgress.percentage}%` }}
+                />
+              </div>
+            </div>
+          );
+          })}
         </div>
       </div>
 
@@ -2106,44 +3493,6 @@ const MainApp = ({ user, onLogout }) => {
           </div>
         ))}
       </div>
-
-      {/* 进度统计 */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border-2 border-gray-200">
-        <h3 className="font-bold text-lg mb-4">材料准备总进度</h3>
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between mb-2">
-              <span className="text-sm font-medium">通用材料</span>
-              <span className="text-sm font-bold">
-                {Math.round(checklist.general.filter(i => i.completed).length / checklist.general.length * 100)}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all"
-                style={{ width: `${checklist.general.filter(i => i.completed).length / checklist.general.length * 100}%` }}
-              />
-            </div>
-          </div>
-
-          {Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => (
-            <div key={schoolName}>
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium">{schoolName}</span>
-                <span className="text-sm font-bold">
-                  {Math.round(materials.filter(i => i.completed).length / materials.length * 100)}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div
-                  className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full transition-all"
-                  style={{ width: `${materials.filter(i => i.completed).length / materials.length * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 
@@ -2151,6 +3500,10 @@ const MainApp = ({ user, onLogout }) => {
     { id: 'timeline', label: '时间线', icon: Clock },
     { id: 'schools', label: '学校', icon: School },
     { id: 'checklist', label: '材料', icon: CheckSquare },
+    // 学生账号不显示学生信息页面
+    ...(user.role !== 'student' ? [{ id: 'profile', label: '学生信息', icon: UserCircle }] : []),
+    ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
+    ...((user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
   ];
 
   return (
@@ -2219,13 +3572,39 @@ const MainApp = ({ user, onLogout }) => {
                         <div className="text-xs text-gray-500">学号: {user.studentId}</div>
                       )}
                     </div>
-                    <button className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                    {user.role === 'admin' && (
+                      <>
+                        <button
+                          onClick={() => setShowAccountManagementModal(true)}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                        >
+                          <Shield size={16} />
+                          账号管理
+                        </button>
+                        <button
+                          onClick={() => setShowAddTeacherModal(true)}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-purple-600"
+                        >
+                          <UserPlus size={16} />
+                          添加老师
+                        </button>
+                      </>
+                    )}
+                    {user.role === 'teacher' && (
+                      <button
+                        onClick={() => { setShowSettingsModal(true); setSettingsModalInitTab('security'); }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-blue-600"
+                      >
+                        <Lock size={16} />
+                        修改密码
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setShowSettingsModal(true); setSettingsModalInitTab('profile'); }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2"
+                    >
                       <Settings size={16} />
                       设置
-                    </button>
-                    <button className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
-                      <HelpCircle size={16} />
-                      帮助中心
                     </button>
                     <button
                       onClick={onLogout}
@@ -2288,8 +3667,8 @@ const MainApp = ({ user, onLogout }) => {
       {/* Mobile Sidebar */}
       {isMobile && showMobileMenu && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowMobileMenu(false)} />
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+          <div className="fixed inset-0 bg-black bg-opacity-50 animate-fade-in" onClick={() => setShowMobileMenu(false)} />
+          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white animate-slide-in-left">
             <div className={`p-4 bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-600' : 'from-blue-500 to-purple-600'} text-white`}>
               <h2 className="text-xl font-bold">菜单</h2>
             </div>
@@ -2321,17 +3700,38 @@ const MainApp = ({ user, onLogout }) => {
       )}
 
       {/* Content Area */}
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6 lg:py-8">
+      <div className={`max-w-7xl mx-auto px-4 lg:px-6 py-6 lg:py-8 ${isMobile ? 'pb-24' : ''}`}>
+        <div key={activeTab} className="page-transition">
         {activeTab === 'timeline' && <TimelineView />}
         {activeTab === 'schools' && <SchoolsView />}
         {activeTab === 'checklist' && <ChecklistView />}
+        {activeTab === 'profile' && (
+          <StudentProfile
+            student={currentStudent}
+            studentData={currentStudentData}
+            onBack={() => setActiveTab('timeline')}
+            onUpdate={(updated) => {
+              setCurrentStudent(prev => ({...prev, ...updated}));
+            }}
+          />
+        )}
+        {activeTab === 'teachers' && <TeacherManagement />}
+        {activeTab === 'schooldb' && <SchoolDatabase />}
+        {activeTab === 'upcoming' && (
+          <UpcomingSchools
+            studentList={studentList}
+            currentStudent={currentStudent}
+            user={user}
+          />
+        )}
+        </div>
       </div>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-30">
           <div className="flex justify-around py-2">
-            {tabs.map(tab => {
+            {tabs.slice(0, 4).map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -2346,11 +3746,26 @@ const MainApp = ({ user, onLogout }) => {
                       : 'text-gray-500 hover:bg-gray-100'
                   }`}
                 >
-                  <Icon size={24} />
-                  <span className="text-xs mt-1 font-medium">{tab.label}</span>
+                  <Icon size={22} />
+                  <span className="text-[10px] mt-0.5 font-medium">{tab.label}</span>
                 </button>
               );
             })}
+            {tabs.length > 4 && (
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition ${
+                  tabs.slice(4).some(t => t.id === activeTab)
+                    ? user.role === 'teacher'
+                      ? 'text-purple-600 bg-purple-50'
+                      : 'text-blue-600 bg-blue-50'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <Menu size={22} />
+                <span className="text-[10px] mt-0.5 font-medium">更多</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -2362,6 +3777,32 @@ const MainApp = ({ user, onLogout }) => {
       {showMaterialModal && <MaterialModal />}
       {showTransferModal && <TransferModal />}
       {showAddStudentModal && <AddStudentModal />}
+      {showAccountManagementModal && <AccountManagementModal />}
+      {showAddTeacherModal && <AddTeacherModal />}
+      {showChangePasswordModal && <ChangePasswordModal />}
+
+      {/* 设置弹窗 */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+              <h3 className="font-bold text-lg">设置</h3>
+              <button onClick={() => { setShowSettingsModal(false); setSettingsModalInitTab(null); }}
+                className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="p-0">
+              <SettingsPage
+                user={user}
+                allUsers={allUsers}
+                setAllUsers={setAllUsers}
+                onLogout={onLogout}
+                initTab={settingsModalInitTab}
+                onInitTabConsumed={() => setSettingsModalInitTab(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2369,6 +3810,79 @@ const MainApp = ({ user, onLogout }) => {
 // 根组件
 const JapanStudyApp = () => {
   const [user, setUser] = useState(null);
+
+  // 用户账号数据库 - 移到根组件以便AuthPage和MainApp都可以访问
+  const [allUsers, setAllUsers] = useState(() => {
+    // 从localStorage读取用户数据，如果没有则使用默认数据
+    const savedUsers = localStorage.getItem('registeredUsers');
+    if (savedUsers) {
+      return JSON.parse(savedUsers);
+    }
+    return [
+      // 管理员账号
+      {
+        id: 'admin1',
+        email: 'admin@jsa.com',
+        password: 'admin123',
+        role: 'admin',
+        name: '系统管理员',
+        createdAt: new Date().toISOString()
+      },
+      // 老师账号
+      {
+        id: 'teacher1',
+        email: 'wang@school.com',
+        password: 'wang123',
+        role: 'teacher',
+        teacherId: 'teacher_1',
+        name: '王老师',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'teacher2',
+        email: 'li@school.com',
+        password: 'li123',
+        role: 'teacher',
+        teacherId: 'teacher_2',
+        name: '李老师',
+        createdAt: new Date().toISOString()
+      },
+      // 学生账号（已注册的）
+      {
+        id: 'student1',
+        email: 'zhangsan@example.com',
+        password: 'zhang123',
+        role: 'student',
+        studentId: '2024001',
+        name: '张三',
+        createdAt: new Date().toISOString()
+      }
+    ];
+  });
+
+  // 学生列表数据 - 包含学生的详细信息
+  const [studentList, setStudentList] = useState(() => {
+    const savedStudents = localStorage.getItem('studentList');
+    if (savedStudents) {
+      return JSON.parse(savedStudents);
+    }
+    return [
+      { id: 1, name: '张三', studentId: '2024001', progress: 65, urgentTasks: 2, avatar: '👨‍🎓', teacherId: 'teacher_1', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
+      { id: 2, name: '李四', studentId: '2024002', progress: 45, urgentTasks: 4, avatar: '👩‍🎓', teacherId: 'teacher_1', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
+      { id: 3, name: '王五', studentId: '2024003', progress: 80, urgentTasks: 1, avatar: '👨‍🎓', teacherId: 'teacher_2', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
+      { id: 4, name: '赵六', studentId: '2024004', progress: 55, urgentTasks: 3, avatar: '👩‍🎓', teacherId: 'teacher_2', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
+    ];
+  });
+
+  // 保存用户数据到localStorage
+  useEffect(() => {
+    localStorage.setItem('registeredUsers', JSON.stringify(allUsers));
+  }, [allUsers]);
+
+  // 保存学生列表到localStorage
+  useEffect(() => {
+    localStorage.setItem('studentList', JSON.stringify(studentList));
+  }, [studentList]);
 
   const handleLogin = (userData) => {
     setUser(userData);
@@ -2389,10 +3903,16 @@ const JapanStudyApp = () => {
     }
   }, []);
 
-  return user ? (
-    <MainApp user={user} onLogout={handleLogout} />
-  ) : (
-    <AuthPage onLogin={handleLogin} />
+  return (
+    <ErrorBoundary>
+      <AppProvider>
+        {user ? (
+          <MainApp user={user} onLogout={handleLogout} allUsers={allUsers} setAllUsers={setAllUsers} studentList={studentList} setStudentList={setStudentList} />
+        ) : (
+          <AuthPage onLogin={handleLogin} allUsers={allUsers} studentList={studentList} />
+        )}
+      </AppProvider>
+    </ErrorBoundary>
   );
 };
 

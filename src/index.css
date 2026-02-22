@@ -62,3 +62,28 @@
     @apply relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-current;
   }
 }
+
+@layer utilities {
+  /* Stagger animation delays */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+
+  /* Smooth page transition */
+  .page-transition {
+    animation: fadeIn 0.3s ease-in-out, slideUp 0.3s ease-out;
+  }
+
+  /* Button press effect */
+  .btn-press:active {
+    transform: scale(0.97);
+  }
+
+  /* Smooth expand/collapse */
+  .expand-enter {
+    animation: slideDown 0.25s ease-out, fadeIn 0.25s ease-out;
+  }
+}
