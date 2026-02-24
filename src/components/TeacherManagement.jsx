@@ -4,9 +4,11 @@ import {
   GraduationCap, Mail, Phone, MapPin, Calendar, Briefcase, Shield, ChevronLeft
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 
 const TeacherManagement = () => {
-  const { allUsers, setAllUsers, showNotification, user } = useApp();
+  const { allUsers, setAllUsers, showNotification, user, refreshPermissions } = useApp();
+  const { isDark, tokens, glassEnabled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -121,6 +123,8 @@ const TeacherManagement = () => {
     saveTeacherDetails(newDetails);
     setIsEditing(false);
     if (showNotification) showNotification('老师信息已保存');
+    // 通知全局权限刷新
+    if (refreshPermissions) refreshPermissions();
     setSelectedTeacher(prev => ({ ...prev, name: editForm.name, email: editForm.email }));
   };
 
@@ -212,8 +216,7 @@ const TeacherManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-800">老师信息管理</h2>
+      <div className="flex justify-end">
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
@@ -227,7 +230,7 @@ const TeacherManagement = () => {
         {(!isMobile || !mobileShowDetail) && (
         <div className="lg:col-span-1 space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-themed-muted" size={18} />
             <input
               type="text" placeholder="搜索老师..."
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -240,7 +243,7 @@ const TeacherManagement = () => {
               <button
                 onClick={() => setFilterDepartment('all')}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                  filterDepartment === 'all' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                filterDepartment === 'all' ? 'bg-purple-500 text-white' : (isDark ? 'bg-[rgba(255,255,255,0.06)] text-themed-secondary hover:bg-[rgba(255,255,255,0.1)]' : 'bg-gray-100 text-themed-secondary hover:bg-gray-200')
                 }`}
               >
                 全部
@@ -267,8 +270,8 @@ const TeacherManagement = () => {
                   onClick={() => handleSelectTeacher(teacher)}
                   className={`p-4 rounded-lg border-2 cursor-pointer transition ${
                     selectedTeacher?.teacherId === teacher.teacherId
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 hover:border-purple-300 bg-white'
+                      ? (isDark ? 'border-purple-500 bg-[rgba(168,85,247,0.12)]' : 'border-purple-500 bg-purple-50')
+                      : (isDark ? 'border-[rgba(255,255,255,0.1)] hover:border-purple-400 bg-[rgba(255,255,255,0.04)]' : 'border-gray-200 hover:border-purple-300 bg-white')
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -281,18 +284,18 @@ const TeacherManagement = () => {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{teacher.name}</div>
-                      <div className="text-xs text-gray-500 truncate">{teacher.email}</div>
+                      <div className="text-xs text-themed-secondary truncate">{teacher.email}</div>
                       {detail.department && (
                         <span className="inline-block mt-1 px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-[10px] font-medium">{detail.department}</span>
                       )}
-                      {!detail.department && <div className="text-xs text-gray-400">未设置部门</div>}
+                      {!detail.department && <div className="text-xs text-themed-muted">未设置部门</div>}
                     </div>
                   </div>
                 </div>
               );
             })}
             {filteredTeachers.length === 0 && (
-              <p className="text-center text-gray-400 py-8">暂无老师</p>
+              <p className="text-center text-themed-muted py-8">暂无老师</p>
             )}
           </div>
         </div>
@@ -302,7 +305,7 @@ const TeacherManagement = () => {
         {(!isMobile || mobileShowDetail) && (
         <div className="lg:col-span-2">
           {selectedTeacher ? (
-            <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
+            <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle overflow-hidden">
               {/* 头部 */}
               <div className="bg-gradient-to-r from-purple-500 to-blue-500 p-4 sm:p-6 text-white">
                 {isMobile && (
@@ -320,8 +323,8 @@ const TeacherManagement = () => {
                       </div>
                     )}
                     {isEditing && (
-                      <label className="absolute bottom-0 right-0 p-1.5 bg-white rounded-full cursor-pointer shadow-lg">
-                        <Camera size={14} className="text-gray-600" />
+                      <label className="absolute bottom-0 right-0 p-1.5 bg-themed-surface rounded-full cursor-pointer shadow-lg">
+                        <Camera size={14} className="text-themed-secondary" />
                         <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                       </label>
                     )}
@@ -381,8 +384,8 @@ const TeacherManagement = () => {
                     <Field label="雇佣类型" value={editForm.employmentType} editing={isEditing} type="select" options={['正社员', '兼职']} onChange={v => setEditForm({...editForm, employmentType: v})} />
                     <Field label="入职时间" value={editForm.joinDate} editing={isEditing} type="date" onChange={v => setEditForm({...editForm, joinDate: v})} />
                     <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-1">在职时长</label>
-                      <div className="text-gray-800 font-medium">{getWorkDuration(editForm.joinDate)}</div>
+                      <label className="block text-sm font-medium text-themed-muted mb-1">在职时长</label>
+                      <div className="text-themed-primary font-medium">{getWorkDuration(editForm.joinDate)}</div>
                     </div>
                   </div>
                 </div>
@@ -393,7 +396,7 @@ const TeacherManagement = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {permissionOptions.map(perm => (
                       <label key={perm.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition cursor-pointer ${
-                        (editForm.permissions || []).includes(perm.id) ? 'border-purple-300 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                        (editForm.permissions || []).includes(perm.id) ? (isDark ? 'border-purple-400 bg-[rgba(168,85,247,0.12)]' : 'border-purple-300 bg-purple-50') : (isDark ? 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]' : 'border-gray-200 hover:border-gray-300')
                       } ${!isEditing ? 'pointer-events-none' : ''}`}>
                         <input
                           type="checkbox"
@@ -404,7 +407,7 @@ const TeacherManagement = () => {
                         />
                         <div>
                           <div className="font-medium text-sm">{perm.label}</div>
-                          <div className="text-xs text-gray-500">{perm.desc}</div>
+                          <div className="text-xs text-themed-secondary">{perm.desc}</div>
                         </div>
                       </label>
                     ))}
@@ -413,9 +416,9 @@ const TeacherManagement = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center">
-              <GraduationCap size={48} className="text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-400">请从左侧选择一位老师查看详情</p>
+            <div className="bg-themed-surface rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: tokens.colors.border.subtle }}>
+              <GraduationCap size={48} className="text-themed-muted mx-auto mb-4" />
+              <p className="text-themed-muted">请从左侧选择一位老师查看详情</p>
             </div>
           )}
         </div>
@@ -425,17 +428,17 @@ const TeacherManagement = () => {
       {/* 删除确认弹窗 */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
+          <div className="bg-themed-surface rounded-xl max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-red-600 mb-3">确认注销老师账号</h3>
-            <p className="text-gray-600 mb-2">
+            <p className="text-themed-secondary mb-2">
               您确定要注销 <strong>{showDeleteConfirm.name}</strong> 的账号吗？
             </p>
-            <p className="text-sm text-gray-500 mb-4">此操作将删除该老师的账号信息，该老师将无法登录系统。</p>
+            <p className="text-sm text-themed-secondary mb-4">此操作将删除该老师的账号信息，该老师将无法登录系统。</p>
             <div className="flex gap-3">
               <button onClick={() => handleDelete(showDeleteConfirm)} className="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 font-medium">
                 确认注销
               </button>
-              <button onClick={() => setShowDeleteConfirm(null)} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 font-medium">
+              <button onClick={() => setShowDeleteConfirm(null)} className="flex-1 py-2 rounded-lg font-medium transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.primary }}>
                 取消
               </button>
             </div>
@@ -446,7 +449,7 @@ const TeacherManagement = () => {
       {/* 添加老师弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
+          <div className="bg-themed-surface rounded-xl max-w-md w-full p-6">
             <h3 className="text-lg font-bold mb-4">添加新老师</h3>
             <div className="space-y-4">
               <div>
@@ -491,7 +494,7 @@ const TeacherManagement = () => {
             <div className="flex gap-3 mt-6">
               <button onClick={handleAddTeacher} className="flex-1 bg-purple-500 text-white py-2 rounded-lg hover:bg-purple-600 font-medium">创建</button>
               <button onClick={() => { setShowAddModal(false); setAddForm({ name: '', email: '', password: '', confirmPassword: '', department: '', subject: '文科' }); setAddErrors({}); }}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 font-medium">取消</button>
+                className="flex-1 py-2 rounded-lg font-medium transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.primary }}>取消</button>
             </div>
           </div>
         </div>
@@ -505,7 +508,7 @@ const Field = ({ label, value, editing, onChange, type = 'text', placeholder, op
     if (type === 'select') {
       return (
         <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">{label}</label>
+          <label className="block text-sm font-medium text-themed-secondary mb-1">{label}</label>
           <select value={value || ''} onChange={e => onChange(e.target.value)}
             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 text-sm">
             {options.map(opt => <option key={opt} value={opt}>{opt || '请选择'}</option>)}
@@ -515,7 +518,7 @@ const Field = ({ label, value, editing, onChange, type = 'text', placeholder, op
     }
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">{label}</label>
+        <label className="block text-sm font-medium text-themed-secondary mb-1">{label}</label>
         <input type={type} value={value || ''} onChange={e => onChange(e.target.value)}
           placeholder={placeholder || `请输入${label}`}
           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 text-sm" />
@@ -524,8 +527,8 @@ const Field = ({ label, value, editing, onChange, type = 'text', placeholder, op
   }
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-400 mb-1">{label}</label>
-      <div className="text-gray-800 font-medium text-sm">{value || '-'}</div>
+      <label className="block text-sm font-medium text-themed-muted mb-1">{label}</label>
+      <div className="text-themed-primary font-medium text-sm">{value || '-'}</div>
     </div>
   );
 };

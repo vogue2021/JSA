@@ -45,7 +45,8 @@ export const AppProvider = ({ children }) => {
       { id: 'admin1', email: 'admin@jsa.com', password: 'admin123', role: 'admin', name: '系统管理员', createdAt: new Date().toISOString() },
       { id: 'teacher1', email: 'wang@school.com', password: 'wang123', role: 'teacher', teacherId: 'teacher_1', name: '王老师', createdAt: new Date().toISOString() },
       { id: 'teacher2', email: 'li@school.com', password: 'li123', role: 'teacher', teacherId: 'teacher_2', name: '李老师', createdAt: new Date().toISOString() },
-      { id: 'student1', email: 'zhangsan@example.com', password: 'zhang123', role: 'student', studentId: '2024001', name: '张三', createdAt: new Date().toISOString() },
+      { id: 'teacher3', email: 'zhang@school.com', password: 'zhang123', role: 'teacher', teacherId: 'teacher_3', name: '张老师', createdAt: new Date().toISOString() },
+      { id: 'student1', email: 'zhangsan@student.jsa.com', password: 'stu2024001', role: 'student', studentId: '2024001', name: '张三', createdAt: new Date().toISOString() },
     ];
   });
 
@@ -91,12 +92,32 @@ export const AppProvider = ({ children }) => {
   const getTeacherList = useCallback(() => {
     return allUsers.filter(u => u.role === 'teacher').map(u => ({
       id: u.teacherId,
+      teacherId: u.teacherId,
       name: u.name,
       email: u.email,
     }));
   }, [allUsers]);
 
   // 权限检查：admin拥有全部权限，teacher根据teacherDetails中的权限列表判断
+  // 注意：使用 allUsers 作为依赖以便在权限变更后刷新
+  const [permissionVersion, setPermissionVersion] = useState(0);
+
+  // 提供一个方法让 TeacherManagement 可以通知权限更新
+  const refreshPermissions = useCallback(() => {
+    setPermissionVersion(v => v + 1);
+  }, []);
+
+  // 监听 localStorage 变化（跨 tab 权限同步）
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'teacherDetails') {
+        setPermissionVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   const hasPermission = useCallback((permissionId) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
@@ -115,14 +136,14 @@ export const AppProvider = ({ children }) => {
       return ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'].includes(permissionId);
     }
     return false;
-  }, [user]);
+  }, [user, permissionVersion]);
 
   const value = useMemo(() => ({
     user, setUser, allUsers, setAllUsers, studentList, setStudentList,
     globalLoading, setGlobalLoading, globalError, setGlobalError,
     notification, showNotification,
-    handleLogin, handleLogout, getTeacherList, hasPermission,
-  }), [user, allUsers, studentList, globalLoading, globalError, notification, showNotification, handleLogin, handleLogout, getTeacherList, hasPermission]);
+    handleLogin, handleLogout, getTeacherList, hasPermission, refreshPermissions,
+  }), [user, allUsers, studentList, globalLoading, globalError, notification, showNotification, handleLogin, handleLogout, getTeacherList, hasPermission, refreshPermissions]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

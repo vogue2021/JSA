@@ -17,13 +17,13 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-red-50">
-          <div className="max-w-md w-full p-8 bg-white rounded-lg shadow-lg">
+        <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--theme-bg-base, #fef2f2)' }}>
+          <div className="max-w-md w-full p-8 rounded-lg shadow-lg" style={{ background: 'var(--theme-surface-solid, #fff)', border: '1px solid var(--theme-border-subtle, #e5e7eb)' }}>
             <h1 className="text-2xl font-bold text-red-600 mb-4">出错了</h1>
-            <p className="text-gray-600 mb-4">应用程序遇到了错误。请尝试刷新页面。</p>
+            <p className="mb-4" style={{ color: 'var(--theme-text-secondary, #4b5563)' }}>应用程序遇到了错误。请尝试刷新页面。</p>
             <details className="mb-4">
-              <summary className="cursor-pointer text-sm text-gray-500">错误详情</summary>
-              <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
+              <summary className="cursor-pointer text-sm" style={{ color: 'var(--theme-text-muted, #6b7280)' }}>错误详情</summary>
+              <pre className="mt-2 text-xs p-2 rounded overflow-auto" style={{ background: 'var(--theme-bg-elevated, #f3f4f6)', color: 'var(--theme-text-secondary, #4b5563)' }}>
                 {this.state.error?.toString()}
               </pre>
             </details>

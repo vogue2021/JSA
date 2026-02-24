@@ -6,10 +6,12 @@ import {
   Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
-  LayoutGrid, LayoutList, UserCircle
+  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import ThemeCustomizer from './components/ThemeCustomizer';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import Notification from './components/common/Notification';
 import StudentProfile from './components/StudentProfile';
@@ -19,12 +21,17 @@ import SchoolDatabase from './components/SchoolDatabase';
 import SettingsPage from './components/SettingsPage';
 import CalendarView from './components/CalendarView';
 import UpcomingSchools from './components/UpcomingSchools';
+import Dashboard from './components/Dashboard';
+import StudentListPage from './components/StudentListPage';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
+import { generateTestData } from './utils/generateTestData';
+import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 
 // 登录注册页面组件
 const AuthPage = ({ onLogin, allUsers, studentList }) => {
+  const { isDark, tokens, backgroundStyle, glassEnabled } = useTheme();
   // 用户账号数据库
   const [users] = useState([
     // 管理员账号
@@ -52,11 +59,19 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
       teacherId: 'teacher_2',
       name: '李老师'
     },
+    {
+      id: 'teacher3',
+      email: 'zhang@school.com',
+      password: 'zhang123',
+      role: 'teacher',
+      teacherId: 'teacher_3',
+      name: '张老师'
+    },
     // 学生账号（已注册的）
     {
       id: 'student1',
-      email: 'zhangsan@example.com',
-      password: 'zhang123',
+      email: 'zhangsan@student.jsa.com',
+      password: 'stu2024001',
       role: 'student',
       studentId: '2024001',
       name: '张三'
@@ -178,6 +193,7 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
             teacherId: user.teacherId || null,
             isAdmin: user.role === 'admin'
           };
+          logAction(LOG_CATEGORIES.AUTH, `用户登录: ${user.name} (${user.role})`, { email: user.email });
           onLogin(userData);
           return;
         } else {
@@ -193,31 +209,76 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
-      <div className="max-w-5xl w-full grid lg:grid-cols-2 bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 themed-bg noise-overlay" style={backgroundStyle}>
+      {/* 登录页背景光斑 */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="animate-glow-float absolute rounded-full" style={{
+          width: '50vw', height: '50vw', top: '5%', left: '-5%',
+          background: 'radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%)',
+          filter: 'blur(80px)',
+        }} />
+        <div className="animate-glow-float-slow absolute rounded-full" style={{
+          width: '40vw', height: '40vw', bottom: '10%', right: '-5%',
+          background: 'radial-gradient(circle, rgba(139,92,246,0.18), transparent 70%)',
+          filter: 'blur(60px)',
+        }} />
+        <div className="animate-glow-float absolute rounded-full" style={{
+          width: '30vw', height: '30vw', top: '50%', left: '60%',
+          background: 'radial-gradient(circle, rgba(16,185,129,0.12), transparent 70%)',
+          filter: 'blur(50px)', animationDelay: '4s',
+        }} />
+      </div>
+
+      <div className="max-w-5xl w-full grid lg:grid-cols-2 rounded-2xl overflow-hidden relative z-10 animate-scale-in"
+        style={{
+          background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
+          backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+          WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+          border: `1px solid ${tokens.colors.border.hairline}`,
+          boxShadow: `${tokens.shadow.elevation}, ${tokens.shadow.innerHighlight}`,
+        }}>
         {/* 左侧装饰面板 */}
-        <div className="hidden lg:flex flex-col justify-center items-center p-12 bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-          <div className="mb-8">
-            <div className="w-32 h-32 bg-white bg-opacity-20 rounded-full flex items-center justify-center mb-6">
+        <div className="hidden lg:flex flex-col justify-center items-center p-12 text-white relative overflow-hidden">
+          <div className="absolute inset-0" style={{
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))',
+          }} />
+          {/* 装饰光斑 */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute w-40 h-40 rounded-full animate-pulse-glow" style={{
+              top: '15%', right: '10%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%)',
+            }} />
+            <div className="absolute w-32 h-32 rounded-full animate-pulse-glow" style={{
+              bottom: '20%', left: '5%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.1), transparent 70%)',
+              animationDelay: '1.5s',
+            }} />
+          </div>
+          <div className="mb-8 relative z-10">
+            <div className="w-32 h-32 rounded-full flex items-center justify-center mb-6"
+              style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
               <GraduationCap size={64} className="text-white" />
             </div>
             <h1 className="text-4xl font-bold mb-4">日本留学考学助手</h1>
-            <p className="text-blue-100 text-center">
+            <p className="text-center" style={{ color: 'rgba(255,255,255,0.8)' }}>
               专业的日本留学申请管理平台<br/>
               让留学之路更加清晰高效
             </p>
           </div>
 
-          <div className="space-y-4 w-full max-w-sm">
-            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+          <div className="space-y-4 w-full max-w-sm relative z-10">
+            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
+              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
               <Calendar className="text-white" size={24} />
               <span>智能时间线管理</span>
             </div>
-            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
+              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
               <School className="text-white" size={24} />
               <span>多校申请追踪</span>
             </div>
-            <div className="flex items-center gap-3 bg-white bg-opacity-20 rounded-lg p-3">
+            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
+              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
               <FileText className="text-white" size={24} />
               <span>材料清单管理</span>
             </div>
@@ -227,10 +288,10 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
         {/* 右侧登录/注册表单 */}
         <div className="p-8 lg:p-12">
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+            <h2 className="text-3xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>
               {isLogin ? '欢迎回来' : '学生注册'}
             </h2>
-            <p className="text-gray-600">
+            <p style={{ color: tokens.colors.text.secondary }}>
               {isLogin ? '登录您的账号继续管理留学申请' : '学生使用学号注册账号'}
             </p>
           </div>
@@ -238,13 +299,17 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
           {/* 角色选择 - 只在登录页显示 */}
           {isLogin && (
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">我是</label>
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>我是</label>
               <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setUserType('student')}
-                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                    ${userType === 'student' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 hover:border-gray-400'}`}
+                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
+                  style={{
+                    borderColor: userType === 'student' ? tokens.colors.accent.primary : tokens.colors.border.subtle,
+                    background: userType === 'student' ? (isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)') : 'transparent',
+                    color: userType === 'student' ? tokens.colors.accent.primary : tokens.colors.text.secondary,
+                  }}
                 >
                   <User size={20} />
                   <span className="font-medium">学生</span>
@@ -252,8 +317,12 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
                 <button
                   type="button"
                   onClick={() => setUserType('teacher')}
-                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                    ${userType === 'teacher' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-300 hover:border-gray-400'}`}
+                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
+                  style={{
+                    borderColor: userType === 'teacher' ? tokens.colors.accent.secondary : tokens.colors.border.subtle,
+                    background: userType === 'teacher' ? (isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)') : 'transparent',
+                    color: userType === 'teacher' ? tokens.colors.accent.secondary : tokens.colors.text.secondary,
+                  }}
                 >
                   <GraduationCap size={20} />
                   <span className="font-medium">老师</span>
@@ -261,8 +330,12 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
                 <button
                   type="button"
                   onClick={() => setUserType('admin')}
-                  className={`p-3 rounded-lg border-2 transition flex items-center justify-center gap-2
-                    ${userType === 'admin' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 hover:border-gray-400'}`}
+                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
+                  style={{
+                    borderColor: userType === 'admin' ? tokens.colors.accent.danger : tokens.colors.border.subtle,
+                    background: userType === 'admin' ? (isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)') : 'transparent',
+                    color: userType === 'admin' ? tokens.colors.accent.danger : tokens.colors.text.secondary,
+                  }}
                 >
                   <Shield size={20} />
                   <span className="font-medium">管理员</span>
@@ -281,13 +354,14 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>姓名</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                      ${errors.name ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.name ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                     placeholder="请输入您的姓名"
                   />
                   {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
@@ -295,13 +369,14 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
 
                 {userType === 'student' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">学号</label>
+                    <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>学号</label>
                     <input
                       type="text"
                       value={formData.studentId}
                       onChange={(e) => setFormData({...formData, studentId: e.target.value})}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                        ${errors.studentId ? 'border-red-500' : 'border-gray-300'}`}
+                        ${errors.studentId ? 'border-red-500' : ''}`}
+                      style={{ borderColor: errors.studentId ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                       placeholder="请输入学号"
                     />
                     {errors.studentId && <p className="text-red-500 text-xs mt-1">{errors.studentId}</p>}
@@ -311,15 +386,16 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                    ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+                    ${errors.email ? 'border-red-500' : ''}`}
+                  style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                   placeholder="your@email.com"
                 />
               </div>
@@ -328,14 +404,15 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
 
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱验证码</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={formData.verificationCode}
                     onChange={(e) => setFormData({...formData, verificationCode: e.target.value})}
                     className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.verificationCode ? 'border-red-500' : 'border-gray-300'}`}
+                      ${errors.verificationCode ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.verificationCode ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                     placeholder="请输入验证码"
                     disabled={!showVerification}
                   />
@@ -352,15 +429,16 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                 <input
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
                   className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                    ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                    ${errors.password ? 'border-red-500' : ''}`}
+                  style={{ borderColor: errors.password ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                   placeholder="••••••••"
                 />
               </div>
@@ -369,15 +447,16 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
 
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>确认密码</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                   <input
                     type="password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
                     className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'}`}
+                      ${errors.confirmPassword ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.confirmPassword ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
                     placeholder="••••••••"
                   />
                 </div>
@@ -400,7 +479,7 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
           <div className="mt-6 text-center">
             {/* 只有学生可以注册 */}
             {isLogin && userType === 'student' && (
-              <p className="text-gray-600">
+              <p style={{ color: tokens.colors.text.secondary }}>
                 还没有账号？
                 <button
                   onClick={() => {
@@ -414,7 +493,7 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
               </p>
             )}
             {!isLogin && (
-              <p className="text-gray-600">
+              <p style={{ color: tokens.colors.text.secondary }}>
                 已有账号？
                 <button
                   onClick={() => {
@@ -431,7 +510,11 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
 
           {/* 测试账号提示 */}
           {isLogin && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg text-xs text-gray-600">
+            <div className="mt-6 p-4 rounded-xl text-xs" style={{
+              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+              border: `1px solid ${tokens.colors.border.subtle}`,
+              color: tokens.colors.text.secondary,
+            }}>
               <p className="font-semibold mb-2">测试账号：</p>
               {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
               {userType === 'teacher' && (
@@ -443,7 +526,7 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
               {userType === 'student' && (
                 <>
                   <p>张三: zhangsan@example.com / zhang123</p>
-                  <p className="mt-1 text-gray-500">未注册学号: 2024002（李四）</p>
+                  <p className="mt-1" style={{ color: tokens.colors.text.muted }}>未注册学号: 2024002（李四）</p>
                 </>
               )}
             </div>
@@ -495,7 +578,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     }
   });
 
-  const [activeTab, setActiveTab] = useState('timeline');
+  const [activeTab, setActiveTab] = useState(
+    // 老师和管理员默认进入仪表盘，学生进入时间线
+    (user.role === 'teacher' || user.role === 'admin') ? 'dashboard' : 'timeline'
+  );
   const [settingsInitTab, setSettingsInitTab] = useState(null);
   const [showStudentList, setShowStudentList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -506,6 +592,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [timelineViewMode, setTimelineViewMode] = useState('card'); // 'card' or 'linear'
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [schoolDetailModal, setSchoolDetailModal] = useState(null); // 学生点击学校卡片弹窗
+  const [showSidebarUserMenu, setShowSidebarUserMenu] = useState(false); // 侧边栏头像菜单
 
   // 学生数据存储（按学生ID隔离）
   const [studentData, setStudentData] = useState(() => {
@@ -692,6 +781,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalInitTab, setSettingsModalInitTab] = useState(null);
+  const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingSchool, setEditingSchool] = useState(null);
   const [editingMaterial, setEditingMaterial] = useState(null);
@@ -725,6 +815,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       .filter(u => u.role === 'teacher')
       .map(u => ({
         id: u.teacherId,
+        teacherId: u.teacherId,
         name: u.name,
         email: u.email
       }));
@@ -774,6 +865,47 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     }
     return []; // 学生不需要看到学生列表
   };
+
+  // 判断当前是否有有效的学生数据可展示
+  // 管理员和老师如果 currentStudent 能在 studentList 中匹配到，就视为有学生数据
+  const adminHasOwnStudents = React.useMemo(() => {
+    if (user.role === 'student') return true;
+    // 检查 currentStudent 是否是一个真实学生（在 studentList 中）
+    const hasValidStudent = studentList.some(s => s.studentId === currentStudent.studentId);
+    return hasValidStudent;
+  }, [user, studentList, currentStudent]);
+
+  // 管理员公共视图组件（不带学生时显示统计和公共信息）
+  const AdminPublicView = ({ type, onNavigate, onSelectStudent }) => (
+    <div className="space-y-6 animate-fade-in">
+      <div className="rounded-xl p-8 text-center" style={{ background: isDark ? 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(59,130,246,0.08))' : 'linear-gradient(135deg, #f3f4f6, #eff6ff)' }}>
+        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : '#dbeafe' }}>
+          {type === 'timeline' && <Clock size={32} className="text-blue-500" />}
+          {type === 'schools' && <School size={32} className="text-green-500" />}
+          {type === 'checklist' && <CheckSquare size={32} className="text-purple-500" />}
+        </div>
+        <h2 className="text-xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>
+          {type === 'timeline' ? '时间线' : type === 'schools' ? '学校' : '材料清单'}
+        </h2>
+        <p className="mb-4" style={{ color: tokens.colors.text.secondary }}>
+          管理员账号当前未绑定学生。{type === 'timeline' ? '时间线' : type === 'schools' ? '学校申请' : '材料清单'}显示的是具体学生的数据。
+        </p>
+        <p className="text-sm mb-6" style={{ color: tokens.colors.text.muted }}>
+          请先从学生列表选择一位学生查看详情，或前往仪表盘查看整体统计数据。
+        </p>
+        <div className="flex justify-center gap-3">
+          <button onClick={onSelectStudent}
+            className="px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
+            <Users size={18} /> 选择学生
+          </button>
+          <button onClick={() => onNavigate('dashboard')}
+            className="px-6 py-2.5 rounded-lg transition font-medium flex items-center gap-2" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}>
+            <Home size={18} /> 返回仪表盘
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   // 生成学号
   const generateStudentId = () => {
@@ -917,7 +1049,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       submitted: 'bg-purple-100 text-purple-700 border-purple-200',
       admitted: 'bg-yellow-100 text-yellow-700 border-yellow-200',
     };
-    return colors[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+    return colors[status] || (isDark ? 'bg-[rgba(255,255,255,0.06)] text-gray-300 border-[rgba(255,255,255,0.1)]' : 'bg-gray-100 text-gray-700 border-gray-200');
   };
 
   const getStatusText = (status) => {
@@ -937,7 +1069,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       contact: 'bg-blue-50 border-blue-200',
       document: 'bg-green-50 border-green-200',
     };
-    return colors[type] || 'bg-gray-50 border-gray-200';
+    return colors[type] || (isDark ? 'bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)]' : 'bg-gray-50 border-gray-200');
   };
 
   const getTypeIcon = (type) => {
@@ -1053,7 +1185,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+        <div className="rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in" style={{ background: tokens.colors.surface.solid, border: `1px solid ${tokens.colors.border.subtle}` }}>
           <div className="p-6 border-b flex items-center justify-between">
             <h3 className="font-bold text-xl">{editingEvent ? '编辑事项' : '添加新事项'}</h3>
             <button
@@ -1061,7 +1193,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 setShowEventModal(false);
                 setEditingEvent(null);
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+              className="p-2 rounded-lg transition" style={{ color: tokens.colors.text.secondary }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <X size={20} />
             </button>
@@ -1069,7 +1203,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">标题</label>
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>标题</label>
               <input
                 type="text"
                 value={formData.title}
@@ -1187,10 +1321,6 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         nameJa: '',
         type: '国立',
         location: '',
-        website: '',
-        ranking: '',
-        difficulty: '普通',
-        acceptanceRate: '',
         program: '',
         status: 'preparing',
         applicationStartDate: '',
@@ -1199,6 +1329,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         resultDate: '',
         requirementsUrl: '',
         requirements: '',
+        acceptanceRate: '',
         teacherNotes: '',
         materials: []
       }
@@ -1229,9 +1360,6 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         nameJa: dbSchool.nameJa || prev.nameJa,
         type: dbSchool.type || prev.type,
         location: dbSchool.location || prev.location,
-        website: dbSchool.website || prev.website,
-        ranking: dbSchool.ranking || prev.ranking,
-        difficulty: dbSchool.difficulty || prev.difficulty,
         acceptanceRate: dbSchool.acceptanceRate || prev.acceptanceRate,
         requirements: dbSchool.requirements || prev.requirements,
         program: (dbSchool.programs && dbSchool.programs[0]) || prev.program,
@@ -1252,9 +1380,6 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         nameJa: formData.nameJa,
         type: formData.type,
         location: formData.location,
-        website: formData.website,
-        ranking: formData.ranking,
-        difficulty: formData.difficulty,
         acceptanceRate: formData.acceptanceRate,
         program: formData.program,
         status: formData.status,
@@ -1376,7 +1501,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">学校类型</label>
                 <select
@@ -1390,44 +1515,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">难度</label>
-                <select value={formData.difficulty || '普通'}
-                  onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                  <option value="极难">极难</option><option value="难">难</option>
-                  <option value="普通">普通</option><option value="容易">容易</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">排名</label>
-                <input type="number" value={formData.ranking || ''}
-                  onChange={(e) => setFormData({...formData, ranking: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="日本排名" />
-              </div>
-              <div>
                 <label className="block text-sm font-medium mb-2">录取率</label>
                 <input type="text" value={formData.acceptanceRate || ''}
                   onChange={(e) => setFormData({...formData, acceptanceRate: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="例: 约10%" />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">地点</label>
                 <input type="text" value={formData.location || ''}
                   onChange={(e) => setFormData({...formData, location: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="例: 东京都文京区" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">官网链接</label>
-                <input type="url" value={formData.website || ''}
-                  onChange={(e) => setFormData({...formData, website: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://..." />
               </div>
             </div>
 
@@ -1911,6 +2010,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         email: student.email || `${student.name.toLowerCase()}@example.com`
       });
       setShowStudentList(false);
+      // 点击学生后导航到学生独立页面
+      setActiveTab('profile');
     };
 
     // 学生tag列表
@@ -2849,8 +2950,52 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
     );
   };
+  // === 学生选择器组件（老师/管理员可用）===
+  const StudentSelector = () => {
+    if (user.role === 'student') return null;
+    const visibleStudents = getVisibleStudents();
+    if (visibleStudents.length === 0) return null;
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-3 flex items-center gap-3 border-2 border-gray-100">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Eye size={16} />
+          <span>当前学生:</span>
+        </div>
+        <select
+          value={currentStudent.studentId || ''}
+          onChange={(e) => {
+            const selected = visibleStudents.find(s => s.studentId === e.target.value);
+            if (selected) {
+              setCurrentStudent({
+                ...selected,
+                targetCountry: '日本',
+                targetLevel: selected.targetLevel || '修士',
+                email: selected.email || `${selected.name.toLowerCase()}@example.com`
+              });
+            }
+          }}
+          className="flex-1 max-w-xs px-3 py-1.5 border rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+        >
+          {visibleStudents.map(s => (
+            <option key={s.studentId} value={s.studentId}>
+              {s.name} ({s.studentId}) {s.subject ? `· ${s.subject}` : ''}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setActiveTab('profile')}
+          className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap"
+        >
+          查看详情 →
+        </button>
+      </div>
+    );
+  };
+
   const TimelineView = () => (
     <div className="space-y-6">
+      {/* 学生选择器 */}
+      {user.role !== 'student' && <StudentSelector />}
       {/* 搜索和筛选栏 */}
       <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
         <div className="flex flex-col lg:flex-row gap-4">
@@ -2998,7 +3143,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-2xl">{getTypeIcon(event.type)}</span>
-                  <span className="text-xs font-semibold px-2 py-1 bg-white rounded">
+                  <span className="text-xs font-semibold px-2 py-1 rounded" style={{ background: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.9)' }}>
                     {event.category}
                   </span>
                   {event.urgent && (
@@ -3033,7 +3178,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             </div>
 
             {(selectedEventId === event.id || !isMobile) && (
-              <div className="mt-3 p-3 bg-white bg-opacity-70 rounded-lg animate-slide-up">
+              <div className="mt-3 p-3 rounded-lg animate-slide-up" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)' }}>
                 {event.notes && <p className="text-sm text-gray-700 mb-3">{event.notes}</p>}
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-2">
@@ -3134,9 +3279,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   // 学校管理页面
   const SchoolsView = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">志愿学校</h2>
-        {(user.role === 'teacher' || user.role === 'admin') && (
+      {/* 学生选择器 */}
+      {user.role !== 'student' && <StudentSelector />}
+      {(user.role === 'teacher' || user.role === 'admin') && (
+        <div className="flex justify-end">
           <button
             onClick={() => {
               setEditingSchool(null);
@@ -3147,14 +3293,16 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <Plus size={16} />
             添加学校
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {schools.map(school => {
           const progress = calculateSchoolProgress(school.name);
           return (
-            <div key={school.id} className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-xl transition-all card-hover">
+            <div key={school.id} className={`bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-xl transition-all card-hover ${user.role === 'student' ? 'cursor-pointer' : ''}`}
+              onClick={user.role === 'student' ? () => setSchoolDetailModal(school) : undefined}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -3257,8 +3405,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   // 材料清单页面
   const ChecklistView = () => (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">材料清单</h2>
+      {/* 学生选择器 */}
+      {user.role !== 'student' && <StudentSelector />}
+      <div className="flex justify-end">
         <div className="flex gap-2">
           <button
             onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
@@ -3288,8 +3437,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
 
       {/* 进度统计 - 移到顶部 */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border-2 border-gray-200">
-        <h3 className="font-bold text-lg mb-4">材料准备总进度</h3>
+      <div className="rounded-xl p-6 border-2" style={{ background: isDark ? 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))' : 'linear-gradient(to right, #eff6ff, #faf5ff)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+        <h3 className="font-bold text-lg mb-4" style={{ color: tokens.colors.text.primary }}>材料准备总进度</h3>
         <div className="space-y-4">
           <div>
             <div className="flex justify-between mb-2">
@@ -3329,11 +3478,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
 
       {/* 通用材料 */}
-      <div className="bg-white border-2 border-gray-200 rounded-xl p-5">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+      <div className="rounded-xl p-5 border-2" style={{ background: tokens.colors.surface.solid, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+        <h3 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
           <FileText size={20} />
           通用材料
-          <span className="text-sm text-gray-500 font-normal">
+          <span className="text-sm font-normal" style={{ color: tokens.colors.text.muted }}>
             ({checklist.general.filter(i => i.completed).length}/{checklist.general.length})
           </span>
         </h3>
@@ -3412,11 +3561,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       {/* 学校专用材料 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => (
-          <div key={schoolName} className="bg-white border-2 border-gray-200 rounded-xl p-5">
-            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+          <div key={schoolName} className="rounded-xl p-5 border-2" style={{ background: tokens.colors.surface.solid, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
               <School size={20} />
               {schoolName}
-              <span className="text-sm text-gray-500 font-normal">
+              <span className="text-sm font-normal" style={{ color: tokens.colors.text.muted }}>
                 ({materials.filter(i => i.completed).length}/{materials.length})
               </span>
             </h3>
@@ -3497,180 +3646,359 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   );
 
   const tabs = [
-    { id: 'timeline', label: '时间线', icon: Clock },
-    { id: 'schools', label: '学校', icon: School },
-    { id: 'checklist', label: '材料', icon: CheckSquare },
-    // 学生账号不显示学生信息页面
+    // 老师和管理员显示仪表盘
+    ...(user.role !== 'student' ? [{ id: 'dashboard', label: '仪表盘', icon: Home }] : []),
+    // 时间线/学校/材料 - 老师需要对应权限，学生也可见
+    ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_events') ? [{ id: 'timeline', label: '时间线', icon: Clock }] : []),
+    ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_schools') ? [{ id: 'schools', label: '学校', icon: School }] : []),
+    ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_materials') ? [{ id: 'checklist', label: '材料', icon: CheckSquare }] : []),
+    // 学生列表 - 老师需要学生管理权限
+    ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_students')) ? [{ id: 'students', label: '学生列表', icon: Users }] : []),
     ...(user.role !== 'student' ? [{ id: 'profile', label: '学生信息', icon: UserCircle }] : []),
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
-    ...((user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
+    // 学校信息库 - 学生不显示，老师需权限
+    ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
   ];
 
+  // 获取主题上下文
+  const { isDark, tokens, backgroundStyle, toggleMode, resolvedMode, glassEnabled } = useTheme();
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto">
-          <div className="px-4 lg:px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {isMobile && (
-                  <button
-                    onClick={() => setShowMobileMenu(!showMobileMenu)}
-                    className="p-2 hover:bg-gray-100 rounded-lg lg:hidden"
-                  >
-                    <Menu size={24} />
-                  </button>
-                )}
-                <div>
-                  <h1 className="text-xl lg:text-2xl font-bold text-gray-800">
-                    日本留学考学助手
-                  </h1>
-                  <p className="text-xs lg:text-sm text-gray-500">
-                    {user.role === 'teacher' ? '老师管理端' :
-                     user.role === 'admin' ? '管理员端' : '学生查看端'}
-                  </p>
-                </div>
-              </div>
+    <div className="min-h-screen themed-bg noise-overlay" style={backgroundStyle}>
+      {/* 背景光斑装饰层 */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="animate-glow-float absolute rounded-full opacity-30" style={{
+          width: '40vw', height: '40vw', top: '10%', left: '5%',
+          background: `radial-gradient(circle, ${isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)'}, transparent 70%)`,
+          filter: 'blur(60px)',
+        }} />
+        <div className="animate-glow-float-slow absolute rounded-full opacity-25" style={{
+          width: '35vw', height: '35vw', bottom: '15%', right: '10%',
+          background: `radial-gradient(circle, ${isDark ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.06)'}, transparent 70%)`,
+          filter: 'blur(50px)',
+        }} />
+        <div className="animate-glow-float absolute rounded-full opacity-20" style={{
+          width: '25vw', height: '25vw', top: '60%', left: '50%',
+          background: `radial-gradient(circle, ${isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.05)'}, transparent 70%)`,
+          filter: 'blur(40px)',
+          animationDelay: '3s',
+        }} />
+      </div>
 
-              <div className="flex items-center gap-2 lg:gap-4">
-                {/* 通知按钮 */}
-                <button className="p-2 hover:bg-gray-100 rounded-lg relative">
-                  <Bell size={20} />
-                  {filteredEvents.filter(e => e.urgent).length > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                  )}
-                </button>
-
-                {(user.role === 'teacher' || user.role === 'admin') && (
-                  <button
-                    onClick={() => setShowStudentList(true)}
-                    className={`p-2 ${user.role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-purple-50 text-purple-600'} rounded-lg hover:opacity-80`}
-                  >
-                    <Users size={20} />
-                  </button>
-                )}
-
-                {/* 用户菜单 */}
-                <div className="relative group">
-                  <button className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg">
-                    <div className="text-2xl">{currentStudent.avatar}</div>
-                    {!isMobile && (
-                      <>
-                        <span className="font-medium">{user.name}</span>
-                        <ChevronDown size={16} />
-                      </>
-                    )}
-                  </button>
-
-                  {/* 下拉菜单 */}
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                    <div className="p-3 border-b">
-                      <div className="text-sm font-medium">{user.name}</div>
-                      <div className="text-xs text-gray-500">{user.email}</div>
-                      {user.role === 'student' && (
-                        <div className="text-xs text-gray-500">学号: {user.studentId}</div>
-                      )}
-                    </div>
-                    {user.role === 'admin' && (
-                      <>
-                        <button
-                          onClick={() => setShowAccountManagementModal(true)}
-                          className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                        >
-                          <Shield size={16} />
-                          账号管理
-                        </button>
-                        <button
-                          onClick={() => setShowAddTeacherModal(true)}
-                          className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-purple-600"
-                        >
-                          <UserPlus size={16} />
-                          添加老师
-                        </button>
-                      </>
-                    )}
-                    {user.role === 'teacher' && (
-                      <button
-                        onClick={() => { setShowSettingsModal(true); setSettingsModalInitTab('security'); }}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-blue-600"
-                      >
-                        <Lock size={16} />
-                        修改密码
-                      </button>
-                    )}
-                    <button
-                      onClick={() => { setShowSettingsModal(true); setSettingsModalInitTab('profile'); }}
-                      className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <Settings size={16} />
-                      设置
-                    </button>
-                    <button
-                      onClick={onLogout}
-                      className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                    >
-                      <LogOut size={16} />
-                      退出登录
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 角色提示 */}
-            <div className={`mt-3 p-2 rounded-lg flex items-center gap-2 ${
-              user.role === 'teacher' ? 'bg-purple-50 text-purple-700' :
-              user.role === 'admin' ? 'bg-red-50 text-red-700' :
-              'bg-blue-50 text-blue-700'
-            }`}>
-              <Shield size={16} />
-              <span className="text-sm">
-                您当前以{user.role === 'teacher' ? '老师' :
-                        user.role === 'admin' ? '管理员' : '学生'}身份登录
-                {(user.role === 'teacher' || user.role === 'admin') && currentStudent.name !== user.name && ` · 正在查看学生: ${currentStudent.name}`}
-              </span>
-            </div>
+      {/* Header - 玻璃拟态固定顶栏 */}
+      <div className={`fixed top-0 left-0 right-0 z-40 h-14 ${glassEnabled ? 'glass-heavy' : ''}`}
+        style={glassEnabled ? {} : {
+          backgroundColor: isDark ? 'rgba(15,15,35,0.95)' : 'rgba(255,255,255,0.95)',
+          borderBottom: `1px solid ${tokens.colors.border.subtle}`,
+        }}>
+        <div className="h-full px-4 lg:px-6 flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-3">
+            {isMobile && (
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: tokens.colors.text.secondary }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <Menu size={22} />
+              </button>
+            )}
+            <h1 className="text-base lg:text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+              留学考学助手
+            </h1>
+            <span className="hidden sm:inline-block text-xs pl-3 ml-1" style={{
+              color: tokens.colors.text.muted,
+              borderLeft: `1px solid ${tokens.colors.border.subtle}`,
+            }}>
+              {user.role === 'teacher' ? '老师端' :
+               user.role === 'admin' ? '管理端' : '学生端'}
+            </span>
           </div>
 
-          {/* Desktop Tabs */}
-          {!isMobile && (
-            <div className="px-4 lg:px-6">
-              <div className="flex gap-1">
-                {tabs.map(tab => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-2 px-4 py-3 font-medium transition-all relative
-                        ${isActive
-                          ? user.role === 'teacher'
-                            ? 'text-purple-600'
-                            : 'text-blue-600'
-                          : 'text-gray-600 hover:text-gray-900'
-                        }
-                        ${isActive ? 'tab-active' : ''}`}
-                    >
-                      <Icon size={18} />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
+          <div className="flex items-center gap-1.5 lg:gap-2">
+            {/* 当前查看学生提示 */}
+            {(user.role === 'teacher' || user.role === 'admin') && activeTab === 'profile' && currentStudent.name !== user.name && (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 text-xs">
+                <Eye size={13} />
+                <span>查看: {currentStudent.name}</span>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* 主题切换按钮 */}
+            <button
+              onClick={() => toggleMode()}
+              className="p-2 rounded-lg transition-all"
+              style={{ color: tokens.colors.text.muted }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title={resolvedMode === 'dark' ? '切换为浅色' : '切换为深色'}
+            >
+              {resolvedMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            {/* 外观自定义按钮 */}
+            <button
+              onClick={() => setShowThemeCustomizer(true)}
+              className="p-2 rounded-lg transition-all"
+              style={{ color: tokens.colors.text.muted }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title="外观设置"
+            >
+              <Palette size={18} />
+            </button>
+
+            {/* 通知按钮 */}
+            <button className="p-2 rounded-lg relative transition-all"
+              style={{ color: tokens.colors.text.muted }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <Bell size={18} />
+              {filteredEvents.filter(e => e.urgent).length > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+              )}
+            </button>
+
+            {(user.role === 'teacher' || user.role === 'admin') && (
+              <button
+                onClick={() => setShowStudentList(true)}
+                className="p-2 rounded-lg transition-all"
+                style={{ color: tokens.colors.text.muted }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                title="学生列表"
+              >
+                <Users size={18} />
+              </button>
+            )}
+
+            {/* 管理员生成测试数据按钮 */}
+            {user.role === 'admin' && (
+              <button
+                onClick={() => {
+                  if (window.confirm('⚠️ 这将覆盖现有的学生和申请数据，确定生成测试数据？')) {
+                    logAction(LOG_CATEGORIES.DATA, '生成测试数据');
+                    generateTestData();
+                    window.location.reload();
+                  }
+                }}
+                className="p-2 rounded-lg transition-all"
+                style={{ color: tokens.colors.text.muted }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                title="生成测试数据"
+              >
+                <Download size={18} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Mobile Sidebar */}
+      <div className="flex pt-14 relative z-10">
+      {/* Desktop Sidebar - 玻璃拟态侧边栏 */}
+      {!isMobile && (
+        <div className={`fixed top-14 left-0 bottom-0 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-56'}`}
+          style={{
+            background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
+            backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+            borderRight: `1px solid ${tokens.colors.border.hairline}`,
+          }}>
+          {/* 导航菜单 */}
+          <div className="flex-1 pt-2 pb-2 overflow-y-auto">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const activeColors = {
+                admin: { border: tokens.colors.accent.danger, bg: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' },
+                teacher: { border: tokens.colors.accent.secondary, bg: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' },
+                student: { border: tokens.colors.accent.primary, bg: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' },
+              };
+              const ac = activeColors[user.role] || activeColors.student;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setShowSidebarUserMenu(false); }}
+                  title={sidebarCollapsed ? tab.label : ''}
+                  className={`w-full flex items-center gap-3 transition-all ${
+                    sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2'
+                  }`}
+                  style={{
+                    color: isActive ? tokens.colors.text.primary : tokens.colors.text.muted,
+                    fontWeight: isActive ? 600 : 400,
+                    background: isActive ? ac.bg : 'transparent',
+                    ...(isActive ? {
+                      borderLeft: `3px solid ${ac.border}`,
+                      paddingLeft: sidebarCollapsed ? undefined : '13px',
+                    } : {}),
+                  }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Icon size={sidebarCollapsed ? 20 : 17} />
+                  {!sidebarCollapsed && <span className="text-[13px]">{tab.label}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 侧边栏底部 - 头像菜单 + 折叠按钮 */}
+          <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="relative">
+            {!sidebarCollapsed ? (
+              <button
+                onClick={() => setShowSidebarUserMenu(!showSidebarUserMenu)}
+                className="w-full p-3 flex items-center gap-2 transition text-left"
+                style={{ color: tokens.colors.text.secondary }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                  {user.name?.charAt(0) || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
+                  <div className="text-[10px] truncate" style={{ color: tokens.colors.text.muted }}>
+                    {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
+                  </div>
+                </div>
+                <ChevronDown size={12} style={{ color: tokens.colors.text.muted }} className={`transition-transform ${showSidebarUserMenu ? 'rotate-180' : ''}`} />
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowSidebarUserMenu(!showSidebarUserMenu)}
+                className="w-full flex justify-center py-3 transition"
+                title={user.name}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                  {user.name?.charAt(0) || '?'}
+                </div>
+              </button>
+            )}
+
+            {/* 折叠/展开按钮 - 放在底部 */}
+            <div className={`flex ${sidebarCollapsed ? 'justify-center' : 'justify-end'} px-2 py-1.5`}
+              style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }}>
+              <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-1.5 rounded-md transition"
+                style={{ color: tokens.colors.text.muted }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
+                {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
+            </div>
+
+            {/* 头像弹出菜单 */}
+            {showSidebarUserMenu && (
+              <div className={`absolute bottom-full mb-1 rounded-xl overflow-hidden z-50 animate-fade-in ${sidebarCollapsed ? 'left-2 w-56' : 'left-2 right-2'}`}
+                style={{
+                  background: isDark ? 'rgba(30,30,60,0.92)' : 'rgba(255,255,255,0.95)',
+                  backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                  border: `1px solid ${tokens.colors.border.hairline}`,
+                  boxShadow: isDark ? '0 12px 40px rgba(0,0,0,0.4)' : '0 12px 40px rgba(0,0,0,0.12)',
+                }}>
+                {/* 用户信息区 */}
+                <div className="p-3" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm"
+                      style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                      {user.name?.charAt(0) || '?'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
+                      <div className="text-[11px] truncate" style={{ color: tokens.colors.text.muted }}>{user.email}</div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          user.role === 'admin' ? 'bg-red-100 text-red-600' :
+                          user.role === 'teacher' ? 'bg-purple-100 text-purple-600' :
+                          'bg-blue-100 text-blue-600'
+                        }`} style={isDark ? {
+                          background: user.role === 'admin' ? 'rgba(239,68,68,0.15)' :
+                                     user.role === 'teacher' ? 'rgba(139,92,246,0.15)' : 'rgba(99,102,241,0.15)',
+                          color: user.role === 'admin' ? '#f87171' :
+                                 user.role === 'teacher' ? '#a78bfa' : '#818cf8',
+                        } : {}}>
+                          {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
+                        </span>
+                        {user.studentId && <span className="text-[10px]" style={{ color: tokens.colors.text.muted }}>学号: {user.studentId}</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* 菜单选项 */}
+                <div className="py-1">
+                  <button
+                    onClick={() => { setShowSidebarUserMenu(false); setShowSettingsModal(true); setSettingsModalInitTab(null); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                    style={{ color: tokens.colors.text.secondary }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Settings size={16} style={{ color: tokens.colors.text.muted }} /> 设置
+                  </button>
+                  <button
+                    onClick={() => { setShowSidebarUserMenu(false); setShowThemeCustomizer(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                    style={{ color: tokens.colors.text.secondary }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Palette size={16} style={{ color: tokens.colors.text.muted }} /> 外观设置
+                  </button>
+                  {(user.role === 'teacher' || user.role === 'student') && (
+                    <button
+                      onClick={() => { setShowSidebarUserMenu(false); setShowSettingsModal(true); setSettingsModalInitTab('security'); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                      style={{ color: tokens.colors.text.secondary }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Lock size={16} style={{ color: tokens.colors.text.muted }} /> 修改密码
+                    </button>
+                  )}
+                  {user.role === 'admin' && (
+                    <button
+                      onClick={() => { setShowSidebarUserMenu(false); setShowAccountManagementModal(true); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                      style={{ color: tokens.colors.accent.danger }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Shield size={16} /> 账号管理
+                    </button>
+                  )}
+                  <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="my-1" />
+                  <button
+                    onClick={() => { setShowSidebarUserMenu(false); onLogout(); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                    style={{ color: tokens.colors.accent.danger }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <LogOut size={16} /> 退出登录
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {isMobile && showMobileMenu && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-black bg-opacity-50 animate-fade-in" onClick={() => setShowMobileMenu(false)} />
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white animate-slide-in-left">
-            <div className={`p-4 bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-600' : 'from-blue-500 to-purple-600'} text-white`}>
-              <h2 className="text-xl font-bold">菜单</h2>
+          <div className="fixed inset-0 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }} onClick={() => setShowMobileMenu(false)} />
+          <div className="relative flex-1 flex flex-col max-w-xs w-full animate-slide-in-left"
+            style={{
+              background: isDark ? 'rgba(20,20,45,0.95)' : 'rgba(255,255,255,0.95)',
+              backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+            }}>
+            <div className="p-4" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <h2 className="text-base font-semibold" style={{ color: tokens.colors.text.primary }}>菜单</h2>
             </div>
             <div className="flex-1 py-4">
               {tabs.map(tab => {
@@ -3683,11 +4011,13 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                       setActiveTab(tab.id);
                       setShowMobileMenu(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-6 py-3 transition
-                      ${isActive
-                        ? `${user.role === 'teacher' ? 'bg-purple-50 text-purple-600 border-r-4 border-purple-600' : 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'}`
-                        : 'text-gray-600 hover:bg-gray-50'
-                      }`}
+                    className={`w-full flex items-center gap-3 px-6 py-3 transition`}
+                    style={{
+                      color: isActive ? tokens.colors.text.primary : tokens.colors.text.muted,
+                      fontWeight: isActive ? 600 : 400,
+                      background: isActive ? (isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)') : 'transparent',
+                      borderLeft: isActive ? `3px solid ${tokens.colors.accent.primary}` : '3px solid transparent',
+                    }}
                   >
                     <Icon size={20} />
                     <span className="font-medium">{tab.label}</span>
@@ -3700,19 +4030,84 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       )}
 
       {/* Content Area */}
-      <div className={`max-w-7xl mx-auto px-4 lg:px-6 py-6 lg:py-8 ${isMobile ? 'pb-24' : ''}`}>
+      <div className={`flex-1 transition-all duration-300 relative z-10 ${!isMobile ? (sidebarCollapsed ? 'ml-16' : 'ml-56') : ''}`}
+        onClick={() => showSidebarUserMenu && setShowSidebarUserMenu(false)}>
+      <div className={`max-w-7xl mx-auto px-4 lg:px-5 py-5 lg:py-6 ${isMobile ? 'pb-24' : ''}`}>
         <div key={activeTab} className="page-transition">
-        {activeTab === 'timeline' && <TimelineView />}
-        {activeTab === 'schools' && <SchoolsView />}
-        {activeTab === 'checklist' && <ChecklistView />}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            user={user}
+            studentList={studentList}
+            events={filteredEvents}
+            schools={schools}
+            checklist={checklist}
+            getVisibleStudents={getVisibleStudents}
+            getTeacherList={getTeacherList}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onSelectStudent={(student) => {
+              setCurrentStudent({
+                ...student,
+                targetCountry: '日本',
+                targetLevel: student.targetLevel || '修士',
+                email: student.email || `${student.name.toLowerCase()}@example.com`
+              });
+              setActiveTab('profile');
+            }}
+            onViewAllStudents={() => setActiveTab('students')}
+          />
+        )}
+        {activeTab === 'timeline' && (
+          user.role === 'admin' && !adminHasOwnStudents ? (
+            <AdminPublicView
+              type="timeline"
+              onNavigate={(tab) => setActiveTab(tab)}
+              onSelectStudent={() => setActiveTab('students')}
+            />
+          ) : <TimelineView />
+        )}
+        {activeTab === 'schools' && (
+          user.role === 'admin' && !adminHasOwnStudents ? (
+            <AdminPublicView
+              type="schools"
+              onNavigate={(tab) => setActiveTab(tab)}
+              onSelectStudent={() => setActiveTab('students')}
+            />
+          ) : <SchoolsView />
+        )}
+        {activeTab === 'checklist' && (
+          user.role === 'admin' && !adminHasOwnStudents ? (
+            <AdminPublicView
+              type="checklist"
+              onNavigate={(tab) => setActiveTab(tab)}
+              onSelectStudent={() => setActiveTab('students')}
+            />
+          ) : <ChecklistView />
+        )}
         {activeTab === 'profile' && (
           <StudentProfile
             student={currentStudent}
             studentData={currentStudentData}
-            onBack={() => setActiveTab('timeline')}
+            onBack={() => setActiveTab(user.role !== 'student' ? 'dashboard' : 'timeline')}
             onUpdate={(updated) => {
               setCurrentStudent(prev => ({...prev, ...updated}));
             }}
+          />
+        )}
+        {activeTab === 'students' && (
+          <StudentListPage
+            user={user}
+            getVisibleStudents={getVisibleStudents}
+            getTeacherList={getTeacherList}
+            onSelectStudent={(student) => {
+              setCurrentStudent({
+                ...student,
+                targetCountry: '日本',
+                targetLevel: student.targetLevel || '修士',
+                email: student.email || `${student.name.toLowerCase()}@example.com`
+              });
+              setActiveTab('profile');
+            }}
+            onAddStudent={() => setShowAddStudentModal(true)}
           />
         )}
         {activeTab === 'teachers' && <TeacherManagement />}
@@ -3726,10 +4121,19 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         )}
         </div>
       </div>
+      </div>
+      </div>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation - 玻璃拟态 */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-30">
+        <div className="fixed bottom-0 left-0 right-0 z-30"
+          style={{
+            background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
+            backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
+            borderTop: `1px solid ${tokens.colors.border.hairline}`,
+            boxShadow: isDark ? '0 -4px 20px rgba(0,0,0,0.3)' : '0 -4px 20px rgba(0,0,0,0.06)',
+          }}>
           <div className="flex justify-around py-2">
             {tabs.slice(0, 4).map(tab => {
               const Icon = tab.icon;
@@ -3738,13 +4142,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition ${
-                    isActive
-                      ? user.role === 'teacher'
-                        ? 'text-purple-600 bg-purple-50'
-                        : 'text-blue-600 bg-blue-50'
-                      : 'text-gray-500 hover:bg-gray-100'
-                  }`}
+                  className="flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition"
+                  style={{
+                    color: isActive ? tokens.colors.accent.primary : tokens.colors.text.muted,
+                    background: isActive ? (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)') : 'transparent',
+                  }}
                 >
                   <Icon size={22} />
                   <span className="text-[10px] mt-0.5 font-medium">{tab.label}</span>
@@ -3754,13 +4156,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             {tabs.length > 4 && (
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className={`flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition ${
-                  tabs.slice(4).some(t => t.id === activeTab)
-                    ? user.role === 'teacher'
-                      ? 'text-purple-600 bg-purple-50'
-                      : 'text-blue-600 bg-blue-50'
-                    : 'text-gray-500 hover:bg-gray-100'
-                }`}
+                className="flex flex-col items-center justify-center p-2 rounded-lg flex-1 transition"
+                style={{
+                  color: tabs.slice(4).some(t => t.id === activeTab) ? tokens.colors.accent.primary : tokens.colors.text.muted,
+                  background: tabs.slice(4).some(t => t.id === activeTab) ? (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)') : 'transparent',
+                }}
               >
                 <Menu size={22} />
                 <span className="text-[10px] mt-0.5 font-medium">更多</span>
@@ -3769,6 +4169,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           </div>
         </div>
       )}
+
+      {/* Theme Customizer */}
+      {showThemeCustomizer && <ThemeCustomizer onClose={() => setShowThemeCustomizer(false)} />}
 
       {/* Modals */}
       {showStudentList && <StudentListModal />}
@@ -3781,25 +4184,210 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       {showAddTeacherModal && <AddTeacherModal />}
       {showChangePasswordModal && <ChangePasswordModal />}
 
+      {/* 学生端学校详情弹窗 */}
+      {schoolDetailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSchoolDetailModal(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="relative">
+              <div className={`p-6 rounded-t-2xl text-white bg-gradient-to-r ${
+                schoolDetailModal.type === '国立' ? 'from-blue-500 to-blue-700' :
+                schoolDetailModal.type === '公立' ? 'from-green-500 to-green-700' :
+                'from-orange-500 to-orange-700'
+              }`}>
+                <button onClick={() => setSchoolDetailModal(null)}
+                  className="absolute top-4 right-4 p-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition">
+                  <X size={18} />
+                </button>
+                <h3 className="text-2xl font-bold mb-1">{schoolDetailModal.name}</h3>
+                <div className="flex items-center gap-2 text-white/80 text-sm">
+                  <span className="px-2 py-0.5 bg-white/20 rounded-full">{schoolDetailModal.type}</span>
+                  <span>{schoolDetailModal.program}</span>
+                </div>
+                <div className="mt-3">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    schoolDetailModal.status === 'admitted' ? 'bg-yellow-400 text-yellow-900' :
+                    schoolDetailModal.status === 'submitted' ? 'bg-purple-400 text-purple-900' :
+                    schoolDetailModal.status === 'contacted' ? 'bg-green-400 text-green-900' :
+                    'bg-blue-400 text-blue-900'
+                  }`}>
+                    {getStatusText(schoolDetailModal.status)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* 重要日期 */}
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Calendar size={16} /> 重要日期</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {schoolDetailModal.applicationStartDate && (
+                      <div className="bg-green-50 p-3 rounded-lg">
+                        <div className="text-xs text-gray-500">出愿开始</div>
+                        <div className="font-semibold text-sm">{schoolDetailModal.applicationStartDate}</div>
+                      </div>
+                    )}
+                    {schoolDetailModal.applicationEndDate && (
+                      <div className="bg-orange-50 p-3 rounded-lg">
+                        <div className="text-xs text-gray-500">出愿截止</div>
+                        <div className="font-semibold text-sm">{schoolDetailModal.applicationEndDate}</div>
+                      </div>
+                    )}
+                    {schoolDetailModal.examDate && (
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <div className="text-xs text-gray-500">考试日期</div>
+                        <div className="font-semibold text-sm">{schoolDetailModal.examDate}</div>
+                      </div>
+                    )}
+                    {schoolDetailModal.resultDate && (
+                      <div className="bg-purple-50 p-3 rounded-lg">
+                        <div className="text-xs text-gray-500">合格发表</div>
+                        <div className="font-semibold text-sm">{schoolDetailModal.resultDate}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 材料准备进度 */}
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><CheckSquare size={16} /> 材料准备</h4>
+                  {(() => {
+                    const progress = calculateSchoolProgress(schoolDetailModal.name);
+                    return (
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-500">{progress.completed}/{progress.total} 完成</span>
+                          <span className="font-bold">{progress.percentage}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2.5 rounded-full transition-all"
+                            style={{ width: `${progress.percentage}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 募集要项链接 */}
+                {schoolDetailModal.requirementsUrl && (
+                  <a href={schoolDetailModal.requirementsUrl} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm font-medium">
+                    <BookOpen size={18} /> 查看募集要项 <ExternalLink size={14} className="ml-auto" />
+                  </a>
+                )}
+
+                {/* 提交材料 */}
+                {schoolDetailModal.materials && schoolDetailModal.materials.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><FileText size={16} /> 需提交材料</h4>
+                    <div className="space-y-2">
+                      {schoolDetailModal.materials.map((m, i) => (
+                        <div key={i} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg text-sm">
+                          <span>{m.name}</span>
+                          <span className="text-xs text-gray-400">截止: {m.deadline}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 设置弹窗 */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10 rounded-t-2xl">
               <h3 className="font-bold text-lg">设置</h3>
               <button onClick={() => { setShowSettingsModal(false); setSettingsModalInitTab(null); }}
                 className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
             </div>
-            <div className="p-0">
-              <SettingsPage
-                user={user}
-                allUsers={allUsers}
-                setAllUsers={setAllUsers}
-                onLogout={onLogout}
-                initTab={settingsModalInitTab}
-                onInitTabConsumed={() => setSettingsModalInitTab(null)}
-              />
-            </div>
+            {/* 如果没有指定初始 tab，则显示一览页面 */}
+            {!settingsModalInitTab ? (
+              <div className="p-6">
+                <p className="text-sm text-gray-500 mb-4">选择要修改的设置项目</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setSettingsModalInitTab('profile')}
+                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-blue-300 hover:bg-blue-50/50 transition text-left group"
+                  >
+                    <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition">
+                      <User size={20} className="text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800 text-sm">个人信息</div>
+                      <div className="text-xs text-gray-400">姓名、邮箱、电话、住址等</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setSettingsModalInitTab('security')}
+                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-orange-300 hover:bg-orange-50/50 transition text-left group"
+                  >
+                    <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition">
+                      <Lock size={20} className="text-orange-600" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800 text-sm">安全设置</div>
+                      <div className="text-xs text-gray-400">修改登录密码</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setShowSettingsModal(false); setShowThemeCustomizer(true); }}
+                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition text-left group"
+                  >
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition">
+                      <Palette size={20} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800 text-sm">外观设置</div>
+                      <div className="text-xs text-gray-400">主题、背景、玻璃效果、动效</div>
+                    </div>
+                  </button>
+                  {user.role === 'admin' && (
+                    <>
+                      <button
+                        onClick={() => setSettingsModalInitTab('analytics')}
+                        className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-green-300 hover:bg-green-50/50 transition text-left group"
+                      >
+                        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition">
+                          <BarChart3 size={20} className="text-green-600" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-gray-800 text-sm">数据统计</div>
+                          <div className="text-xs text-gray-400">学生、学校、老师数据概览</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setSettingsModalInitTab('logs')}
+                        className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-purple-300 hover:bg-purple-50/50 transition text-left group"
+                      >
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition">
+                          <FileText size={20} className="text-purple-600" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-gray-800 text-sm">系统日志</div>
+                          <div className="text-xs text-gray-400">查看操作日志和系统事件</div>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-0">
+                <SettingsPage
+                  user={user}
+                  allUsers={allUsers}
+                  setAllUsers={setAllUsers}
+                  onLogout={onLogout}
+                  initTab={settingsModalInitTab}
+                  onInitTabConsumed={() => {}}
+                  studentList={studentList}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3847,17 +4435,25 @@ const JapanStudyApp = () => {
         name: '李老师',
         createdAt: new Date().toISOString()
       },
-      // 学生账号（已注册的）
+      {
+        id: 'teacher3',
+        email: 'zhang@school.com',
+        password: 'zhang123',
+        role: 'teacher',
+        teacherId: 'teacher_3',
+        name: '张老师',
+        createdAt: new Date().toISOString()
+      },
+      // 学生账号
       {
         id: 'student1',
-        email: 'zhangsan@example.com',
-        password: 'zhang123',
+        email: 'zhangsan@student.jsa.com',
+        password: 'stu2024001',
         role: 'student',
         studentId: '2024001',
         name: '张三',
         createdAt: new Date().toISOString()
-      }
-    ];
+      },    ];
   });
 
   // 学生列表数据 - 包含学生的详细信息
@@ -3905,6 +4501,7 @@ const JapanStudyApp = () => {
 
   return (
     <ErrorBoundary>
+      <ThemeProvider>
       <AppProvider>
         {user ? (
           <MainApp user={user} onLogout={handleLogout} allUsers={allUsers} setAllUsers={setAllUsers} studentList={studentList} setStudentList={setStudentList} />
@@ -3912,6 +4509,7 @@ const JapanStudyApp = () => {
           <AuthPage onLogin={handleLogin} allUsers={allUsers} studentList={studentList} />
         )}
       </AppProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };
