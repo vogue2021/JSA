@@ -17,8 +17,15 @@ const StudentListPage = ({
   const visibleStudents = getVisibleStudents ? getVisibleStudents() : [];
   const teachers = getTeacherList ? getTeacherList() : [];
 
+  // 获取学管老师名称
+  const getAdvisorName = (student) => {
+    if (!student.academicAdvisorId) return null;
+    return teachers.find(t => (t.id || t.teacherId) === student.academicAdvisorId)?.name || null;
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('all');
+  const [filterTeacherType, setFilterTeacherType] = useState('shengxue'); // shengxue | xueguan
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all'); // all | assigned | unassigned
   const [viewMode, setViewMode] = useState('card'); // card | table
@@ -59,9 +66,17 @@ const StudentListPage = ({
       // 按老师筛选
       if (filterTeacher !== 'all') {
         if (filterTeacher === 'unassigned') {
-          if (s.teacherId && s.teacherId !== 'unassigned') return false;
+          if (filterTeacherType === 'shengxue') {
+            if (s.teacherId && s.teacherId !== 'unassigned') return false;
+          } else {
+            if (s.academicAdvisorId) return false;
+          }
         } else {
-          if (s.teacherId !== filterTeacher) return false;
+          if (filterTeacherType === 'shengxue') {
+            if (s.teacherId !== filterTeacher) return false;
+          } else {
+            if (s.academicAdvisorId !== filterTeacher) return false;
+          }
         }
       }
       // 按文理科筛选
@@ -130,29 +145,35 @@ const StudentListPage = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* 标题栏 */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="glass-panel p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-themed-secondary">
+          <h2 className="text-xl lg:text-2xl font-bold mb-1" style={{ color: tokens.colors.text.primary }}>学生管理</h2>
+          <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
             共 {stats.total} 名学生
-            {stats.unassigned > 0 && <span className="text-orange-500 ml-2">· {stats.unassigned} 人待分配</span>}
-            {stats.withUrgent > 0 && <span className="text-red-500 ml-2">· {stats.withUrgent} 人有紧急事项</span>}
+            {stats.unassigned > 0 && <span style={{ color: '#f97316' }} className="ml-2">· {stats.unassigned} 人待分配</span>}
+            {stats.withUrgent > 0 && <span style={{ color: '#ef4444' }} className="ml-2">· {stats.withUrgent} 人有紧急事项</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {/* 视图切换 */}
-          <div className="flex border rounded-lg overflow-hidden">
+          <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
             <button onClick={() => setViewMode('card')}
-              className={`p-2 ${viewMode === 'card' ? 'bg-blue-50 text-blue-600' : 'text-themed-muted hover:bg-themed-elevated'}`}>
+              className="p-2 transition"
+              style={{ background: viewMode === 'card' ? (isDark ? 'rgba(99,102,241,0.15)' : 'rgba(59,130,246,0.1)') : 'transparent', color: viewMode === 'card' ? tokens.colors.accent.primary : tokens.colors.text.muted }}>
               <LayoutGrid size={18} />
             </button>
             <button onClick={() => setViewMode('table')}
-              className={`p-2 ${viewMode === 'table' ? 'bg-blue-50 text-blue-600' : 'text-themed-muted hover:bg-themed-elevated'}`}>
+              className="p-2 transition"
+              style={{ background: viewMode === 'table' ? (isDark ? 'rgba(99,102,241,0.15)' : 'rgba(59,130,246,0.1)') : 'transparent', color: viewMode === 'table' ? tokens.colors.accent.primary : tokens.colors.text.muted }}>
               <LayoutList size={18} />
             </button>
           </div>
           {onAddStudent && (
             <button onClick={onAddStudent}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-medium">
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg transition text-sm font-medium"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
               <Plus size={16} /> 添加学生
             </button>
           )}
@@ -160,7 +181,7 @@ const StudentListPage = ({
       </div>
 
       {/* 搜索和筛选 */}
-      <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-4">
+      <div className="glass-panel p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           {/* 搜索框 */}
           <div className="relative flex-1">
@@ -173,16 +194,30 @@ const StudentListPage = ({
               className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
-          {/* 老师筛选 */}
+          {/* 老师类型切换 + 老师筛选 */}
           {user.role === 'admin' && (
-            <select value={filterTeacher} onChange={(e) => setFilterTeacher(e.target.value)}
-              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
-              <option value="all">所有老师</option>
-              {teachers.map(t => (
-                <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>
-              ))}
-              <option value="unassigned">待分配</option>
-            </select>
+            <div className="flex items-center gap-1">
+              <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
+                <button onClick={() => { setFilterTeacherType('shengxue'); setFilterTeacher('all'); }}
+                  className="px-2.5 py-2 text-xs transition font-medium"
+                  style={{ background: filterTeacherType === 'shengxue' ? (isDark ? 'rgba(99,102,241,0.15)' : 'rgba(59,130,246,0.1)') : 'transparent', color: filterTeacherType === 'shengxue' ? tokens.colors.accent.primary : tokens.colors.text.muted }}>
+                  升学
+                </button>
+                <button onClick={() => { setFilterTeacherType('xueguan'); setFilterTeacher('all'); }}
+                  className="px-2.5 py-2 text-xs transition font-medium"
+                  style={{ background: filterTeacherType === 'xueguan' ? (isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)') : 'transparent', color: filterTeacherType === 'xueguan' ? '#22c55e' : tokens.colors.text.muted }}>
+                  学管
+                </button>
+              </div>
+              <select value={filterTeacher} onChange={(e) => setFilterTeacher(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                <option value="all">{filterTeacherType === 'shengxue' ? '所有升学老师' : '所有学管老师'}</option>
+                {teachers.map(t => (
+                  <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>
+                ))}
+                <option value="unassigned">待分配</option>
+              </select>
+            </div>
           )}
           {/* 文理科筛选 */}
           <select value={filterSubject} onChange={(e) => setFilterSubject(e.target.value)}
@@ -195,22 +230,42 @@ const StudentListPage = ({
       </div>
 
       {/* 概况统计条 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-themed-surface rounded-lg border p-3 text-center">
-          <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-          <div className="text-xs text-themed-secondary">学生总数</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }}>
+              <Users size={18} style={{ color: '#3b82f6' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>学生总数</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{stats.total}</div>
         </div>
-        <div className="bg-themed-surface rounded-lg border p-3 text-center">
-          <div className="text-2xl font-bold text-green-600">{stats.avgProgress}%</div>
-          <div className="text-xs text-themed-secondary">平均进度</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }}>
+              <GraduationCap size={18} style={{ color: '#22c55e' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>平均进度</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{stats.avgProgress}%</div>
         </div>
-        <div className="bg-themed-surface rounded-lg border p-3 text-center">
-          <div className={`text-2xl font-bold ${stats.unassigned > 0 ? 'text-orange-500' : 'text-themed-muted'}`}>{stats.unassigned}</div>
-          <div className="text-xs text-themed-secondary">待分配</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)' }}>
+              <AlertCircle size={18} style={{ color: '#f97316' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>待分配</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: stats.unassigned > 0 ? '#f97316' : tokens.colors.text.muted }}>{stats.unassigned}</div>
         </div>
-        <div className="bg-themed-surface rounded-lg border p-3 text-center">
-          <div className={`text-2xl font-bold ${stats.withUrgent > 0 ? 'text-red-500' : 'text-themed-muted'}`}>{stats.withUrgent}</div>
-          <div className="text-xs text-themed-secondary">有紧急事项</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' }}>
+              <AlertCircle size={18} style={{ color: '#ef4444' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>有紧急事项</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: stats.withUrgent > 0 ? '#ef4444' : tokens.colors.text.muted }}>{stats.withUrgent}</div>
         </div>
       </div>
 
@@ -224,7 +279,7 @@ const StudentListPage = ({
 
             return (
               <div key={student.id}
-                className="bg-themed-surface rounded-xl border-2 border-themed-subtle hover:border-blue-300 hover:shadow-lg transition cursor-pointer overflow-hidden"
+                className="glass-card cursor-pointer overflow-hidden"
                 onClick={() => onSelectStudent(student)}>
                 <div className="p-4">
                   <div className="flex items-center gap-3 mb-3">
@@ -233,9 +288,13 @@ const StudentListPage = ({
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-themed-primary truncate">{student.name}</span>
                         {student.subject && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                            student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                          }`}>{student.subject}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                            style={{
+                              background: student.subject === '理科'
+                                ? (isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)')
+                                : (isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)'),
+                              color: student.subject === '理科' ? '#3b82f6' : '#f97316',
+                            }}>{student.subject}</span>
                         )}
                       </div>
                       <div className="text-xs text-themed-muted">{student.studentId}</div>
@@ -283,11 +342,18 @@ const StudentListPage = ({
 
                   {/* 底部信息 */}
                   <div className="flex items-center justify-between pt-2" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}` }}>
-                    {user.role === 'admin' && (
-                      <span className="text-xs text-themed-muted">
-                        {teachers.find(t => (t.id || t.teacherId) === student.teacherId)?.name || '待分配'}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {user.role === 'admin' && (
+                        <span className="text-xs text-themed-muted">
+                          升学: {teachers.find(t => (t.id || t.teacherId) === student.teacherId)?.name || '待分配'}
+                        </span>
+                      )}
+                      {getAdvisorName(student) && (
+                        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)', color: isDark ? '#86efac' : '#16a34a' }}>
+                          学管: {getAdvisorName(student)}
+                        </span>
+                      )}
+                    </div>
                     {(student.urgentTasks || 0) > 0 && (
                       <span className="text-xs text-red-500 flex items-center gap-1">
                         <AlertCircle size={12} /> {student.urgentTasks} 紧急
@@ -307,7 +373,7 @@ const StudentListPage = ({
         </div>
       ) : (
         // 表格视图
-        <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle overflow-hidden">
+        <div className="glass-panel overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -328,8 +394,9 @@ const StudentListPage = ({
                   <th className="text-center py-3 px-4 font-medium text-themed-secondary">报考</th>
                   <th className="text-center py-3 px-4 font-medium text-themed-secondary">状态</th>
                   {user.role === 'admin' && (
-                    <th className="text-center py-3 px-4 font-medium text-themed-secondary">负责老师</th>
+                    <th className="text-center py-3 px-4 font-medium text-themed-secondary">升学老师</th>
                   )}
+                  <th className="text-center py-3 px-4 font-medium text-themed-secondary">学管老师</th>
                   <th className="text-center py-3 px-4 font-medium text-themed-secondary cursor-pointer hover:text-themed-primary"
                     onClick={() => toggleSort('urgentTasks')}>
                     <div className="flex items-center justify-center gap-1">紧急 <SortIcon field="urgentTasks" /></div>
@@ -356,9 +423,13 @@ const StudentListPage = ({
                       <td className="py-3 px-4 text-themed-secondary">{student.studentId}</td>
                       <td className="py-3 px-4 text-center">
                         {student.subject ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                          }`}>{student.subject}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full"
+                            style={{
+                              background: student.subject === '理科'
+                                ? (isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)')
+                                : (isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)'),
+                              color: student.subject === '理科' ? '#3b82f6' : '#f97316',
+                            }}>{student.subject}</span>
                         ) : <span className="text-themed-muted">-</span>}
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -373,22 +444,22 @@ const StudentListPage = ({
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {statusSummary.admitted > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' }}>
                               合{statusSummary.admitted}
                             </span>
                           )}
                           {statusSummary.submitted > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: '#a855f7' }}>
                               提{statusSummary.submitted}
                             </span>
                           )}
                           {statusSummary.contacted > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
                               联{statusSummary.contacted}
                             </span>
                           )}
                           {statusSummary.preparing > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
                               备{statusSummary.preparing}
                             </span>
                           )}
@@ -402,6 +473,13 @@ const StudentListPage = ({
                           )}
                         </td>
                       )}
+                      <td className="py-3 px-4 text-center text-xs">
+                        {getAdvisorName(student) ? (
+                          <span style={{ color: isDark ? '#86efac' : '#16a34a' }}>{getAdvisorName(student)}</span>
+                        ) : (
+                          <span className="text-themed-muted">-</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-center">
                         {(student.urgentTasks || 0) > 0 ? (
                           <span className="text-xs text-red-500 font-bold">{student.urgentTasks}</span>

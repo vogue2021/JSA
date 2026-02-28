@@ -30,9 +30,9 @@ import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 
 // 登录注册页面组件
-const AuthPage = ({ onLogin, allUsers, studentList }) => {
+const AuthPage = ({ onLogin, allUsers }) => {
   const { isDark, tokens, backgroundStyle, glassEnabled } = useTheme();
-  // 用户账号数据库
+  // 用户账号数据库（仅用于登录页快速切换，实际登录验证使用allUsers）
   const [users] = useState([
     // 管理员账号
     {
@@ -67,6 +67,22 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
       teacherId: 'teacher_3',
       name: '张老师'
     },
+    {
+      id: 'teacher4',
+      email: 'chen@school.com',
+      password: 'chen123',
+      role: 'teacher',
+      teacherId: 'teacher_4',
+      name: '陈老师'
+    },
+    {
+      id: 'teacher5',
+      email: 'zhao@school.com',
+      password: 'zhao123',
+      role: 'teacher',
+      teacherId: 'teacher_5',
+      name: '赵老师'
+    },
     // 学生账号（已注册的）
     {
       id: 'student1',
@@ -75,52 +91,34 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
       role: 'student',
       studentId: '2024001',
       name: '张三'
+    },
+    {
+      id: 'student2',
+      email: 'lisi@student.jsa.com',
+      password: 'stu2024002',
+      role: 'student',
+      studentId: '2024002',
+      name: '李四'
+    },
+    {
+      id: 'student3',
+      email: 'wangwu@student.jsa.com',
+      password: 'stu2024003',
+      role: 'student',
+      studentId: '2024003',
+      name: '王五'
     }
   ]);
 
-  // 动态获取所有学生记录
-  const getAllStudentRecords = () => {
-    // 如果有传入的studentList，优先使用
-    if (studentList && studentList.length > 0) {
-      return studentList.map(s => ({
-        studentId: s.studentId,
-        name: s.name,
-        hasAccount: allUsers.some(u => u.studentId === s.studentId),
-        teacherId: s.teacherId
-      }));
-    }
-    // 否则返回默认数据
-    return [
-      { studentId: '2024001', name: '张三', hasAccount: true, teacherId: 'teacher_1' },
-      { studentId: '2024002', name: '李四', hasAccount: false, teacherId: 'teacher_1' },
-      { studentId: '2024003', name: '王五', hasAccount: false, teacherId: 'teacher_2' },
-    ];
-  };
-  const [isLogin, setIsLogin] = useState(true);
   const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    confirmPassword: '',
-    name: '',
-    studentId: '',
-    verificationCode: ''
   });
-  const [showVerification, setShowVerification] = useState(false);
   const [errors, setErrors] = useState({});
 
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const handleSendVerificationCode = () => {
-    if (!validateEmail(formData.email)) {
-      setErrors({ email: '请输入有效的邮箱地址' });
-      return;
-    }
-    setShowVerification(true);
-    // 模拟发送验证码
-    alert('验证码已发送到您的邮箱（演示：验证码为 123456）');
   };
 
   const handleSubmit = (e) => {
@@ -133,72 +131,28 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
     if (!formData.password) newErrors.password = '请输入密码';
     else if (formData.password.length < 6) newErrors.password = '密码至少6位';
 
-    if (!isLogin) {
-      // 注册逻辑
-      if (!formData.name) newErrors.name = '请输入姓名';
-      if (userType === 'student') {
-        if (!formData.studentId) {
-          newErrors.studentId = '请输入学号';
-        } else {
-          // 验证学号是否存在且未注册
-          const studentRecord = getAllStudentRecords().find(s => s.studentId === formData.studentId);
-          if (!studentRecord) {
-            newErrors.studentId = '学号不存在，请联系管理员';
-          } else if (studentRecord.hasAccount) {
-            newErrors.studentId = '该学号已被注册';
-          }
-        }
-      }
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = '两次密码输入不一致';
-      }
-      if (!formData.verificationCode) {
-        newErrors.verificationCode = '请输入验证码';
-      } else if (formData.verificationCode !== '123456') {
-        newErrors.verificationCode = '验证码错误';
-      }
+    // 登录逻辑 - 验证密码
+    if (Object.keys(newErrors).length === 0) {
+      const user = allUsers.find(u =>
+        u.email === formData.email &&
+        u.password === formData.password &&
+        u.role === userType
+      );
 
-      if (Object.keys(newErrors).length === 0) {
-        // 注册成功，创建新用户
-        const studentRecord = userType === 'student' ?
-          getAllStudentRecords().find(s => s.studentId === formData.studentId) : null;
-
+      if (user) {
         const userData = {
-          role: userType,
-          name: formData.name,
-          email: formData.email,
-          studentId: userType === 'student' ? formData.studentId : null,
-          teacherId: userType === 'teacher' ? `teacher_${Date.now()}` :
-                     userType === 'student' && studentRecord ? studentRecord.teacherId : null,
-          isAdmin: userType === 'admin'
+          role: user.role,
+          name: user.name,
+          email: user.email,
+          studentId: user.studentId || null,
+          teacherId: user.teacherId || null,
+          isAdmin: user.role === 'admin'
         };
+        logAction(LOG_CATEGORIES.AUTH, `用户登录: ${user.name} (${user.role})`, { email: user.email });
         onLogin(userData);
         return;
-      }
-    } else {
-      // 登录逻辑 - 验证密码
-      if (Object.keys(newErrors).length === 0) {
-        const user = allUsers.find(u =>
-          u.email === formData.email &&
-          u.password === formData.password &&
-          u.role === userType
-        );
-
-        if (user) {
-          const userData = {
-            role: user.role,
-            name: user.name,
-            email: user.email,
-            studentId: user.studentId || null,
-            teacherId: user.teacherId || null,
-            isAdmin: user.role === 'admin'
-          };
-          logAction(LOG_CATEGORIES.AUTH, `用户登录: ${user.name} (${user.role})`, { email: user.email });
-          onLogin(userData);
-          return;
-        } else {
-          newErrors.password = '邮箱或密码错误';
-        }
+      } else {
+        newErrors.password = '邮箱或密码错误';
       }
     }
 
@@ -285,20 +239,19 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
           </div>
         </div>
 
-        {/* 右侧登录/注册表单 */}
+        {/* 右侧登录表单 */}
         <div className="p-8 lg:p-12">
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>
-              {isLogin ? '欢迎回来' : '学生注册'}
+              欢迎回来
             </h2>
             <p style={{ color: tokens.colors.text.secondary }}>
-              {isLogin ? '登录您的账号继续管理留学申请' : '学生使用学号注册账号'}
+              登录您的账号继续管理留学申请
             </p>
           </div>
 
-          {/* 角色选择 - 只在登录页显示 */}
-          {isLogin && (
-            <div className="mb-6">
+          {/* 角色选择 */}
+          <div className="mb-6">
               <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>我是</label>
               <div className="grid grid-cols-3 gap-3">
                 <button
@@ -340,51 +293,10 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
                   <Shield size={20} />
                   <span className="font-medium">管理员</span>
                 </button>
-              </div>
             </div>
-          )}
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <>
-                {/* 注册提示信息 */}
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-700">
-                    <strong>提示：</strong>只有学生可以自主注册账号。老师和管理员账号需由系统管理员创建。
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>姓名</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.name ? 'border-red-500' : ''}`}
-                    style={{ borderColor: errors.name ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                    placeholder="请输入您的姓名"
-                  />
-                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
-                </div>
-
-                {userType === 'student' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>学号</label>
-                    <input
-                      type="text"
-                      value={formData.studentId}
-                      onChange={(e) => setFormData({...formData, studentId: e.target.value})}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                        ${errors.studentId ? 'border-red-500' : ''}`}
-                      style={{ borderColor: errors.studentId ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                      placeholder="请输入学号"
-                    />
-                    {errors.studentId && <p className="text-red-500 text-xs mt-1">{errors.studentId}</p>}
-                  </div>
-                )}
-              </>
-            )}
-
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
               <div className="relative">
@@ -401,32 +313,6 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
               </div>
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
             </div>
-
-            {!isLogin && (
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱验证码</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={formData.verificationCode}
-                    onChange={(e) => setFormData({...formData, verificationCode: e.target.value})}
-                    className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.verificationCode ? 'border-red-500' : ''}`}
-                    style={{ borderColor: errors.verificationCode ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                    placeholder="请输入验证码"
-                    disabled={!showVerification}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSendVerificationCode}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                  >
-                    {showVerification ? '重新发送' : '获取验证码'}
-                  </button>
-                </div>
-                {errors.verificationCode && <p className="text-red-500 text-xs mt-1">{errors.verificationCode}</p>}
-              </div>
-            )}
 
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
@@ -445,73 +331,47 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
             </div>
 
-            {!isLogin && (
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>确认密码</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                  <input
-                    type="password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${errors.confirmPassword ? 'border-red-500' : ''}`}
-                    style={{ borderColor: errors.confirmPassword ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                    placeholder="••••••••"
-                  />
-                </div>
-                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
-              </div>
-            )}
-
             <button
               type="submit"
-              className={`w-full py-3 rounded-lg font-semibold text-white transition flex items-center justify-center gap-2
-                ${userType === 'student' ? 'bg-blue-500 hover:bg-blue-600' :
-                  userType === 'teacher' ? 'bg-purple-500 hover:bg-purple-600' :
-                  'bg-red-500 hover:bg-red-600'}`}
+              className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+              style={{
+                background: userType === 'student'
+                  ? (isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)')
+                  : userType === 'teacher'
+                    ? (isDark ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)')
+                    : (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'),
+                color: userType === 'student' ? '#3b82f6' : userType === 'teacher' ? '#8b5cf6' : '#ef4444',
+                backdropFilter: 'blur(8px)',
+                border: `1px solid ${userType === 'student'
+                  ? (isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.15)')
+                  : userType === 'teacher'
+                    ? (isDark ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.15)')
+                    : (isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.15)')}`,
+              }}
+              onMouseEnter={e => {
+                const alpha = isDark ? 0.25 : 0.18;
+                const rgb = userType === 'student' ? '59,130,246' : userType === 'teacher' ? '139,92,246' : '239,68,68';
+                e.currentTarget.style.background = `rgba(${rgb},${alpha})`;
+              }}
+              onMouseLeave={e => {
+                const alpha = isDark ? 0.15 : 0.1;
+                const rgb = userType === 'student' ? '59,130,246' : userType === 'teacher' ? '139,92,246' : '239,68,68';
+                e.currentTarget.style.background = `rgba(${rgb},${alpha})`;
+              }}
             >
-              {isLogin ? '登录' : '注册'}
+              登录
               <ArrowRight size={20} />
             </button>
           </form>
 
           <div className="mt-6 text-center">
-            {/* 只有学生可以注册 */}
-            {isLogin && userType === 'student' && (
-              <p style={{ color: tokens.colors.text.secondary }}>
-                还没有账号？
-                <button
-                  onClick={() => {
-                    setIsLogin(false);
-                    setErrors({});
-                  }}
-                  className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
-                >
-                  立即注册
-                </button>
-              </p>
-            )}
-            {!isLogin && (
-              <p style={{ color: tokens.colors.text.secondary }}>
-                已有账号？
-                <button
-                  onClick={() => {
-                    setIsLogin(true);
-                    setErrors({});
-                  }}
-                  className="ml-2 text-blue-500 hover:text-blue-600 font-medium"
-                >
-                  立即登录
-                </button>
-              </p>
-            )}
+            <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
+              账号由管理员统一创建，如需账号请联系管理员
+            </p>
           </div>
 
           {/* 测试账号提示 */}
-          {isLogin && (
-            <div className="mt-6 p-4 rounded-xl text-xs" style={{
-              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+            <div className="mt-6 p-4 rounded-xl text-xs" style={{              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
               border: `1px solid ${tokens.colors.border.subtle}`,
               color: tokens.colors.text.secondary,
             }}>
@@ -519,18 +379,25 @@ const AuthPage = ({ onLogin, allUsers, studentList }) => {
               {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
               {userType === 'teacher' && (
                 <>
+                  <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师：</p>
                   <p>王老师: wang@school.com / wang123</p>
                   <p>李老师: li@school.com / li123</p>
+                  <p>张老师: zhang@school.com / zhang123</p>
+                  <p>陈老师: chen@school.com / chen123</p>
+                  <p>赵老师: zhao@school.com / zhao123</p>
+                  <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>学管老师：</p>
+                  <p>高老师: gao@school.com / gao123</p>
+                  <p>林老师: lin@school.com / lin123</p>
                 </>
               )}
               {userType === 'student' && (
                 <>
-                  <p>张三: zhangsan@example.com / zhang123</p>
-                  <p className="mt-1" style={{ color: tokens.colors.text.muted }}>未注册学号: 2024002（李四）</p>
+                  <p>张三: zhangsan@student.jsa.com / stu2024001</p>
+                  <p>李四: lisi@student.jsa.com / stu2024002</p>
+                  <p>王五: wangwu@student.jsa.com / stu2024003</p>
                 </>
               )}
             </div>
-          )}
         </div>
       </div>
     </div>
@@ -782,6 +649,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalInitTab, setSettingsModalInitTab] = useState(null);
   const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
+  const [showChangelogPanel, setShowChangelogPanel] = useState(false);
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
+  const [feedbackType, setFeedbackType] = useState('suggestion');
+  const [feedbackContent, setFeedbackContent] = useState('');
+  const [feedbackContact, setFeedbackContact] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingSchool, setEditingSchool] = useState(null);
   const [editingMaterial, setEditingMaterial] = useState(null);
@@ -807,6 +679,14 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // 登录成功后显示欢迎通知
+  useEffect(() => {
+    if (user && showNotification) {
+      const roleLabel = user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生';
+      showNotification(`欢迎回来，${user.name}（${roleLabel}）`);
+    }
+  }, []); // 只在MainApp首次挂载时触发一次
 
 
   // 老师列表 (动态从allUsers中获取)
@@ -861,7 +741,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     if (user.role === 'admin') {
       return allStudents; // 管理员看到所有学生
     } else if (user.role === 'teacher') {
-      return allStudents.filter(s => s.teacherId === user.teacherId); // 老师只看到自己的学生
+      // 老师看到自己作为升学老师或学管老师负责的学生
+      return allStudents.filter(s => s.teacherId === user.teacherId || s.academicAdvisorId === user.teacherId);
     }
     return []; // 学生不需要看到学生列表
   };
@@ -1044,10 +925,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
   const getStatusColor = (status) => {
     const colors = {
-      preparing: 'bg-blue-100 text-blue-700 border-blue-200',
-      contacted: 'bg-green-100 text-green-700 border-green-200',
-      submitted: 'bg-purple-100 text-purple-700 border-purple-200',
-      admitted: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+      preparing: isDark ? 'bg-[rgba(59,130,246,0.15)] text-blue-400 border-[rgba(59,130,246,0.3)]' : 'bg-blue-100 text-blue-700 border-blue-200',
+      contacted: isDark ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border-[rgba(34,197,94,0.3)]' : 'bg-green-100 text-green-700 border-green-200',
+      submitted: isDark ? 'bg-[rgba(168,85,247,0.15)] text-purple-400 border-[rgba(168,85,247,0.3)]' : 'bg-purple-100 text-purple-700 border-purple-200',
+      admitted: isDark ? 'bg-[rgba(234,179,8,0.15)] text-yellow-400 border-[rgba(234,179,8,0.3)]' : 'bg-yellow-100 text-yellow-700 border-yellow-200',
     };
     return colors[status] || (isDark ? 'bg-[rgba(255,255,255,0.06)] text-gray-300 border-[rgba(255,255,255,0.1)]' : 'bg-gray-100 text-gray-700 border-gray-200');
   };
@@ -1086,6 +967,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const handleDeleteEvent = (eventId) => {
     if (window.confirm('确定要删除这个事项吗？')) {
       setUpcomingEvents(upcomingEvents.filter(e => e.id !== eventId));
+      if (showNotification) showNotification('事项已删除');
     }
   };
 
@@ -1108,6 +990,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           delete newChecklist.schoolSpecific[schoolToDelete.name];
           setChecklist(newChecklist);
         }
+        if (showNotification) showNotification(`已删除学校: ${schoolToDelete.name}`);
       }
     }
   };
@@ -1124,6 +1007,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         );
       }
       setChecklist(newChecklist);
+      if (showNotification) showNotification('材料项已删除');
     }
   };
 
@@ -1176,18 +1060,19 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           event.id === editingEvent.id ? { ...eventData, id: editingEvent.id, schoolId: event.schoolId } : event
         ));
       } else {
-        setUpcomingEvents([...upcomingEvents, { ...eventData, id: Date.now() }]);
+      setUpcomingEvents([...upcomingEvents, { ...eventData, id: Date.now() }]);
       }
 
       setShowEventModal(false);
       setEditingEvent(null);
+      if (showNotification) showNotification(editingEvent ? '事项已更新' : '事项已添加');
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
         <div className="rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in" style={{ background: tokens.colors.surface.solid, border: `1px solid ${tokens.colors.border.subtle}` }}>
-          <div className="p-6 border-b flex items-center justify-between">
-            <h3 className="font-bold text-xl">{editingEvent ? '编辑事项' : '添加新事项'}</h3>
+          <div className="p-6 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>{editingEvent ? '编辑事项' : '添加新事项'}</h3>
             <button
               onClick={() => {
                 setShowEventModal(false);
@@ -1292,7 +1177,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+              className="flex-1 py-2 rounded-lg font-semibold transition"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
               >
                 {editingEvent ? '保存修改' : '添加事项'}
               </button>
@@ -1302,7 +1190,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   setShowEventModal(false);
                   setEditingEvent(null);
                 }}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+                className="flex-1 py-2 rounded-lg font-semibold transition"
+                style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}
               >
                 取消
               </button>
@@ -1419,6 +1310,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
       setShowSchoolModal(false);
       setEditingSchool(null);
+      if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
     };
 
     const addMaterial = () => {
@@ -1439,16 +1331,19 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-          <div className="p-6 border-b flex items-center justify-between">
-            <h3 className="font-bold text-xl">{editingSchool ? '编辑学校' : '添加新学校'}</h3>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+        <div className="glass-panel rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+          <div className="p-6 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>{editingSchool ? '编辑学校' : '添加新学校'}</h3>
             <button
               onClick={() => {
                 setShowSchoolModal(false);
                 setEditingSchool(null);
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+              className="p-2 rounded-lg transition"
+              style={{ color: tokens.colors.text.secondary }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <X size={20} />
             </button>
@@ -1478,26 +1373,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   required
                 />
                 {showSchoolSuggestions && schoolSuggestions.length > 0 && (
-                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                    <div className="px-3 py-1.5 text-xs text-gray-400 border-b bg-gray-50">从学校信息库选择（点击自动补全）</div>
+                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-48 overflow-y-auto" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
+                    <div className="px-3 py-1.5 text-xs" style={{ color: tokens.colors.text.muted, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>从学校信息库选择（点击自动补全）</div>
                     {schoolSuggestions.map(s => (
                       <button key={s.id} type="button"
                         onMouseDown={(e) => { e.preventDefault(); handleSelectDbSchool(s); }}
                         className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between text-sm border-b last:border-0">
                         <span className="font-medium">{s.name}</span>
-                        <span className="text-xs text-gray-400">{s.type} {s.location || ''}</span>
+                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{s.type} {s.location || ''}</span>
                       </button>
                     ))}
                   </div>
                 )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">学校名称 (日文)</label>
-                <input type="text" value={formData.nameJa || ''}
-                  onChange={(e) => setFormData({...formData, nameJa: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="例: 東京大学" />
               </div>
             </div>
 
@@ -1568,10 +1455,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div>
               <label className="block text-sm font-medium mb-2">
                 募集要项URL
-                <span className="text-gray-500 text-xs ml-2">（学校官方招生信息链接）</span>
+                <span className="text-xs ml-2" style={{ color: tokens.colors.text.muted }}>（学校官方招生信息链接）</span>
               </label>
               <div className="relative">
-                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2" size={18} style={{ color: tokens.colors.text.muted }} />
                 <input
                   type="url"
                   value={formData.requirementsUrl}
@@ -1592,8 +1479,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               </div>
             </div>
 
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-sm text-gray-700">重要日期</h4>
+            <div className="space-y-4 p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>
+              <h4 className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>重要日期</h4>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1681,11 +1568,12 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 {formData.materials?.map((material, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-lg text-sm"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg text-sm"
+                    style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', border: `1px solid ${isDark ? 'rgba(59,130,246,0.15)' : 'transparent'}` }}
                   >
-                    <span>{material.name}</span>
+                    <span style={{ color: tokens.colors.text.primary }}>{material.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-500">{material.deadline}</span>
+                      <span style={{ color: tokens.colors.text.muted }}>{material.deadline}</span>
                       {material.url && (
                         <a
                           href={material.url}
@@ -1722,7 +1610,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+                className="flex-1 py-2 rounded-lg font-semibold transition"
+                style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
               >
                 {editingSchool ? '保存修改' : '添加学校'}
               </button>
@@ -1732,7 +1623,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   setShowSchoolModal(false);
                   setEditingSchool(null);
                 }}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
               >
                 取消
               </button>
@@ -1820,16 +1711,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
-          <div className="p-6 border-b flex items-center justify-between">
-            <h3 className="font-bold text-xl">{editingMaterial ? '编辑材料' : '添加新材料'}</h3>
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>{editingMaterial ? '编辑材料' : '添加新材料'}</h3>
             <button
               onClick={() => {
                 setShowMaterialModal(false);
                 setEditingMaterial(null);
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+className="p-2 rounded-lg transition" style={{ color: tokens.colors.text.secondary }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <X size={20} />
             </button>
@@ -1886,12 +1779,12 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.primary }}>
                 参考链接
-                <span className="text-gray-500 text-xs ml-2">（模板或参考资料）</span>
+                <span className="text-xs ml-2" style={{ color: tokens.colors.text.muted }}>（模板或参考资料）</span>
               </label>
               <div className="relative">
-                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <Link2 className="absolute left-3 top-1/2 transform -translate-y-1/2" size={18} style={{ color: tokens.colors.text.muted }} />
                 <input
                   type="url"
                   value={formData.url}
@@ -1927,7 +1820,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+                className="flex-1 py-2 rounded-lg font-semibold transition"
+                style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
               >
                 {editingMaterial ? '保存修改' : '添加材料'}
               </button>
@@ -1937,7 +1833,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   setShowMaterialModal(false);
                   setEditingMaterial(null);
                 }}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
               >
                 取消
               </button>
@@ -2018,8 +1914,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     const allTags = [...new Set(visibleStudents.flatMap(s => s.tags || []).filter(Boolean))];
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-scale-in">
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+        <div className="rounded-xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
           <div className="p-4 sm:p-6 border-b flex items-center justify-between bg-gradient-to-r from-purple-500 to-blue-500 text-white">
             <h3 className="font-bold text-xl">
               {user.role === 'admin' ? '所有学生' : '我的学生'}
@@ -2031,21 +1927,24 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           </div>
 
           {/* 搜索 + 筛选 + 视图切换 */}
-          <div className="p-4 border-b bg-gray-50 space-y-3">
+          <div className="p-4 space-y-3" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
             <div className="flex gap-2 items-center">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: tokens.colors.text.muted }} />
                 <input type="text" placeholder="搜索学生姓名/学号..." value={studentSearch}
                   onChange={e => setStudentSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500" />
+                  className="w-full pl-9 pr-4 py-2 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }} />
               </div>
-              <div className="flex bg-gray-200 rounded-lg p-0.5">
+              <div className="flex rounded-lg p-0.5" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
                 <button onClick={() => setStudentListView('card')}
-                  className={`p-1.5 rounded-md transition ${studentListView === 'card' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
+                  className={`p-1.5 rounded-md transition`}
+                  style={studentListView === 'card' ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' } : { color: tokens.colors.text.muted }}>
                   <LayoutGrid size={16} />
                 </button>
                 <button onClick={() => setStudentListView('list')}
-                  className={`p-1.5 rounded-md transition ${studentListView === 'list' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`}>
+                  className={`p-1.5 rounded-md transition`}
+                  style={studentListView === 'list' ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' } : { color: tokens.colors.text.muted }}>
                   <LayoutList size={16} />
                 </button>
               </div>
@@ -2053,14 +1952,16 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="flex flex-wrap gap-2">
               {['all', '文科', '理科', 'unassigned'].map(f => (
                 <button key={f} onClick={() => setStudentFilter(f)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                    studentFilter === f ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'
-                  }`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition`}
+                  style={studentFilter === f
+                    ? { background: '#a855f7', color: '#fff' }
+                    : { background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.secondary, border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}` }
+                  }>
                   {f === 'all' ? '全部' : f === 'unassigned' ? '待分配' : f}
                 </button>
               ))}
               {allTags.map(tag => (
-                <span key={tag} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">
+                <span key={tag} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: isDark ? '#93c5fd' : '#2563eb' }}>
                   {tag}
                 </span>
               ))}
@@ -2073,7 +1974,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredStudentList.map(student => (
                   <div key={student.id}
-                    className="p-4 border-2 rounded-lg hover:border-blue-400 hover:shadow-lg cursor-pointer transition-all bg-white"
+                    className="p-4 border-2 rounded-lg hover:shadow-lg cursor-pointer transition-all"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = '#60a5fa'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}
                   >
                     <div onClick={() => selectStudent(student)}>
                       <div className="flex items-center justify-between mb-3">
@@ -2081,10 +1985,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                           <div className="text-3xl">{student.avatar}</div>
                           <div>
                             <div className="font-semibold text-lg">{student.name}</div>
-                            <div className="text-sm text-gray-500">{student.studentId}</div>
+                            <div className="text-sm" style={{ color: tokens.colors.text.muted }}>{student.studentId}</div>
                             {user.role === 'admin' && (
-                              <div className="text-xs text-gray-400">
+                              <div className="text-xs" style={{ color: tokens.colors.text.muted }}>
                                 负责老师: {getTeacherList().find(t => t.id === student.teacherId)?.name || '待分配'}
+                                {student.academicAdvisorId && (
+                                  <span> · 学管: {getTeacherList().find(t => t.id === student.academicAdvisorId)?.name || '-'}</span>
+                                )}
+                              </div>
+                            )}
+                            {student.packageName && (
+                              <div className="text-xs" style={{ color: isDark ? '#a78bfa' : '#7c3aed' }}>
+                                📦 {student.packageName}
                               </div>
                             )}
                           </div>
@@ -2092,23 +2004,25 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         <div className="flex flex-col items-end gap-1">
                           {student.subject && (
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                              student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                              student.subject === '理科'
+                                ? (isDark ? 'bg-[rgba(59,130,246,0.15)] text-blue-400' : 'bg-[rgba(59,130,246,0.1)] text-blue-700')
+                                : (isDark ? 'bg-[rgba(249,115,22,0.15)] text-orange-400' : 'bg-[rgba(249,115,22,0.1)] text-orange-700')
                             }`}>{student.subject}</span>
                           )}
                           {student.urgentTasks > 0 && (
-                            <span className="bg-red-100 text-red-700 text-xs px-3 py-0.5 rounded-full font-semibold">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: isDark ? '#fca5a5' : '#b91c1c' }}>
                               {student.urgentTasks}个紧急
                             </span>
                           )}
                           {(student.tags || []).map(tag => (
-                            <span key={tag} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full">{tag}</span>
+                            <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.06)', color: isDark ? '#86efac' : '#15803d' }}>{tag}</span>
                           ))}
                         </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">整体进度</span>
-                          <span className="font-semibold">{student.progress}%</span>
+                          <span style={{ color: tokens.colors.text.secondary }}>整体进度</span>
+                          <span className="font-semibold" style={{ color: tokens.colors.text.primary }}>{student.progress}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all"
@@ -2122,7 +2036,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         {editingStudentId === student.id ? (
                           <div className="space-y-2 animate-fade-in">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500 w-14 flex-shrink-0">文/理科</span>
+                              <span className="text-xs w-14 flex-shrink-0" style={{ color: tokens.colors.text.muted }}>文/理科</span>
                               <select value={student.subject || ''} onChange={e => handleUpdateStudentSubject(student.id, e.target.value)}
                                 className="flex-1 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-purple-400">
                                 <option value="">未指定</option>
@@ -2148,7 +2062,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                               </div>
                             </div>
                             <button onClick={() => setEditingStudentId(null)}
-                              className="w-full text-gray-500 hover:bg-gray-100 py-1 rounded text-xs">收起</button>
+                            className="w-full py-1 rounded text-xs transition" style={{ color: tokens.colors.text.muted }}>收起</button>
                           </div>
                         ) : (
                           <div className="flex gap-2">
@@ -2180,7 +2094,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                             确认
                           </button>
                           <button onClick={() => { setTransferStudentId(null); setTransferTargetTeacher(''); }}
-                            className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg text-sm">
+                            className="px-2 py-1.5 rounded-lg text-sm transition" style={{ color: tokens.colors.text.muted }}>
                             取消
                           </button>
                         </div>
@@ -2196,25 +2110,32 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               <div className="space-y-2">
                 {filteredStudentList.map(student => (
                   <div key={student.id}
-                    className="flex items-center gap-4 p-3 border rounded-lg hover:border-blue-400 hover:shadow-sm cursor-pointer transition-all bg-white"
+                    className="flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-all"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = '#60a5fa'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}
                   >
                     <div className="text-2xl flex-shrink-0" onClick={() => selectStudent(student)}>{student.avatar}</div>
                     <div className="flex-1 min-w-0" onClick={() => selectStudent(student)}>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold truncate">{student.name}</span>
-                        <span className="text-xs text-gray-400">{student.studentId}</span>
+                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{student.studentId}</span>
                         {student.subject && (
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                            student.subject === '理科' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                            student.subject === '理科'
+                              ? (isDark ? 'bg-[rgba(59,130,246,0.15)] text-blue-400' : 'bg-[rgba(59,130,246,0.1)] text-blue-700')
+                              : (isDark ? 'bg-[rgba(249,115,22,0.15)] text-orange-400' : 'bg-[rgba(249,115,22,0.1)] text-orange-700')
                           }`}>{student.subject}</span>
                         )}
                         {(student.tags || []).map(tag => (
-                          <span key={tag} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full">{tag}</span>
+                          <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.06)', color: isDark ? '#86efac' : '#15803d' }}>{tag}</span>
                         ))}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                      <div className="flex items-center gap-3 text-xs mt-1" style={{ color: tokens.colors.text.muted }}>
                         <span>进度: {student.progress}%</span>
                         {user.role === 'admin' && <span>老师: {getTeacherList().find(t => t.id === student.teacherId)?.name || '待分配'}</span>}
+                        {user.role === 'admin' && student.academicAdvisorId && <span>学管: {getTeacherList().find(t => t.id === student.academicAdvisorId)?.name || '-'}</span>}
+                        {student.packageName && <span style={{ color: isDark ? '#a78bfa' : '#7c3aed' }}>📦 {student.packageName}</span>}
                         {student.urgentTasks > 0 && <span className="text-red-600">{student.urgentTasks}个紧急</span>}
                       </div>
                     </div>
@@ -2271,7 +2192,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             )}
 
             {filteredStudentList.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
+                      <div className="text-center py-12" style={{ color: tokens.colors.text.muted }}>
                 <Users size={48} className="mx-auto mb-4 text-gray-300" />
                 <p>暂无匹配的学生</p>
               </div>
@@ -2279,7 +2200,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           </div>
           {/* 只有管理员可以添加学生 */}
           {user.role === 'admin' && (
-            <div className="p-4 border-t bg-gray-50">
+          <div className="p-4" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb' }}>
               <button
                 onClick={() => setShowAddStudentModal(true)}
                 className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
@@ -2309,11 +2230,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
-          <div className="p-6 border-b">
-            <h3 className="font-bold text-xl">转移学生</h3>
-            <p className="text-sm text-gray-600 mt-1">
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>转移学生</h3>
+            <p className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>
               将学生 {currentStudent?.name} 转移给其他老师
             </p>
           </div>
@@ -2334,7 +2255,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 ))}
             </select>
           </div>
-          <div className="p-6 border-t flex gap-3">
+          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
             <button
               onClick={handleTransfer}
               disabled={!selectedTeacher}
@@ -2344,7 +2265,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             </button>
             <button
               onClick={() => setShowTransferModal(false)}
-              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
             >
               取消
             </button>
@@ -2361,6 +2282,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       name: '',
       email: '',
       teacherId: user.role === 'admin' ? '' : (user.teacherId || 'teacher_1'),
+      academicAdvisorId: '',
       subject: '',
       tags: [],
     });
@@ -2377,6 +2299,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           urgentTasks: 0,
           avatar: '👨‍🎓',
           teacherId: newStudent.teacherId || 'unassigned',
+          academicAdvisorId: newStudent.academicAdvisorId || '',
           targetCountry: '日本',
           targetLevel: '修士',
           subject: newStudent.subject,
@@ -2389,17 +2312,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
-          <div className="p-6 border-b">
-            <h3 className="font-bold text-xl">添加新学生</h3>
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>添加新学生</h3>
           </div>
           <div className="p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">学号（自动生成）</label>
               <input type="text" value={newStudentId} disabled
-                className="w-full px-3 py-2 border rounded-lg bg-gray-100 text-gray-600" />
-              <p className="text-xs text-gray-500 mt-1">学生需要使用此学号进行账号注册</p>
+                className="w-full px-3 py-2 rounded-lg"
+                style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f3f4f6', color: tokens.colors.text.muted, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#d1d5db'}` }} />
+              <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>学生需要使用此学号进行账号注册</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">学生姓名 *</label>
@@ -2425,12 +2349,13 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 <option value="理科">理科</option>
               </select>
             </div>
-            {/* 分配老师（含"待分配"选项） */}
+            {/* 分配升学老师（含“待分配”选项） */}
             <div>
-              <label className="block text-sm font-medium mb-2">分配给老师</label>
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>升学老师</label>
               <select value={newStudent.teacherId}
                 onChange={(e) => setNewStudent({ ...newStudent, teacherId: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                 <option value="">待分配老师</option>
                 {getTeacherList().map(teacher => (
                   <option key={teacher.id} value={teacher.id}>
@@ -2439,12 +2364,26 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 ))}
               </select>
             </div>
-            {/* 标签 */}
+            {/* 分配学管老师 */}
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>学管老师</label>
+              <select value={newStudent.academicAdvisorId}
+                onChange={(e) => setNewStudent({ ...newStudent, academicAdvisorId: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                <option value="">待分配学管老师</option>
+                {getTeacherList().map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name} ({teacher.email})
+                  </option>
+                ))}
+              </select>
+            </div>            {/* 标签 */}
             <div>
               <label className="block text-sm font-medium mb-2">标签</label>
               <div className="flex flex-wrap gap-1 mb-2">
                 {(newStudent.tags || []).map((tag, i) => (
-                  <span key={i} className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs flex items-center gap-1">
+                  <span key={i} className="px-2 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)', color: isDark ? '#86efac' : '#16a34a' }}>
                     {tag}
                     <button onClick={() => setNewStudent({ ...newStudent, tags: newStudent.tags.filter((_, idx) => idx !== i) })}
                       className="hover:text-red-500"><X size={10} /></button>
@@ -2462,19 +2401,25 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                     }
                   }} />
                 <button onClick={() => { if (newTag.trim()) { setNewStudent({ ...newStudent, tags: [...(newStudent.tags || []), newTag.trim()] }); setNewTag(''); }}}
-                  className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
+                  className="px-3 py-2 rounded-lg text-sm transition"
+                  style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}>
                   <Plus size={16} />
                 </button>
               </div>
             </div>
           </div>
-          <div className="p-6 border-t flex gap-3">
+          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
             <button onClick={handleAddStudent} disabled={!newStudent.name}
-              className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-300">
+              className="flex-1 py-2 rounded-lg font-semibold transition disabled:opacity-40"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+              onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)' }}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
               添加学生
             </button>
             <button onClick={() => setShowAddStudentModal(false)}
-              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300">
+className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}>
               取消
             </button>
           </div>
@@ -2538,10 +2483,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
-          <div className="p-6 border-b">
-            <h3 className="font-bold text-xl">添加新老师账号</h3>
-          </div>
+<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>注册新老师账号</h3>          </div>
           <div className="p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">老师姓名</label>
@@ -2588,7 +2532,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
             </div>
           </div>
-          <div className="p-6 border-t flex gap-3">
+          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
             <button
               onClick={handleAddTeacher}
               className="flex-1 bg-purple-500 text-white py-2 rounded-lg font-semibold hover:bg-purple-600"
@@ -2601,7 +2545,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 setNewTeacher({ name: '', email: '', password: '', confirmPassword: '' });
                 setErrors({});
               }}
-              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+              className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
             >
               取消
             </button>
@@ -2665,20 +2609,20 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-md w-full animate-scale-in">
-          <div className="p-6 border-b">
-            <h3 className="font-bold text-xl">修改密码</h3>
-            <p className="text-sm text-gray-600 mt-1">请输入当前密码并设置新密码</p>
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+            <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>修改密码</h3>
+            <p className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>请输入当前密码并设置新密码</p>
           </div>
 
           {showSuccess ? (
             <div className="p-6">
               <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check size={32} className="text-green-600" />
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)' }}>
+                  <Check size={32} style={{ color: '#22c55e' }} />
                 </div>
-                <p className="text-green-600 font-semibold">密码修改成功！</p>
+                <p className="font-semibold" style={{ color: '#22c55e' }}>密码修改成功！</p>
               </div>
             </div>
           ) : (
@@ -2731,7 +2675,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="p-6 border-t flex gap-3">
               <button
                 onClick={handleChangePassword}
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
+                className="flex-1 py-2 rounded-lg font-semibold transition"
+                style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
               >
                 确认修改
               </button>
@@ -2741,7 +2688,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
                   setErrors({});
                 }}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300"
+className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
               >
                 取消
               </button>
@@ -2783,8 +2730,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     const filteredAccounts = getFilteredAccounts();
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+        <div className="rounded-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
           <div className="p-6 border-b bg-gradient-to-r from-red-500 to-purple-500 text-white">
             <div className="flex items-center justify-between">
               <div>
@@ -2805,36 +2752,40 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={() => setFilterType('all')}
-                className={`p-4 rounded-lg transition cursor-pointer ${
-                  filterType === 'all' ? 'bg-gray-600 text-white' : 'bg-gray-50 hover:bg-gray-100'
-                }`}
+                className="p-4 rounded-lg transition cursor-pointer"
+                style={filterType === 'all'
+                  ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#4b5563', color: '#fff' }
+                  : { background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}
               >
                 <div className="text-2xl font-bold">{allUsers.length}</div>
                 <div className="text-sm">全部账号</div>
               </button>
               <button
                 onClick={() => setFilterType('student')}
-                className={`p-4 rounded-lg transition cursor-pointer ${
-                  filterType === 'student' ? 'bg-blue-600 text-white' : 'bg-blue-50 hover:bg-blue-100'
-                }`}
+                className="p-4 rounded-lg transition cursor-pointer"
+                style={filterType === 'student'
+                  ? { background: '#2563eb', color: '#fff' }
+                  : { background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : 'transparent'}` }}
               >
                 <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'student').length}</div>
                 <div className="text-sm">学生账号</div>
               </button>
               <button
                 onClick={() => setFilterType('teacher')}
-                className={`p-4 rounded-lg transition cursor-pointer ${
-                  filterType === 'teacher' ? 'bg-purple-600 text-white' : 'bg-purple-50 hover:bg-purple-100'
-                }`}
+                className="p-4 rounded-lg transition cursor-pointer"
+                style={filterType === 'teacher'
+                  ? { background: '#9333ea', color: '#fff' }
+                  : { background: isDark ? 'rgba(168,85,247,0.08)' : 'rgba(168,85,247,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(168,85,247,0.2)' : 'transparent'}` }}
               >
                 <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'teacher').length}</div>
                 <div className="text-sm">老师账号</div>
               </button>
               <button
                 onClick={() => setFilterType('admin')}
-                className={`p-4 rounded-lg transition cursor-pointer ${
-                  filterType === 'admin' ? 'bg-red-600 text-white' : 'bg-red-50 hover:bg-red-100'
-                }`}
+                className="p-4 rounded-lg transition cursor-pointer"
+                style={filterType === 'admin'
+                  ? { background: '#dc2626', color: '#fff' }
+                  : { background: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(239,68,68,0.2)' : 'transparent'}` }}
               >
                 <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'admin').length}</div>
                 <div className="text-sm">管理员账号</div>
@@ -2844,19 +2795,20 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             {/* 搜索栏和密码显示切换 */}
             <div className="mb-4 flex gap-3">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                 <input
                   type="text"
                   placeholder="搜索姓名、邮箱、学号或教师ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
                 />
               </div>
               <button
                 onClick={() => setShowPasswords(!showPasswords)}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
-                  showPasswords ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  showPasswords ? 'bg-blue-500 text-white' : (isDark ? 'bg-[rgba(255,255,255,0.08)]' : 'bg-gray-200') + ' ' + (isDark ? 'text-gray-300' : 'text-gray-700')
                 }`}
               >
                 {showPasswords ? <Eye size={18} /> : <Eye size={18} />}
@@ -2871,37 +2823,39 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                  filterType === 'student' ? '学生账号' :
                  filterType === 'teacher' ? '老师账号' : '管理员账号'}
                 {searchQuery && ` (搜索: ${searchQuery})`}
-                <span className="text-sm text-gray-500 ml-2">共 {filteredAccounts.length} 个</span>
+                <span className="text-sm ml-2" style={{ color: tokens.colors.text.muted }}>共 {filteredAccounts.length} 个</span>
               </h4>
               <div className="space-y-2">
                 {filteredAccounts.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8" style={{ color: tokens.colors.text.muted }}>
                     没有找到匹配的账号
                   </div>
                 ) : (
                   filteredAccounts.map(account => (
-                    <div key={account.id} className="border rounded-lg p-4 hover:bg-gray-50 transition">
+                    <div key={account.id} className="rounded-lg p-4 transition" style={{ border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.02)' : '#fff' }}>
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3">
-                            <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              account.role === 'admin' ? 'bg-red-100 text-red-700' :
-                              account.role === 'teacher' ? 'bg-purple-100 text-purple-700' :
-                              'bg-blue-100 text-blue-700'
-                            }`}>
+                            <div className={`px-3 py-1 rounded-full text-xs font-semibold`}
+                              style={account.role === 'admin'
+                                ? { background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: isDark ? '#fca5a5' : '#b91c1c' }
+                                : account.role === 'teacher'
+                                ? { background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: isDark ? '#c4b5fd' : '#7c3aed' }
+                                : { background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: isDark ? '#93c5fd' : '#2563eb' }
+                              }>
                               {account.role === 'admin' ? '管理员' :
                                account.role === 'teacher' ? '老师' : '学生'}
                             </div>
-                            <div className="font-medium">{account.name}</div>
+                            <div className="font-medium" style={{ color: tokens.colors.text.primary }}>{account.name}</div>
                           </div>
-                          <div className="text-sm text-gray-600 mt-1">{account.email}</div>
-                          <div className="text-xs text-gray-500 mt-1 space-y-1">
+                          <div className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>{account.email}</div>
+                          <div className="text-xs mt-1 space-y-1" style={{ color: tokens.colors.text.muted }}>
                             {account.studentId && <div>学号: {account.studentId}</div>}
                             {account.teacherId && <div>教师ID: {account.teacherId}</div>}
                             {showPasswords && (
                               <div className="flex items-center gap-2">
                                 <span>密码: </span>
-                                <code className="bg-gray-100 px-2 py-0.5 rounded text-red-600 font-mono">
+                                <code className="px-2 py-0.5 rounded font-mono" style={{ background: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)', color: '#ef4444' }}>
                                   {account.password}
                                 </code>
                               </div>
@@ -2916,6 +2870,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                             onClick={() => {
                               if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
                                 setAllUsers(prev => prev.filter(u => u.id !== account.id));
+                                if (showNotification) showNotification(`已删除账号: ${account.name}`);
                               }
                             }}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
@@ -2931,17 +2886,65 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             </div>
           </div>
 
-          <div className="p-6 border-t bg-gray-50 flex gap-3">
+          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb' }}>
+            <button
+              onClick={() => {
+                // 创建学生账号弹窗
+                const studentId = prompt('请输入学生学号：');
+                if (!studentId) return;
+                // 检查学号是否已存在
+                const existingAccount = allUsers.find(u => u.studentId === studentId);
+                if (existingAccount) {
+                  alert(`学号 ${studentId} 已有账号: ${existingAccount.name}`);
+                  return;
+                }
+                // 查找学生信息
+                const studentInfo = studentList.find(s => s.studentId === studentId);
+                if (!studentInfo) {
+                  alert(`学号 ${studentId} 在学生列表中不存在，请先添加学生信息`);
+                  return;
+                }
+                const email = prompt(`请输入学生 ${studentInfo.name} 的邮箱：`);
+                if (!email) return;
+                const password = prompt('请设置初始密码（至少6位）：', `stu${studentId}`);
+                if (!password || password.length < 6) {
+                  alert('密码至少6位');
+                  return;
+                }
+                const newUser = {
+                  id: `student_${Date.now()}`,
+                  email,
+                  password,
+                  role: 'student',
+                  studentId,
+                  name: studentInfo.name,
+                  teacherId: studentInfo.teacherId,
+                  createdAt: new Date().toISOString(),
+                };
+                setAllUsers(prev => [...prev, newUser]);
+                // 绑定邮箱到学生信息
+                setStudentList(prev => prev.map(s =>
+                  s.studentId === studentId ? { ...s, email } : s
+                ));
+                if (showNotification) showNotification(`已为 ${studentInfo.name}(${studentId}) 创建账号`);
+              }}
+              className="flex-1 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition"
+              style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.12)'}` }}
+            >
+              <UserPlus size={18} />
+              创建学生账号
+            </button>
             <button
               onClick={() => setShowAddTeacherModal(true)}
-              className="flex-1 bg-purple-500 text-white py-3 rounded-lg font-semibold hover:bg-purple-600 flex items-center justify-center gap-2"
+              className="flex-1 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition"
+              style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#8b5cf6', border: `1px solid ${isDark ? 'rgba(168,85,247,0.2)' : 'rgba(168,85,247,0.12)'}` }}
             >
               <Plus size={18} />
               添加老师账号
             </button>
             <button
               onClick={() => setShowAccountManagementModal(false)}
-              className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+              className="flex-1 py-3 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
             >
               关闭
             </button>
@@ -2956,8 +2959,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     const visibleStudents = getVisibleStudents();
     if (visibleStudents.length === 0) return null;
     return (
-      <div className="bg-white rounded-xl shadow-sm p-3 flex items-center gap-3 border-2 border-gray-100">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+      <div className="glass-panel p-3 flex items-center gap-3">
+        <div className="flex items-center gap-2 text-sm" style={{ color: tokens.colors.text.muted }}>
           <Eye size={16} />
           <span>当前学生:</span>
         </div>
@@ -2974,7 +2977,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               });
             }
           }}
-          className="flex-1 max-w-xs px-3 py-1.5 border rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+          className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
         >
           {visibleStudents.map(s => (
             <option key={s.studentId} value={s.studentId}>
@@ -2997,22 +3001,24 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       {/* 学生选择器 */}
       {user.role !== 'student' && <StudentSelector />}
       {/* 搜索和筛选栏 */}
-      <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
+      <div className="glass-panel p-4 space-y-4">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
             <input
               type="text"
               placeholder="搜索事项..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
             />
           </div>
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
           >
             <option value="all">所有分类</option>
             <option value="日语考试">日语考试</option>
@@ -3024,28 +3030,25 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             <option value="合格发表">合格发表</option>
           </select>
           {/* 视图切换 */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex items-center gap-1 rounded-lg p-1" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6' }}>
             <button
               onClick={() => setTimelineViewMode('card')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                timelineViewMode === 'card' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition`}
+              style={timelineViewMode === 'card' ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#fff', color: '#3b82f6', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: tokens.colors.text.muted }}
             >
               <LayoutGrid size={16} /> 卡片
             </button>
             <button
               onClick={() => setTimelineViewMode('linear')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                timelineViewMode === 'linear' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition`}
+              style={timelineViewMode === 'linear' ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#fff', color: '#3b82f6', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: tokens.colors.text.muted }}
             >
               <LayoutList size={16} /> 线形
             </button>
             <button
               onClick={() => setTimelineViewMode('calendar')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                timelineViewMode === 'calendar' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition`}
+              style={timelineViewMode === 'calendar' ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#fff', color: '#3b82f6', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: tokens.colors.text.muted }}
             >
               <Calendar size={16} /> 日历
             </button>
@@ -3060,14 +3063,17 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               <Download size={16} /> 导出
             </button>
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-20">
+              <div className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-20" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
                 <button
                   onClick={() => {
                     const studentInfo = studentList.find(s => s.studentId === currentStudent.studentId) || currentStudent;
                     exportStudentToCSV(studentInfo, currentStudentData);
                     setShowExportMenu(false);
                   }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <FileText size={16} /> 导出学生信息 (CSV)
                 </button>
@@ -3076,7 +3082,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                     exportEventsToICS(upcomingEvents, currentStudent.name);
                     setShowExportMenu(false);
                   }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Calendar size={16} /> 导出日历 (.ics)
                 </button>
@@ -3085,7 +3094,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                     exportChecklistToPDF(currentStudent, checklist, schools);
                     setShowExportMenu(false);
                   }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Download size={16} /> 导出材料清单 (PDF)
                 </button>
@@ -3097,34 +3109,34 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
 
       {/* 概览卡片 */}
-      <div className={`bg-gradient-to-r ${user.role === 'teacher' ? 'from-purple-500 to-blue-600' : 'from-blue-500 to-purple-600'} text-white p-6 lg:p-8 rounded-xl shadow-lg`}>
-        <h2 className="text-2xl lg:text-3xl font-bold mb-2">考学进度概览</h2>
-        <p className="text-blue-100 text-sm lg:text-base">
+      <div className="glass-panel p-6 lg:p-8 rounded-xl">
+        <h2 className="text-2xl lg:text-3xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>考学进度概览</h2>
+        <p className="text-sm lg:text-base" style={{ color: tokens.colors.text.secondary }}>
           {user.role === 'teacher'
             ? `正在查看: ${currentStudent.name} (${currentStudent.studentId})`
             : `你有 ${filteredEvents.filter(e => e.urgent).length} 个紧急事项需要关注`
           }
         </p>
         <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white bg-opacity-20 rounded-lg p-3">
-            <div className="text-2xl font-bold">{filteredEvents.length}</div>
-            <div className="text-xs opacity-90">待办事项</div>
+          <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+            <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{filteredEvents.length}</div>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>待办事项</div>
           </div>
-          <div className="bg-white bg-opacity-20 rounded-lg p-3">
-            <div className="text-2xl font-bold">{schools.length}</div>
-            <div className="text-xs opacity-90">目标学校</div>
+          <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+            <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schools.length}</div>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>目标学校</div>
           </div>
-          <div className="bg-white bg-opacity-20 rounded-lg p-3">
-            <div className="text-2xl font-bold">
+          <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+            <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
               {filteredEvents.filter(e => e.daysLeft <= 7).length}
             </div>
-            <div className="text-xs opacity-90">本周任务</div>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>本周任务</div>
           </div>
-          <div className="bg-white bg-opacity-20 rounded-lg p-3">
-            <div className="text-2xl font-bold">
+          <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+            <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
               {filteredEvents.filter(e => e.urgent).length}
             </div>
-            <div className="text-xs opacity-90">紧急事项</div>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>紧急事项</div>
           </div>
         </div>
       </div>
@@ -3135,7 +3147,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         {filteredEvents.map(event => (
           <div
             key={event.id}
-            className={`border-2 rounded-xl p-4 lg:p-5 ${getTypeColor(event.type)}
+            className={`glass-card p-4 lg:p-5
               transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer ${event.completed ? 'opacity-60' : ''}`}
             onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
           >
@@ -3153,7 +3165,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                     </span>
                   )}
                   {event.schoolId && (
-                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                    <span className="text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: isDark ? '#93c5fd' : '#2563eb' }}>
                       学校关联
                     </span>
                   )}
@@ -3161,25 +3173,25 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 <h3 className={`font-bold text-lg mb-1 ${event.completed ? 'line-through' : ''}`}>
                   {event.title}
                 </h3>
-                <p className="text-sm text-gray-600">{event.date}</p>
+                <p className="text-sm" style={{ color: tokens.colors.text.secondary }}>{event.date}</p>
               </div>
               <div className="text-right">
                 <div className={`text-3xl font-bold ${
-                  event.daysLeft <= 0 ? 'text-gray-600' :
-                  event.daysLeft <= 7 ? 'text-red-600' :
-                  event.daysLeft <= 30 ? 'text-orange-600' : 'text-gray-700'
+                  event.daysLeft <= 0 ? (isDark ? 'text-gray-400' : 'text-gray-600') :
+                  event.daysLeft <= 7 ? 'text-red-500' :
+                  event.daysLeft <= 30 ? 'text-orange-500' : (isDark ? 'text-gray-300' : 'text-gray-700')
                 }`}>
                   {event.daysLeft <= 0 ? '已过期' : event.daysLeft}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs" style={{ color: tokens.colors.text.muted }}>
                   {event.daysLeft <= 0 ? '' : '天后'}
                 </div>
               </div>
             </div>
 
             {(selectedEventId === event.id || !isMobile) && (
-              <div className="mt-3 p-3 rounded-lg animate-slide-up" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)' }}>
-                {event.notes && <p className="text-sm text-gray-700 mb-3">{event.notes}</p>}
+              <div className="mt-3 p-3 rounded-lg animate-slide-up" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)', backdropFilter: 'blur(8px)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}` }}>
+                {event.notes && <p className="text-sm mb-3" style={{ color: tokens.colors.text.secondary }}>{event.notes}</p>}
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-2">
                     <button
@@ -3190,7 +3202,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         );
                         setUpcomingEvents(newEvents);
                       }}
-                      className="flex-1 bg-green-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-600 flex items-center justify-center gap-1"
+                      className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
+                      style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.18)'}
+                      onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
                     >
                       <Check size={16} />
                       {event.completed ? '标记未完成' : '标记完成'}
@@ -3201,7 +3216,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         setEditingEvent(event);
                         setShowEventModal(true);
                       }}
-                      className="flex-1 bg-blue-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-600 flex items-center justify-center gap-1"
+                      className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
+                      style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.18)'}
+                      onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
                     >
                       <Edit size={16} />
                       编辑
@@ -3211,7 +3229,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         e.stopPropagation();
                         handleDeleteEvent(event.id);
                       }}
-                      className="flex-1 bg-red-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-600 flex items-center justify-center gap-1"
+                      className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
+                      style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: isDark ? '#fca5a5' : '#dc2626' }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.18)'}
+                      onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'}
                     >
                       <Trash2 size={16} />
                       删除
@@ -3267,7 +3288,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             setEditingEvent(null);
             setShowEventModal(true);
           }}
-          className="w-full bg-gradient-to-r from-purple-500 to-blue-600 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+          className="w-full py-4 rounded-xl font-semibold transition flex items-center justify-center gap-2"
+          style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
+          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
+          onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
         >
           <Plus size={20} />
           为该学生添加新事项
@@ -3288,7 +3312,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               setEditingSchool(null);
               setShowSchoolModal(true);
             }}
-            className="bg-gradient-to-r from-purple-500 to-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:shadow-lg transition flex items-center gap-2"
+            className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+            style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
+            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
+            onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
           >
             <Plus size={16} />
             添加学校
@@ -3300,21 +3327,21 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         {schools.map(school => {
           const progress = calculateSchoolProgress(school.name);
           return (
-            <div key={school.id} className={`bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-xl transition-all card-hover ${user.role === 'student' ? 'cursor-pointer' : ''}`}
+            <div key={school.id} className={`glass-card p-5 ${user.role === 'student' ? 'cursor-pointer' : ''}`}
               onClick={user.role === 'student' ? () => setSchoolDetailModal(school) : undefined}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="font-bold text-xl">{school.name}</h3>
-                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full">
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}>
                       {school.type}
                     </span>
                   </div>
                   <span className={`inline-block text-xs px-3 py-1 rounded-full border ${getStatusColor(school.status)}`}>
                     {getStatusText(school.status)}
                   </span>
-                  <p className="text-sm text-gray-600 mt-2">{school.program}</p>
+                  <p className="text-sm mt-2" style={{ color: tokens.colors.text.secondary }}>{school.program}</p>
                 </div>
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-1">
@@ -3323,13 +3350,19 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                         setEditingSchool(school);
                         setShowSchoolModal(true);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition"
+                      className="p-2 rounded-lg transition"
+                      style={{ color: tokens.colors.text.secondary }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <Edit size={18} />
                     </button>
                     <button
                       onClick={() => handleDeleteSchool(school.id)}
-                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition"
+                      className="p-2 rounded-lg transition"
+                      style={{ color: '#ef4444' }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <Trash2 size={18} />
                     </button>
@@ -3344,7 +3377,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                     href={school.requirementsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg transition text-sm"
+                    style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}
                   >
                     <BookOpen size={16} />
                     查看募集要项
@@ -3354,35 +3388,35 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
                 {/* 日期信息 */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-green-50 p-2 rounded">
-                    <div className="text-gray-600">出愿开始</div>
-                    <div className="font-semibold">{school.applicationStartDate}</div>
+                  <div className="p-2 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.06)' }}>
+                    <div className="text-xs" style={{ color: isDark ? '#86efac' : '#16a34a' }}>出愿开始</div>
+                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.applicationStartDate}</div>
                   </div>
-                  <div className="bg-orange-50 p-2 rounded">
-                    <div className="text-gray-600">出愿截止</div>
-                    <div className="font-semibold">{school.applicationEndDate}</div>
+                  <div className="p-2 rounded" style={{ background: isDark ? 'rgba(249,115,22,0.1)' : 'rgba(249,115,22,0.06)' }}>
+                    <div className="text-xs" style={{ color: isDark ? '#fdba74' : '#ea580c' }}>出愿截止</div>
+                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.applicationEndDate}</div>
                   </div>
-                  <div className="bg-blue-50 p-2 rounded">
-                    <div className="text-gray-600">考试日期</div>
-                    <div className="font-semibold">{school.examDate}</div>
+                  <div className="p-2 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}>
+                    <div className="text-xs" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>考试日期</div>
+                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.examDate}</div>
                   </div>
-                  <div className="bg-purple-50 p-2 rounded">
-                    <div className="text-gray-600">合格发表</div>
-                    <div className="font-semibold">{school.resultDate}</div>
+                  <div className="p-2 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)' }}>
+                    <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>合格发表</div>
+                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.resultDate}</div>
                   </div>
                 </div>
 
                 {user.role === 'teacher' && school.teacherNotes && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="text-xs text-gray-600 mb-1 font-semibold">老师备注:</div>
-                    <div className="text-sm text-gray-700">{school.teacherNotes}</div>
+                  <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(234,179,8,0.08)' : 'rgba(234,179,8,0.06)', border: `1px solid ${isDark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.3)'}` }}>
+                    <div className="text-xs mb-1 font-semibold" style={{ color: isDark ? '#fde047' : '#a16207' }}>老师备注:</div>
+                    <div className="text-sm" style={{ color: tokens.colors.text.secondary }}>{school.teacherNotes}</div>
                   </div>
                 )}
 
                 {/* 材料准备进度 - 与材料清单同步 */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-600">材料准备进度</span>
+        <span style={{ color: tokens.colors.text.secondary }}>材料准备进度</span>
                     <span className="text-sm font-semibold">
                       {progress.completed}/{progress.total} 完成 ({progress.percentage}%)
                     </span>
@@ -3411,13 +3445,19 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         <div className="flex gap-2">
           <button
             onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition flex items-center gap-2">
+            className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+            style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
+            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.15)'}
+            onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
             <Download size={16} />
             导出清单
           </button>
           {(user.role === 'teacher' || user.role === 'admin') && (
             <>
-              <button className="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 transition flex items-center gap-2">
+              <button className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+                style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}>
                 <Upload size={16} />
                 上传材料
               </button>
@@ -3426,7 +3466,10 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   setEditingMaterial(null);
                   setShowMaterialModal(true);
                 }}
-                className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition flex items-center gap-2"
+                className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+                style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)'}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
               >
                 <Plus size={16} />
                 添加材料
@@ -3437,7 +3480,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
 
       {/* 进度统计 - 移到顶部 */}
-      <div className="rounded-xl p-6 border-2" style={{ background: isDark ? 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))' : 'linear-gradient(to right, #eff6ff, #faf5ff)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+      <div className="glass-panel p-6"
+        style={{ background: isDark ? 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))' : 'linear-gradient(to right, #eff6ff, #faf5ff)' }}>
         <h3 className="font-bold text-lg mb-4" style={{ color: tokens.colors.text.primary }}>材料准备总进度</h3>
         <div className="space-y-4">
           <div>
@@ -3478,7 +3522,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       </div>
 
       {/* 通用材料 */}
-      <div className="rounded-xl p-5 border-2" style={{ background: tokens.colors.surface.solid, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+      <div className="glass-panel p-5">
         <h3 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
           <FileText size={20} />
           通用材料
@@ -3561,7 +3605,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       {/* 学校专用材料 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Object.entries(checklist.schoolSpecific).map(([schoolName, materials]) => (
-          <div key={schoolName} className="rounded-xl p-5 border-2" style={{ background: tokens.colors.surface.solid, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
+          <div key={schoolName} className="glass-panel p-5">
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
               <School size={20} />
               {schoolName}
@@ -3658,6 +3702,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
     // 学校信息库 - 学生不显示，老师需权限
     ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
+    // 近期可报学校 - 所有角色可见（学生端重要入口）
+    { id: 'upcoming', label: '近期可报', icon: Calendar },
   ];
 
   // 获取主题上下文
@@ -3719,7 +3765,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           <div className="flex items-center gap-1.5 lg:gap-2">
             {/* 当前查看学生提示 */}
             {(user.role === 'teacher' || user.role === 'admin') && activeTab === 'profile' && currentStudent.name !== user.name && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 text-xs">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6', color: tokens.colors.text.muted }}>
                 <Eye size={13} />
                 <span>查看: {currentStudent.name}</span>
               </div>
@@ -3806,42 +3852,67 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
             borderRight: `1px solid ${tokens.colors.border.hairline}`,
           }}>
-          {/* 导航菜单 */}
+          {/* 导航菜单 - 按功能分组 */}
           <div className="flex-1 pt-2 pb-2 overflow-y-auto">
-            {tabs.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              const activeColors = {
-                admin: { border: tokens.colors.accent.danger, bg: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' },
-                teacher: { border: tokens.colors.accent.secondary, bg: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' },
-                student: { border: tokens.colors.accent.primary, bg: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' },
-              };
-              const ac = activeColors[user.role] || activeColors.student;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setShowSidebarUserMenu(false); }}
-                  title={sidebarCollapsed ? tab.label : ''}
-                  className={`w-full flex items-center gap-3 transition-all ${
-                    sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2'
-                  }`}
-                  style={{
-                    color: isActive ? tokens.colors.text.primary : tokens.colors.text.muted,
-                    fontWeight: isActive ? 600 : 400,
-                    background: isActive ? ac.bg : 'transparent',
-                    ...(isActive ? {
-                      borderLeft: `3px solid ${ac.border}`,
-                      paddingLeft: sidebarCollapsed ? undefined : '13px',
-                    } : {}),
-                  }}
-                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <Icon size={sidebarCollapsed ? 20 : 17} />
-                  {!sidebarCollapsed && <span className="text-[13px]">{tab.label}</span>}
-                </button>
-              );
-            })}
+            {(() => {
+              // 按功能分组
+              const groups = [
+                { label: '概览', ids: ['dashboard'] },
+                { label: '学业管理', ids: ['timeline', 'schools', 'checklist'] },
+                { label: '人员管理', ids: ['students', 'profile', 'teachers'] },
+                { label: '信息查询', ids: ['schooldb', 'upcoming'] },
+              ];
+              return groups.map((group, gi) => {
+                const groupTabs = tabs.filter(t => group.ids.includes(t.id));
+                if (groupTabs.length === 0) return null;
+                return (
+                  <div key={gi}>
+                    {!sidebarCollapsed && (
+                      <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: tokens.colors.text.muted }}>
+                        {group.label}
+                      </div>
+                    )}
+                    {sidebarCollapsed && gi > 0 && (
+                      <div className="mx-3 my-1.5" style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} />
+                    )}
+                    {groupTabs.map(tab => {
+                      const Icon = tab.icon;
+                      const isActive = activeTab === tab.id;
+                      const activeColors = {
+                        admin: { border: tokens.colors.accent.danger, bg: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' },
+                        teacher: { border: tokens.colors.accent.secondary, bg: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' },
+                        student: { border: tokens.colors.accent.primary, bg: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' },
+                      };
+                      const ac = activeColors[user.role] || activeColors.student;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => { setActiveTab(tab.id); setShowSidebarUserMenu(false); }}
+                          title={sidebarCollapsed ? tab.label : ''}
+                          className={`w-full flex items-center gap-3 transition-all ${
+                            sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2'
+                          }`}
+                          style={{
+                            color: isActive ? tokens.colors.text.primary : tokens.colors.text.muted,
+                            fontWeight: isActive ? 600 : 400,
+                            background: isActive ? ac.bg : 'transparent',
+                            ...(isActive ? {
+                              borderLeft: `3px solid ${ac.border}`,
+                              paddingLeft: sidebarCollapsed ? undefined : '13px',
+                            } : {}),
+                          }}
+                          onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
+                          onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Icon size={sidebarCollapsed ? 20 : 17} />
+                          {!sidebarCollapsed && <span className="text-[13px]">{tab.label}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {/* 侧边栏底部 - 头像菜单 + 折叠按钮 */}
@@ -3902,6 +3973,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
                   border: `1px solid ${tokens.colors.border.hairline}`,
                   boxShadow: isDark ? '0 12px 40px rgba(0,0,0,0.4)' : '0 12px 40px rgba(0,0,0,0.12)',
+                  maxHeight: 'calc(100vh - 140px)',
+                  overflowY: 'auto',
                 }}>
                 {/* 用户信息区 */}
                 <div className="p-3" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
@@ -3973,6 +4046,25 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                       <Shield size={16} /> 账号管理
                     </button>
                   )}
+                  <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="my-1" />
+                  <button
+                    onClick={() => { setShowSidebarUserMenu(false); setShowChangelogPanel(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                    style={{ color: tokens.colors.text.secondary }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <FileText size={16} style={{ color: tokens.colors.text.muted }} /> 版本日志
+                  </button>
+                  <button
+                    onClick={() => { setShowSidebarUserMenu(false); setShowFeedbackPanel(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                    style={{ color: tokens.colors.text.secondary }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Mail size={16} style={{ color: tokens.colors.text.muted }} /> 反馈建议
+                  </button>
                   <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="my-1" />
                   <button
                     onClick={() => { setShowSidebarUserMenu(false); onLogout(); }}
@@ -4119,6 +4211,15 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             user={user}
           />
         )}
+
+        {/* 页面底部免责声明 */}
+        <div className="mt-8 pb-4 text-center" style={{ color: tokens.colors.text.muted }}>
+          <div className="text-xs leading-relaxed space-y-1 max-w-2xl mx-auto px-4" style={{ opacity: 0.7 }}>
+            <p>© {new Date().getFullYear()} JSA 日本留学考学助手 · 仅供内部学习管理使用</p>
+            <p>本平台所展示的学校信息、出愿日期等数据仅供参考，请以各校官网公布的最新信息为准。</p>
+            <p>平台不对因信息延迟或错误导致的任何损失承担责任。如有问题请联系管理员。</p>
+          </div>
+        </div>
         </div>
       </div>
       </div>
@@ -4186,8 +4287,14 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
       {/* 学生端学校详情弹窗 */}
       {schoolDetailModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSchoolDetailModal(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setSchoolDetailModal(null)}>
+          <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" style={{
+            background: glassEnabled ? tokens.colors.surface.glass : (isDark ? tokens.colors.surface.solid : '#fff'),
+            backdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+            boxShadow: glassEnabled ? tokens.shadow.elevation : '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
             <div className="relative">
               <div className={`p-6 rounded-t-2xl text-white bg-gradient-to-r ${
                 schoolDetailModal.type === '国立' ? 'from-blue-500 to-blue-700' :
@@ -4218,30 +4325,30 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
               <div className="p-6 space-y-5">
                 {/* 重要日期 */}
                 <div>
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Calendar size={16} /> 重要日期</h4>
+                <h4 className="font-semibold mb-3 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><Calendar size={16} /> 重要日期</h4>
                   <div className="grid grid-cols-2 gap-3">
                     {schoolDetailModal.applicationStartDate && (
-                      <div className="bg-green-50 p-3 rounded-lg">
-                        <div className="text-xs text-gray-500">出愿开始</div>
-                        <div className="font-semibold text-sm">{schoolDetailModal.applicationStartDate}</div>
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.06)' }}>
+                        <div className="text-xs" style={{ color: isDark ? '#86efac' : '#16a34a' }}>出愿开始</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.applicationStartDate}</div>
                       </div>
                     )}
                     {schoolDetailModal.applicationEndDate && (
-                      <div className="bg-orange-50 p-3 rounded-lg">
-                        <div className="text-xs text-gray-500">出愿截止</div>
-                        <div className="font-semibold text-sm">{schoolDetailModal.applicationEndDate}</div>
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(249,115,22,0.1)' : 'rgba(249,115,22,0.06)' }}>
+                        <div className="text-xs" style={{ color: isDark ? '#fdba74' : '#ea580c' }}>出愿截止</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.applicationEndDate}</div>
                       </div>
                     )}
                     {schoolDetailModal.examDate && (
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-xs text-gray-500">考试日期</div>
-                        <div className="font-semibold text-sm">{schoolDetailModal.examDate}</div>
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}>
+                        <div className="text-xs" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>考试日期</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.examDate}</div>
                       </div>
                     )}
                     {schoolDetailModal.resultDate && (
-                      <div className="bg-purple-50 p-3 rounded-lg">
-                        <div className="text-xs text-gray-500">合格发表</div>
-                        <div className="font-semibold text-sm">{schoolDetailModal.resultDate}</div>
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)' }}>
+                        <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>合格发表</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.resultDate}</div>
                       </div>
                     )}
                   </div>
@@ -4249,16 +4356,16 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
                 {/* 材料准备进度 */}
                 <div>
-                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><CheckSquare size={16} /> 材料准备</h4>
+                  <h4 className="font-semibold mb-2 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><CheckSquare size={16} /> 材料准备</h4>
                   {(() => {
                     const progress = calculateSchoolProgress(schoolDetailModal.name);
                     return (
                       <div>
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-500">{progress.completed}/{progress.total} 完成</span>
-                          <span className="font-bold">{progress.percentage}%</span>
+                          <span style={{ color: tokens.colors.text.muted }}>{progress.completed}/{progress.total} 完成</span>
+                          <span className="font-bold" style={{ color: tokens.colors.text.primary }}>{progress.percentage}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full rounded-full h-2.5" style={{ background: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }}>
                           <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2.5 rounded-full transition-all"
                             style={{ width: `${progress.percentage}%` }} />
                         </div>
@@ -4270,7 +4377,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 {/* 募集要项链接 */}
                 {schoolDetailModal.requirementsUrl && (
                   <a href={schoolDetailModal.requirementsUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm font-medium">
+                    className="flex items-center gap-2 px-4 py-3 rounded-lg transition text-sm font-medium"
+                    style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
                     <BookOpen size={18} /> 查看募集要项 <ExternalLink size={14} className="ml-auto" />
                   </a>
                 )}
@@ -4278,12 +4386,12 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 {/* 提交材料 */}
                 {schoolDetailModal.materials && schoolDetailModal.materials.length > 0 && (
                   <div>
-                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><FileText size={16} /> 需提交材料</h4>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><FileText size={16} /> 需提交材料</h4>
                     <div className="space-y-2">
                       {schoolDetailModal.materials.map((m, i) => (
-                        <div key={i} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg text-sm">
-                          <span>{m.name}</span>
-                          <span className="text-xs text-gray-400">截止: {m.deadline}</span>
+                        <div key={i} className="flex items-center justify-between p-2.5 rounded-lg text-sm" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>
+                          <span style={{ color: tokens.colors.text.primary }}>{m.name}</span>
+                          <span className="text-xs" style={{ color: tokens.colors.text.muted }}>截止: {m.deadline}</span>
                         </div>
                       ))}
                     </div>
@@ -4297,78 +4405,95 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
       {/* 设置弹窗 */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10 rounded-t-2xl">
-              <h3 className="font-bold text-lg">设置</h3>
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
+          <div className="rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+            <div className="p-4 flex items-center justify-between sticky top-0 z-10 rounded-t-2xl" style={{ background: isDark ? 'rgba(30,30,40,0.85)' : 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+              <h3 className="font-bold text-lg" style={{ color: tokens.colors.text.primary }}>设置</h3>
               <button onClick={() => { setShowSettingsModal(false); setSettingsModalInitTab(null); }}
-                className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+                className="p-2 rounded-lg transition" style={{ color: tokens.colors.text.secondary }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><X size={20} /></button>
             </div>
             {/* 如果没有指定初始 tab，则显示一览页面 */}
             {!settingsModalInitTab ? (
               <div className="p-6">
-                <p className="text-sm text-gray-500 mb-4">选择要修改的设置项目</p>
+                <p className="text-sm mb-4" style={{ color: tokens.colors.text.muted }}>选择要修改的设置项目</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     onClick={() => setSettingsModalInitTab('profile')}
-                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-blue-300 hover:bg-blue-50/50 transition text-left group"
+                    className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd'; e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.03)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
                   >
-                    <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition">
-                      <User size={20} className="text-blue-600" />
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }}>
+                      <User size={20} style={{ color: '#3b82f6' }} />
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-800 text-sm">个人信息</div>
-                      <div className="text-xs text-gray-400">姓名、邮箱、电话、住址等</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>个人信息</div>
+                      <div className="text-xs" style={{ color: tokens.colors.text.muted }}>姓名、邮箱、电话、住址等</div>
                     </div>
                   </button>
                   <button
                     onClick={() => setSettingsModalInitTab('security')}
-                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-orange-300 hover:bg-orange-50/50 transition text-left group"
+                    className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(249,115,22,0.4)' : '#fdba74'; e.currentTarget.style.background = isDark ? 'rgba(249,115,22,0.06)' : 'rgba(249,115,22,0.03)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
                   >
-                    <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition">
-                      <Lock size={20} className="text-orange-600" />
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)' }}>
+                      <Lock size={20} style={{ color: '#f97316' }} />
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-800 text-sm">安全设置</div>
-                      <div className="text-xs text-gray-400">修改登录密码</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>安全设置</div>
+                      <div className="text-xs" style={{ color: tokens.colors.text.muted }}>修改登录密码</div>
                     </div>
                   </button>
                   <button
                     onClick={() => { setShowSettingsModal(false); setShowThemeCustomizer(true); }}
-                    className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition text-left group"
+                    className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(99,102,241,0.4)' : '#a5b4fc'; e.currentTarget.style.background = isDark ? 'rgba(99,102,241,0.06)' : 'rgba(99,102,241,0.03)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
                   >
-                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition">
-                      <Palette size={20} className="text-indigo-600" />
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)' }}>
+                      <Palette size={20} style={{ color: '#6366f1' }} />
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-800 text-sm">外观设置</div>
-                      <div className="text-xs text-gray-400">主题、背景、玻璃效果、动效</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>外观设置</div>
+                      <div className="text-xs" style={{ color: tokens.colors.text.muted }}>主题、背景、玻璃效果、动效</div>
                     </div>
                   </button>
                   {user.role === 'admin' && (
                     <>
                       <button
                         onClick={() => setSettingsModalInitTab('analytics')}
-                        className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-green-300 hover:bg-green-50/50 transition text-left group"
+                        className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                        style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(34,197,94,0.4)' : '#86efac'; e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.06)' : 'rgba(34,197,94,0.03)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
                       >
-                        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition">
-                          <BarChart3 size={20} className="text-green-600" />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }}>
+                          <BarChart3 size={20} style={{ color: '#22c55e' }} />
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-800 text-sm">数据统计</div>
-                          <div className="text-xs text-gray-400">学生、学校、老师数据概览</div>
+                          <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>数据统计</div>
+                          <div className="text-xs" style={{ color: tokens.colors.text.muted }}>学生、学校、老师数据概览</div>
                         </div>
                       </button>
                       <button
                         onClick={() => setSettingsModalInitTab('logs')}
-                        className="flex items-center gap-4 p-4 bg-white border-2 border-gray-100 rounded-xl hover:border-purple-300 hover:bg-purple-50/50 transition text-left group"
+                        className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                        style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(168,85,247,0.4)' : '#c4b5fd'; e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.06)' : 'rgba(168,85,247,0.03)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
                       >
-                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition">
-                          <FileText size={20} className="text-purple-600" />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)' }}>
+                          <FileText size={20} style={{ color: '#a855f7' }} />
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-800 text-sm">系统日志</div>
-                          <div className="text-xs text-gray-400">查看操作日志和系统事件</div>
+                          <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>系统日志</div>
+                          <div className="text-xs" style={{ color: tokens.colors.text.muted }}>查看操作日志和系统事件</div>
                         </div>
                       </button>
                     </>
@@ -4391,127 +4516,222 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           </div>
         </div>
       )}
+
+      {/* 版本日志弹窗 */}
+      {showChangelogPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowChangelogPanel(false)}>
+          <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" style={{
+            background: glassEnabled ? tokens.colors.surface.glass : (isDark ? tokens.colors.surface.solid : '#fff'),
+            backdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+            boxShadow: glassEnabled ? tokens.shadow.elevation : '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            <div className="p-5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><FileText size={20} /> 版本更新日志</h3>
+                <button onClick={() => setShowChangelogPanel(false)} className="p-1 rounded-lg transition" style={{ color: tokens.colors.text.muted }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><X size={18} /></button>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {[
+                { version: 'v1.9.0', date: '2026-02-28', changes: [
+                  '🆕 老师部门划分：所属部门改为下拉选择（学部升学组/学管/教务/其他）',
+                  '🆕 学生信息页面新增文理科字段的展示和编辑',
+                  '✏️ 升学老师选择器仅显示学部升学组老师，学管老师选择器仅显示学管老师',
+                  '✏️ 默认老师数据预设部门信息（teacher_1~5为学部升学组，teacher_6~7为学管）',
+                  '🐛 修复反馈发送逻辑（mailto链接触发方式优化 + localStorage备份记录 + toast通知）',
+                ]},
+                { version: 'v1.8.0', date: '2026-02-28', changes: [
+                  '🆕 近期可报学校改为弹窗展示（避免缩放问题）',
+                  '🆕 学校信息库/志愿学校新增【所需材料】字段',
+                  '✏️ 出愿时间判断仅基于出愿开始时间（不参考考试/截止时间）',
+                  '✏️ 志愿学校删除【学校名称(日文)】字段',
+                  '🐛 修复弹出菜单溢出裁切导致版本日志/反馈建议不可见',
+                ]},
+                { version: 'v1.7.0', date: '2026-02-28', changes: [
+                  '🆕 版本日志和反馈建议移至左下角快捷菜单',
+                  '🆕 学校信息库新增「学信网认证」和「海外认证」字段',
+                  '🐛 修复 localStorage 缓存导致新学管老师/菜单分组不显示的问题',
+                  '✏️ 出愿时间（文字描述）字段替换为认证需求字段',
+                ]},
+                { version: 'v1.6.0', date: '2026-02-28', changes: [
+                  '🆕 设置页新增「版本更新日志」和「反馈与建议」tab',
+                  '🆕 新增学管老师专职账号（高老师、林老师）',
+                  '✏️ 升学老师改为可编辑（学生信息页）',
+                  '✏️ 左侧菜单栏按功能分组展示',
+                  '🐛 近期可报学校：学生页面隐藏"已申请该校的学生"',
+                  '🐛 修复卡片展开冲突',
+                  '💅 学校详情弹窗改为玻璃拟态风格',
+                ]},
+                { version: 'v1.5.0', date: '2026-02-28', changes: [
+                  '🆕 近期可报学校页面（按月份展示可报考学校）',
+                  '✏️ 取消学生自注册，改为管理员后台创建',
+                  '🐛 数据库实时同步修复（统一AppContext数据源）',
+                  '✏️ 操作反馈提示完善（toast通知）',
+                ]},
+                { version: 'v1.4.0', date: '2026-02-28', changes: [
+                  '💅 全站弹窗/表单glass风格改造',
+                  '💅 深度暗色适配',
+                  '✏️ 邮箱认证流程完善',
+                  '📊 全新测试数据集（12学生+9账号）',
+                ]},
+                { version: 'v1.3.0', date: '2026-02-28', changes: [
+                  '💅 全站UI统一改造（玻璃拟态风格）',
+                  '🌓 全站暗色模式适配',
+                  '🎨 语义化颜色主题系统重构',
+                ]},
+                { version: 'v1.0.0', date: '2026-01-31', changes: [
+                  '🎉 基础登录系统（学生/老师/管理员）',
+                  '📅 时间线管理功能（CRUD）',
+                  '🏫 学校申请跟踪',
+                  '📋 材料清单管理',
+                ]},
+              ].map((release, idx) => (
+                <div key={idx} className="rounded-xl p-4" style={{
+                  background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+                  border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}`,
+                }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-sm font-bold px-2.5 py-1 rounded-lg" style={{
+                      background: idx === 0 ? (isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)') : (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)'),
+                      color: idx === 0 ? '#22c55e' : tokens.colors.accent.primary,
+                    }}>{release.version} {idx === 0 && '🆕 最新'}</span>
+                    <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{release.date}</span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {release.changes.map((c, ci) => (
+                      <li key={ci} className="text-sm flex items-start gap-2" style={{ color: tokens.colors.text.secondary }}>
+                        <span className="mt-0.5 text-xs">•</span><span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 反馈建议弹窗 */}
+      {showFeedbackPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowFeedbackPanel(false)}>
+          <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" style={{
+            background: glassEnabled ? tokens.colors.surface.glass : (isDark ? tokens.colors.surface.solid : '#fff'),
+            backdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+            boxShadow: glassEnabled ? tokens.shadow.elevation : '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            <div className="p-5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><Mail size={20} /> 反馈与建议</h3>
+                <button onClick={() => setShowFeedbackPanel(false)} className="p-1 rounded-lg transition" style={{ color: tokens.colors.text.muted }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><X size={18} /></button>
+              </div>
+              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>您的反馈是我们改进产品的重要动力</p>
+            </div>
+            <div className="p-5 space-y-5">
+              {/* 反馈类型 */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>反馈类型</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'suggestion', label: '💡 功能建议', color: '#3b82f6' },
+                    { id: 'bug', label: '🐛 错误报告', color: '#ef4444' },
+                    { id: 'other', label: '💬 其他', color: '#a855f7' },
+                  ].map(type => (
+                    <button key={type.id} onClick={() => setFeedbackType(type.id)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium transition"
+                      style={{
+                        background: feedbackType === type.id ? (isDark ? `${type.color}22` : `${type.color}15`) : (isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb'),
+                        color: feedbackType === type.id ? type.color : tokens.colors.text.muted,
+                        border: `1px solid ${feedbackType === type.id ? `${type.color}44` : (isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb')}`,
+                      }}>{type.label}</button>
+                  ))}
+                </div>
+              </div>
+              {/* 反馈内容 */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>反馈内容 <span style={{ color: '#ef4444' }}>*</span></label>
+                <textarea value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)} rows={5}
+                  placeholder="请详细描述您的建议或遇到的问题..."
+                  className="w-full px-4 py-3 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }} />
+              </div>
+              {/* 联系方式 */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>联系方式 <span className="text-xs font-normal" style={{ color: tokens.colors.text.muted }}>（可选）</span></label>
+                <input type="text" value={feedbackContact} onChange={e => setFeedbackContact(e.target.value)}
+                  placeholder="邮箱、微信号或其他联系方式"
+                  className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb' }} />
+              </div>
+              {/* 提交 */}
+              <button
+                onClick={() => {
+                  if (!feedbackContent.trim()) return;
+                  const typeLabels = { suggestion: '功能建议', bug: '错误报告', other: '其他' };
+                  const subject = encodeURIComponent(`[JSA反馈] ${typeLabels[feedbackType] || '反馈'}`);
+                  const body = encodeURIComponent(`反馈类型: ${typeLabels[feedbackType]}\n\n内容:\n${feedbackContent}\n\n联系方式: ${feedbackContact || '未提供'}\n\n提交时间: ${new Date().toLocaleString('zh-CN')}`);
+                  // 使用 location.href 确保 mailto 链接在所有浏览器中正确触发邮件客户端
+                  window.location.href = `mailto:jiangpeng527@gmail.com?subject=${subject}&body=${body}`;
+                  // 同时存储到 localStorage 作为备份记录
+                  try {
+                    const feedbackHistory = JSON.parse(localStorage.getItem('feedbackHistory') || '[]');
+                    feedbackHistory.unshift({
+                      type: feedbackType,
+                      content: feedbackContent,
+                      contact: feedbackContact,
+                      time: new Date().toISOString(),
+                      user: user?.name || '匿名',
+                    });
+                    localStorage.setItem('feedbackHistory', JSON.stringify(feedbackHistory.slice(0, 50)));
+                  } catch (e) { /* ignore */ }
+                  showNotification('感谢反馈！我们会尽快处理 🙏');
+                  setFeedbackContent(''); setFeedbackContact(''); setFeedbackType('suggestion'); setShowFeedbackPanel(false);
+                }}
+                disabled={!feedbackContent.trim()}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+              ><Mail size={18} /> 提交反馈</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 全局通知组件 */}
+      <Notification />
     </div>
   );
 };
 
 // 根组件
 const JapanStudyApp = () => {
-  const [user, setUser] = useState(null);
-
-  // 用户账号数据库 - 移到根组件以便AuthPage和MainApp都可以访问
-  const [allUsers, setAllUsers] = useState(() => {
-    // 从localStorage读取用户数据，如果没有则使用默认数据
-    const savedUsers = localStorage.getItem('registeredUsers');
-    if (savedUsers) {
-      return JSON.parse(savedUsers);
-    }
-    return [
-      // 管理员账号
-      {
-        id: 'admin1',
-        email: 'admin@jsa.com',
-        password: 'admin123',
-        role: 'admin',
-        name: '系统管理员',
-        createdAt: new Date().toISOString()
-      },
-      // 老师账号
-      {
-        id: 'teacher1',
-        email: 'wang@school.com',
-        password: 'wang123',
-        role: 'teacher',
-        teacherId: 'teacher_1',
-        name: '王老师',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'teacher2',
-        email: 'li@school.com',
-        password: 'li123',
-        role: 'teacher',
-        teacherId: 'teacher_2',
-        name: '李老师',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'teacher3',
-        email: 'zhang@school.com',
-        password: 'zhang123',
-        role: 'teacher',
-        teacherId: 'teacher_3',
-        name: '张老师',
-        createdAt: new Date().toISOString()
-      },
-      // 学生账号
-      {
-        id: 'student1',
-        email: 'zhangsan@student.jsa.com',
-        password: 'stu2024001',
-        role: 'student',
-        studentId: '2024001',
-        name: '张三',
-        createdAt: new Date().toISOString()
-      },    ];
-  });
-
-  // 学生列表数据 - 包含学生的详细信息
-  const [studentList, setStudentList] = useState(() => {
-    const savedStudents = localStorage.getItem('studentList');
-    if (savedStudents) {
-      return JSON.parse(savedStudents);
-    }
-    return [
-      { id: 1, name: '张三', studentId: '2024001', progress: 65, urgentTasks: 2, avatar: '👨‍🎓', teacherId: 'teacher_1', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
-      { id: 2, name: '李四', studentId: '2024002', progress: 45, urgentTasks: 4, avatar: '👩‍🎓', teacherId: 'teacher_1', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
-      { id: 3, name: '王五', studentId: '2024003', progress: 80, urgentTasks: 1, avatar: '👨‍🎓', teacherId: 'teacher_2', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
-      { id: 4, name: '赵六', studentId: '2024004', progress: 55, urgentTasks: 3, avatar: '👩‍🎓', teacherId: 'teacher_2', birthday: '', highSchool: '', languageSchool: '', jlptScore: '', ejuScores: [], englishScore: '', followUpNotes: '', photo: '' },
-    ];
-  });
-
-  // 保存用户数据到localStorage
-  useEffect(() => {
-    localStorage.setItem('registeredUsers', JSON.stringify(allUsers));
-  }, [allUsers]);
-
-  // 保存学生列表到localStorage
-  useEffect(() => {
-    localStorage.setItem('studentList', JSON.stringify(studentList));
-  }, [studentList]);
-
-  const handleLogin = (userData) => {
-    setUser(userData);
-    // 这里可以保存到 localStorage 实现持久化
-    localStorage.setItem('user', JSON.stringify(userData));
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-  };
-
-  // 检查是否有已登录用户
-  useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-  }, []);
-
   return (
     <ErrorBoundary>
       <ThemeProvider>
       <AppProvider>
-        {user ? (
-          <MainApp user={user} onLogout={handleLogout} allUsers={allUsers} setAllUsers={setAllUsers} studentList={studentList} setStudentList={setStudentList} />
-        ) : (
-          <AuthPage onLogin={handleLogin} allUsers={allUsers} studentList={studentList} />
-        )}
+        <JapanStudyAppInner />
       </AppProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
+};
+
+// 内部组件 - 使用 AppContext 统一数据源
+const JapanStudyAppInner = () => {
+  const { user, handleLogin, handleLogout, allUsers, setAllUsers, studentList, setStudentList } = useApp();
+
+  // 检查是否有已登录用户（AppContext中已处理）
+
+  if (user) {
+    return <MainApp user={user} onLogout={handleLogout} allUsers={allUsers} setAllUsers={setAllUsers} studentList={studentList} setStudentList={setStudentList} />;
+  }
+  return <AuthPage onLogin={handleLogin} allUsers={allUsers} />;
 };
 
 export default JapanStudyApp;

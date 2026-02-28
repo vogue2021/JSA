@@ -1,14 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Edit, Save, X, Camera, GraduationCap, School, BookOpen,
-  Calendar, FileText, Plus, Trash2, Mail, Clock, ChevronDown, ChevronUp, CheckCircle, Circle
+  Calendar, FileText, Plus, Trash2, Mail, Clock, ChevronDown, ChevronUp, CheckCircle, Circle, Package, UserCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
-  const { user, studentList, setStudentList, showNotification } = useApp();
+  const { user, studentList, setStudentList, showNotification, getTeacherList } = useApp();
   const { isDark, tokens, glassEnabled } = useTheme();
+  const teachers = getTeacherList ? getTeacherList() : [];
+
+  // 读取老师详情（含部门信息），用于按部门过滤
+  const teacherDetails = (() => {
+    try {
+      const saved = localStorage.getItem('teacherDetails');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  })();
+
+  // 升学老师 = 学部升学组（无部门信息的老师也显示在升学老师列表）
+  const upgradeTeachers = teachers.filter(t => {
+    const dept = teacherDetails[t.id || t.teacherId]?.department;
+    return !dept || dept === '学部升学组' || dept === '教务';
+  });
+  // 学管老师 = 学管部门（无部门信息的老师也显示在学管老师列表）
+  const academicAdvisors = teachers.filter(t => {
+    const dept = teacherDetails[t.id || t.teacherId]?.department;
+    return !dept || dept === '学管';
+  });
 
   // 玻璃卡片通用样式
   const glassCardStyle = glassEnabled ? {
@@ -24,11 +44,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     borderRadius: `${tokens.radius.card}px`,
   };
 
-  const sectionCardStyle = {
-    background: isDark ? 'rgba(255,255,255,0.04)' : '#fff',
-    border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`,
-    borderRadius: `${tokens.radius.card}px`,
-  };
+  const sectionCardClass = 'glass-panel';
   const [isEditing, setIsEditing] = useState(false);
   const [activeSection, setActiveSection] = useState('basic');
 
@@ -47,7 +63,24 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     photo: studentInfo.photo || '',
     email: studentInfo.email || student.email || '',
     targetLevel: studentInfo.targetLevel || student.targetLevel || '修士',
+    packageName: studentInfo.packageName || '',
+    packageEndDate: studentInfo.packageEndDate || '',
+    academicAdvisorId: studentInfo.academicAdvisorId || '',
+    teacherId: studentInfo.teacherId || '',
+    subject: studentInfo.subject || '',
   });
+
+  // 套餐列表（与实际数据保持一致）
+  const packageOptions = ['私塾', '校内考专家 1+2', '校内考专家 1+2+3', '丁老师规划 1+2', '丁老师规划 1+2+3'];
+
+  // 套餐状态计算
+  const getPackageStatus = () => {
+    if (!formData.packageEndDate) return null;
+    const endDate = new Date(formData.packageEndDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return endDate < today ? 'expired' : 'active';
+  };
 
   // 切换学生时重新初始化 formData
   useEffect(() => {
@@ -68,6 +101,11 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       photo: info.photo || '',
       email: info.email || student.email || '',
       targetLevel: info.targetLevel || student.targetLevel || '修士',
+      packageName: info.packageName || '',
+      packageEndDate: info.packageEndDate || '',
+      academicAdvisorId: info.academicAdvisorId || '',
+      teacherId: info.teacherId || '',
+      subject: info.subject || '',
     });
     setIsEditing(false);
     setActiveSection('basic');
@@ -192,15 +230,15 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
           </div>
           {/* 统计数据 */}
           <div className="grid grid-cols-3 gap-3 sm:gap-4 w-full sm:w-auto">
-            <div className="rounded-lg p-2 sm:p-3 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb', border: `1px solid ${tokens.colors.border.subtle}` }}>
+            <div className="glass-card p-2 sm:p-3 text-center">
               <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schools.length}</div>
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>志愿学校</div>
             </div>
-            <div className="rounded-lg p-2 sm:p-3 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb', border: `1px solid ${tokens.colors.border.subtle}` }}>
+            <div className="glass-card p-2 sm:p-3 text-center">
               <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{events.filter(e => !e.completed).length}</div>
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>待办事项</div>
             </div>
-            <div className="rounded-lg p-2 sm:p-3 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb', border: `1px solid ${tokens.colors.border.subtle}` }}>
+            <div className="glass-card p-2 sm:p-3 text-center">
               <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{totalMaterials > 0 ? Math.round(completedMaterials / totalMaterials * 100) : 0}%</div>
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>材料进度</div>
             </div>
@@ -254,7 +292,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
       {/* Basic Info Section */}
       {activeSection === 'basic' && (
-        <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+        <div className="glass-panel p-4 sm:p-6">
           <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><User size={20} /> 基本信息</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <InfoField label="姓名" value={formData.name} editing={isEditing}
@@ -272,6 +310,93 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             <InfoField label="在读语言学校" value={formData.languageSchool} editing={isEditing}
               placeholder="请输入语言学校名称"
               onChange={v => setFormData({...formData, languageSchool: v})} />
+            <InfoField label="文理科" value={formData.subject} editing={isEditing} type="select"
+              options={['', '文科', '理科']}
+              onChange={v => setFormData({...formData, subject: v})} />
+          </div>
+
+          {/* 项目套餐信息 */}
+          <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${tokens.colors.border.subtle}` }}>
+            <h5 className="font-semibold text-sm mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <Package size={16} /> 项目套餐
+            </h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {isEditing ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>套餐名称</label>
+                  <select value={formData.packageName} onChange={e => setFormData({...formData, packageName: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                    <option value="">请选择套餐</option>
+                    {packageOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>套餐名称</label>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium" style={{ color: tokens.colors.text.primary }}>{formData.packageName || '-'}</span>
+                    {formData.packageName && getPackageStatus() && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
+                        background: getPackageStatus() === 'expired'
+                          ? (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)')
+                          : (isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'),
+                        color: getPackageStatus() === 'expired' ? '#ef4444' : '#22c55e',
+                      }}>
+                        {getPackageStatus() === 'expired' ? '已过期' : '进行中'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              <InfoField label="套餐结束时间" value={formData.packageEndDate} editing={isEditing} type="date"
+                onChange={v => setFormData({...formData, packageEndDate: v})} />
+            </div>
+          </div>
+
+          {/* 学管老师信息 */}
+          <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${tokens.colors.border.subtle}` }}>
+            <h5 className="font-semibold text-sm mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <UserCheck size={16} /> 老师信息
+            </h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {isEditing ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>升学老师</label>
+                  <select value={formData.teacherId} onChange={e => setFormData({...formData, teacherId: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                    <option value="">待分配</option>
+                    {upgradeTeachers.map(t => <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师</label>
+                  <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
+                    {teachers.find(t => (t.id || t.teacherId) === studentInfo.teacherId)?.name || '待分配'}
+                  </div>
+                </div>
+              )}
+              {isEditing ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>学管老师</label>
+                  <select value={formData.academicAdvisorId} onChange={e => setFormData({...formData, academicAdvisorId: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                    <option value="">请选择学管老师</option>
+                    {academicAdvisors.map(t => <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>学管老师</label>
+                  <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
+                    {teachers.find(t => (t.id || t.teacherId) === formData.academicAdvisorId)?.name || '待分配'}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -279,7 +404,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       {/* Scores Section */}
       {activeSection === 'scores' && (
         <div className="space-y-6">
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 语言成绩</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <InfoField label="日语成绩 (JLPT)" value={formData.jlptScore} editing={isEditing}
@@ -291,7 +416,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             </div>
           </div>
 
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2">
               <Calendar size={20} /> EJU 成绩记录
             </h4>
@@ -361,7 +486,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="综合科目" />
                 </div>
                 <button onClick={handleAddEjuScore}
-                  className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">
+                  className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition"
+                  style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
                   <Plus size={16} /> 添加成绩
                 </button>
               </div>
@@ -373,12 +501,12 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       {/* Progress Section */}
       {activeSection === 'progress' && (
         <div className="space-y-6">
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><School size={20} /> 申请学校概览</h4>
             {schools.length > 0 ? (
               <div className="space-y-3">
                 {schools.map(school => (
-                  <div key={school.id} className="flex items-center justify-between p-4 bg-themed-elevated rounded-lg border">
+                  <div key={school.id} className="flex items-center justify-between p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
                     <div>
                       <div className="font-semibold">{school.name}</div>
                       <div className="text-sm text-themed-secondary">{school.program} - {school.type}</div>
@@ -392,7 +520,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             )}
           </div>
 
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><FileText size={20} /> 材料准备进度</h4>
             <div className="space-y-3">
               <CollapsibleMaterialProgress
@@ -414,12 +542,12 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             </div>
           </div>
 
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Clock size={20} /> 近期事项</h4>
             {events.filter(e => !e.completed).slice(0, 5).length > 0 ? (
               <div className="space-y-2">
                 {events.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5).map(event => (
-                  <div key={event.id} className="flex items-center justify-between p-3 bg-themed-elevated rounded-lg">
+                  <div key={event.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
                     <div className="flex items-center gap-3">
                       <span className="text-lg">{event.type === 'exam' ? '📝' : event.type === 'deadline' ? '⏰' : '✉️'}</span>
                       <div>
@@ -428,8 +556,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                       </div>
                     </div>
                     <span className={`text-sm font-bold ${
-                      event.daysLeft <= 7 ? 'text-red-600' : event.daysLeft <= 30 ? 'text-orange-600' : 'text-themed-secondary'
-                    }`}>
+                      event.daysLeft <= 7 ? 'text-red-500' : event.daysLeft <= 30 ? 'text-orange-500' : ''
+                    }`} style={event.daysLeft > 30 ? { color: tokens.colors.text.secondary } : {}}>
                       {event.daysLeft <= 0 ? '已过期' : `${event.daysLeft}天`}
                     </span>
                   </div>
@@ -447,7 +575,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         <div className="space-y-4">
           {/* 添加新备注 */}
           {canEdit && (
-            <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+            <div className="glass-panel p-4 sm:p-6">
               <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Plus size={20} /> 添加备注</h4>
               <div className="flex gap-3">
                 <textarea
@@ -467,7 +595,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                 <button
                   onClick={handleAddNote}
                   disabled={!newNote.trim()}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+              onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)' }}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
                 >
                   <Plus size={16} /> 添加备注
                 </button>
@@ -476,7 +607,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
           )}
 
           {/* 备注列表 */}
-          <div className="rounded-xl p-4 sm:p-6" style={sectionCardStyle}>
+          <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2">
               <FileText size={20} /> 跟进备注
               <span className="text-sm font-normal text-themed-muted">
@@ -494,12 +625,17 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                         </div>
                         <div className="flex items-center gap-3 mt-2 text-xs text-themed-muted">
                           <span>{note.date} {note.time || ''}</span>
-                          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium text-xs ${
-                            note.role === 'admin' ? 'bg-red-50 text-red-600 border border-red-200' :
-                            note.role === 'teacher' ? 'bg-purple-50 text-purple-600 border border-purple-200' :
-                            note.role === 'student' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
-                            'bg-gray-50 text-themed-secondary border border-themed-subtle'
-                          }`}>
+                          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium text-xs`}
+                            style={{
+                              background: note.role === 'admin' ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)')
+                                : note.role === 'teacher' ? (isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)')
+                                : note.role === 'student' ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)')
+                                : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
+                              color: note.role === 'admin' ? '#ef4444'
+                                : note.role === 'teacher' ? '#a855f7'
+                                : note.role === 'student' ? '#3b82f6'
+                                : tokens.colors.text.secondary,
+                            }}>
                             <User size={12} />
                             {note.author || '未知'}
                             <span className="opacity-60">
@@ -563,14 +699,15 @@ const InfoField = ({ label, value, editing, onChange, type = 'text', placeholder
 };
 
 const StatusBadge = ({ status }) => {
+  const { isDark } = useTheme();
   const config = {
-    preparing: { label: '准备中', color: 'bg-blue-100 text-blue-700' },
-    contacted: { label: '已联系', color: 'bg-green-100 text-green-700' },
-    submitted: { label: '已提交', color: 'bg-purple-100 text-purple-700' },
-    admitted: { label: '已合格', color: 'bg-yellow-100 text-yellow-700' },
+    preparing: { label: '准备中', bg: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' },
+    contacted: { label: '已联系', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
+    submitted: { label: '已提交', bg: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: '#a855f7' },
+    admitted: { label: '已合格', bg: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' },
   };
-  const { label, color } = config[status] || { label: '未知', color: 'bg-gray-100 text-themed-primary' };
-  return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${color}`}>{label}</span>;
+  const { label, bg, color } = config[status] || { label: '未知', bg: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: isDark ? '#9ca3af' : '#6b7280' };
+  return <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: bg, color }}>{label}</span>;
 };
 
 const ProgressBar = ({ label, completed, total, color = 'blue' }) => {
@@ -595,6 +732,7 @@ const ProgressBar = ({ label, completed, total, color = 'blue' }) => {
 
 // 可收缩的材料进度组件：点击展开显示具体材料清单和准备状态
 const CollapsibleMaterialProgress = ({ label, materials, color = 'blue' }) => {
+  const { isDark, tokens } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const completed = materials.filter(i => i.completed).length;
   const total = materials.length;
@@ -605,7 +743,7 @@ const CollapsibleMaterialProgress = ({ label, materials, color = 'blue' }) => {
   };
 
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : tokens.colors.border.subtle}` }}>
       {/* 进度条头部（可点击） */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -628,7 +766,7 @@ const CollapsibleMaterialProgress = ({ label, materials, color = 'blue' }) => {
 
       {/* 展开的材料清单 */}
       {expanded && materials.length > 0 && (
-        <div className="border-t bg-themed-elevated px-3 py-2 space-y-1">
+        <div className="px-3 py-2 space-y-1" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
           {materials.map((item, idx) => (
             <div key={item.id || idx} className="flex items-center gap-2 py-1.5 px-2 rounded transition" style={{ background: "transparent" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               {item.completed ? (
@@ -650,7 +788,7 @@ const CollapsibleMaterialProgress = ({ label, materials, color = 'blue' }) => {
       )}
 
       {expanded && materials.length === 0 && (
-        <div className="border-t bg-themed-elevated px-3 py-4 text-center text-sm text-themed-muted">
+        <div className="px-3 py-4 text-center text-sm text-themed-muted" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
           暂无材料
         </div>
       )}

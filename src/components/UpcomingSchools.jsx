@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
   School, Calendar, ChevronLeft, ChevronRight, MapPin,
-  ExternalLink, Users, ChevronDown, ChevronUp, BookOpen, Search
+  ExternalLink, Users, BookOpen, Search, X
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { getSchoolDatabase } from '../data/defaultSchools';
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
@@ -16,7 +17,7 @@ const TYPE_COLORS = {
 const UpcomingSchools = ({ studentList, currentStudent, user }) => {
   const { isDark, tokens, glassEnabled } = useTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [expandedSchoolId, setExpandedSchoolId] = useState(null);
+  const [detailSchool, setDetailSchool] = useState(null); // 弹窗展示学校详情
   const [searchQuery, setSearchQuery] = useState('');
 
   const year = currentDate.getFullYear();
@@ -40,69 +41,30 @@ const UpcomingSchools = ({ studentList, currentStudent, user }) => {
     borderRadius: `${tokens.radius.card}px`,
   };
 
-  // 从学校信息库获取数据
+  // 从学校信息库获取数据（优先localStorage，无数据时使用默认数据并自动写入）
   const schoolDb = useMemo(() => {
-    try {
-      const saved = localStorage.getItem('schoolDatabase');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
+    return getSchoolDatabase();
   }, []);
 
-  // 解析出愿时间段，判断是否在指定月份有活动
+  // 解析出愿开始时间，仅基于出愿开始时间判断是否在指定月份可报考
+  // 考试时间、截止时间等不作为判断依据
   const parseSchoolMonths = (school) => {
     const months = new Set();
 
-    // 从 importantDates 多组日期解析
+    // 从 importantDates 多组日期中仅提取 applicationStartDate
     if (school.importantDates && Array.isArray(school.importantDates)) {
       school.importantDates.forEach(dateGroup => {
         if (dateGroup.applicationStartDate) {
           const d = new Date(dateGroup.applicationStartDate);
           if (!isNaN(d)) months.add(d.getMonth());
         }
-        if (dateGroup.applicationEndDate) {
-          const d = new Date(dateGroup.applicationEndDate);
-          if (!isNaN(d)) months.add(d.getMonth());
-        }
-        if (dateGroup.examDate) {
-          const d = new Date(dateGroup.examDate);
-          if (!isNaN(d)) months.add(d.getMonth());
-        }
-        if (dateGroup.resultDate) {
-          const d = new Date(dateGroup.resultDate);
-          if (!isNaN(d)) months.add(d.getMonth());
-        }
       });
     }
 
-    // 兼容旧数据的单组日期字段
+    // 兼容旧数据的单组日期字段（仅 applicationStartDate）
     if (school.applicationStartDate) {
       const d = new Date(school.applicationStartDate);
       if (!isNaN(d)) months.add(d.getMonth());
-    }
-    if (school.applicationEndDate) {
-      const d = new Date(school.applicationEndDate);
-      if (!isNaN(d)) months.add(d.getMonth());
-    }
-    if (school.examDate) {
-      const d = new Date(school.examDate);
-      if (!isNaN(d)) months.add(d.getMonth());
-    }
-    if (school.resultDate) {
-      const d = new Date(school.resultDate);
-      if (!isNaN(d)) months.add(d.getMonth());
-    }
-
-    // 从 applicationPeriods 文本解析月份
-    if (school.applicationPeriods && Array.isArray(school.applicationPeriods)) {
-      school.applicationPeriods.forEach(period => {
-        const monthMatches = period.match(/(\d{1,2})月/g);
-        if (monthMatches) {
-          monthMatches.forEach(m => {
-            const num = parseInt(m.replace('月', ''));
-            if (num >= 1 && num <= 12) months.add(num - 1);
-          });
-        }
-      });
     }
 
     return months;
@@ -276,7 +238,6 @@ const UpcomingSchools = ({ studentList, currentStudent, user }) => {
                 {md.schools.length > 0 ? (
                   <div className="sm:ml-16 grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {md.schools.map(school => {
-                      const isExpanded = expandedSchoolId === `${md.year}-${md.month}-${school.id}`;
                       const relatedStudents = getStudentsForSchool(school.name);
                       const typeColor = TYPE_COLORS[school.type] || 'bg-gray-500';
 
@@ -287,7 +248,7 @@ const UpcomingSchools = ({ studentList, currentStudent, user }) => {
                             ...glassCardStyle,
                             transition: 'all 250ms cubic-bezier(0.16,1,0.3,1)',
                           }}
-                          onClick={() => setExpandedSchoolId(isExpanded ? null : `${md.year}-${md.month}-${school.id}`)}
+                          onClick={() => setDetailSchool(school)}
                           onMouseEnter={e => e.currentTarget.style.boxShadow = tokens.shadow.elevationHover}
                           onMouseLeave={e => e.currentTarget.style.boxShadow = glassCardStyle.boxShadow || 'none'}
                         >
@@ -310,159 +271,30 @@ const UpcomingSchools = ({ studentList, currentStudent, user }) => {
                                     {school.type}
                                   </span>
                                 </div>
-                                {school.applicationPeriods && school.applicationPeriods.length > 0 && (
+                                {(school.xuexinCert || school.overseasCert) && (
                                   <div className="flex flex-wrap gap-1">
-                                    {school.applicationPeriods.map((p, i) => (
-                                      <span key={i} className="text-xs px-2 py-0.5 rounded-full"
-                                        style={{ background: isDark ? 'rgba(249,115,22,0.12)' : '#fff7ed', color: isDark ? '#fdba74' : '#ea580c' }}>
-                                        <Calendar size={10} className="inline mr-1" />{p}
-                                      </span>
-                                    ))}
+                                    <span className="text-xs px-2 py-0.5 rounded-full"
+                                      style={{ background: school.xuexinCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : school.xuexinCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: school.xuexinCert === '是' ? '#22c55e' : school.xuexinCert === '否' ? '#ef4444' : '#eab308' }}>
+                                      学信网:{school.xuexinCert || '不确定'}
+                                    </span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full"
+                                      style={{ background: school.overseasCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : school.overseasCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: school.overseasCert === '是' ? '#22c55e' : school.overseasCert === '否' ? '#ef4444' : '#eab308' }}>
+                                      海外认证:{school.overseasCert || '不确定'}
+                                    </span>
                                   </div>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 ml-2">
-                                {relatedStudents.length > 0 && (
+                                {user.role !== 'student' && relatedStudents.length > 0 && (
                                   <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
                                     style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>
                                     <Users size={12} />{relatedStudents.length}
                                   </span>
                                 )}
-                                {isExpanded
-                                  ? <ChevronUp size={16} style={{ color: tokens.colors.text.muted }} />
-                                  : <ChevronDown size={16} style={{ color: tokens.colors.text.muted }} />}
+                                <ExternalLink size={14} style={{ color: tokens.colors.text.muted }} />
                               </div>
                             </div>
                           </div>
-
-                          {/* 展开详情 */}
-                          {isExpanded && (
-                            <div className="p-4 space-y-3 animate-fade-in" onClick={e => e.stopPropagation()}
-                              style={{ borderTop: `1px solid ${tokens.colors.border.subtle}`, background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
-                              {/* 重要日期 */}
-                              <div>
-                                <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
-                                {school.importantDates && school.importantDates.length > 0 ? (
-                                  school.importantDates.map((dateGroup, gi) => {
-                                    const hasAny = dateGroup.applicationStartDate || dateGroup.applicationEndDate || dateGroup.examDate || dateGroup.resultDate;
-                                    if (!hasAny) return null;
-                                    return (
-                                      <div key={gi} className="mb-2">
-                                        <div className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.secondary }}>{dateGroup.label || `第${gi+1}审`}</div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          {dateGroup.applicationStartDate && (
-                                            <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? `1px solid rgba(255,255,255,0.06)` : 'none' }}>
-                                              <div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div>
-                                              <div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{dateGroup.applicationStartDate}</div>
-                                            </div>
-                                          )}
-                                          {dateGroup.applicationEndDate && (
-                                            <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? `1px solid rgba(255,255,255,0.06)` : 'none' }}>
-                                              <div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div>
-                                              <div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{dateGroup.applicationEndDate}</div>
-                                            </div>
-                                          )}
-                                          {dateGroup.examDate && (
-                                            <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? `1px solid rgba(255,255,255,0.06)` : 'none' }}>
-                                              <div className="text-xs" style={{ color: tokens.colors.text.muted }}>考试日期</div>
-                                              <div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{dateGroup.examDate}</div>
-                                            </div>
-                                          )}
-                                          {dateGroup.resultDate && (
-                                            <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? `1px solid rgba(255,255,255,0.06)` : 'none' }}>
-                                              <div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div>
-                                              <div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{dateGroup.resultDate}</div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {school.applicationStartDate && (
-                                      <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}>
-                                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div>
-                                        <div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{school.applicationStartDate}</div>
-                                      </div>
-                                    )}
-                                    {school.applicationEndDate && (
-                                      <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}>
-                                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div>
-                                        <div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{school.applicationEndDate}</div>
-                                      </div>
-                                    )}
-                                    {school.examDate && (
-                                      <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}>
-                                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>考试日期</div>
-                                        <div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{school.examDate}</div>
-                                      </div>
-                                    )}
-                                    {school.resultDate && (
-                                      <div className="rounded-lg p-2 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}>
-                                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div>
-                                        <div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{school.resultDate}</div>
-                                      </div>
-                                    )}
-                                    {!school.applicationStartDate && !school.applicationEndDate && !school.examDate && !school.resultDate && (
-                                      <div className="col-span-2 text-xs text-center py-2" style={{ color: tokens.colors.text.muted }}>暂未设置具体日期</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* 录取信息 */}
-                              <div className="flex items-center gap-4 text-sm" style={{ color: tokens.colors.text.secondary }}>
-                                {school.acceptanceRate && <span>录取率: <strong>{school.acceptanceRate}</strong></span>}
-                                {school.requirements && <span>要求: {school.requirements}</span>}
-                              </div>
-
-                              {/* 专业列表 */}
-                              {school.programs && school.programs.length > 0 && (
-                                <div>
-                                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>招生研究科</h5>
-                                  <div className="flex flex-wrap gap-1">
-                                    {school.programs.map((p, i) => (
-                                      <span key={i} className="text-xs px-2 py-0.5 rounded-full"
-                                        style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>
-                                        {p}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* 相关学生 */}
-                              {relatedStudents.length > 0 && (
-                                <div>
-                                  <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>
-                                    <Users size={12} className="inline mr-1" />已申请该校的学生 ({relatedStudents.length})
-                                  </h5>
-                                  <div className="flex flex-wrap gap-2">
-                                    {relatedStudents.map((s, i) => (
-                                      <div key={i} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
-                                        style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${tokens.colors.border.subtle}` }}>
-                                        <span className="text-lg">{s.avatar}</span>
-                                        <div>
-                                          <div className="text-sm font-medium" style={{ color: tokens.colors.text.primary }}>{s.name}</div>
-                                          <div className="text-xs" style={{ color: tokens.colors.text.muted }}>{s.studentId} {s.subject && `· ${s.subject}`}</div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* 链接 */}
-                              {school.requirementsUrl && (
-                                <a href={school.requirementsUrl} target="_blank" rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-xs transition"
-                                  style={{ color: tokens.colors.accent.success }}>
-                                  <BookOpen size={12} />募集要项 <ExternalLink size={12} />
-                                </a>
-                              )}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -486,6 +318,132 @@ const UpcomingSchools = ({ studentList, currentStudent, user }) => {
           <BookOpen size={32} className="mx-auto mb-2" style={{ color: isDark ? '#fbbf24' : '#ca8a04' }} />
           <p className="font-medium" style={{ color: isDark ? '#fbbf24' : '#a16207' }}>学校信息库暂无数据</p>
           <p className="text-sm mt-1" style={{ color: isDark ? '#fde68a' : '#ca8a04' }}>请先在"学校信息库"页面添加学校信息，并填写出愿时间段</p>
+        </div>
+      )}
+      {/* 学校详情弹窗 */}
+      {detailSchool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+          style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => setDetailSchool(null)}>
+          <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in"
+            style={{
+              background: glassEnabled ? tokens.colors.surface.glass : (isDark ? tokens.colors.surface.solid : '#fff'),
+              backdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+              WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+              boxShadow: glassEnabled ? tokens.shadow.elevation : '0 20px 60px rgba(0,0,0,0.3)',
+            }} onClick={e => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="p-5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${TYPE_COLORS[detailSchool.type] || 'bg-gray-500'}`} />
+                  <div>
+                    <h3 className="font-bold text-lg" style={{ color: tokens.colors.text.primary }}>{detailSchool.name}</h3>
+                    {detailSchool.nameJa && <p className="text-xs" style={{ color: tokens.colors.text.muted }}>{detailSchool.nameJa}</p>}
+                  </div>
+                </div>
+                <button onClick={() => setDetailSchool(null)} className="p-1.5 rounded-lg transition" style={{ color: tokens.colors.text.muted }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: tokens.colors.text.muted }}>
+                {detailSchool.location && <span className="flex items-center gap-1"><MapPin size={12} />{detailSchool.location}</span>}
+                <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>{detailSchool.type}</span>
+                {detailSchool.acceptanceRate && <span>录取率: {detailSchool.acceptanceRate}</span>}
+              </div>
+            </div>
+            {/* 内容 */}
+            <div className="p-5 space-y-4">
+              {/* 认证需求 */}
+              {(detailSchool.xuexinCert || detailSchool.overseasCert) && (
+                <div>
+                  <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>认证需求</h5>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-xs px-3 py-1 rounded-full" style={{ background: detailSchool.xuexinCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : detailSchool.xuexinCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: detailSchool.xuexinCert === '是' ? '#22c55e' : detailSchool.xuexinCert === '否' ? '#ef4444' : '#eab308' }}>
+                      学信网认证: {detailSchool.xuexinCert || '不确定'}
+                    </span>
+                    <span className="text-xs px-3 py-1 rounded-full" style={{ background: detailSchool.overseasCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : detailSchool.overseasCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: detailSchool.overseasCert === '是' ? '#22c55e' : detailSchool.overseasCert === '否' ? '#ef4444' : '#eab308' }}>
+                      海外认证: {detailSchool.overseasCert || '不确定'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {/* 重要日期 */}
+              <div>
+                <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
+                {detailSchool.importantDates && detailSchool.importantDates.length > 0 ? (
+                  detailSchool.importantDates.map((dg, gi) => {
+                    const hasAny = dg.applicationStartDate || dg.applicationEndDate || dg.examDate || dg.resultDate;
+                    if (!hasAny) return null;
+                    return (
+                      <div key={gi} className="mb-3">
+                        <div className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.secondary }}>{dg.label || `第${gi+1}审`}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {dg.applicationStartDate && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div><div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{dg.applicationStartDate}</div></div>}
+                          {dg.applicationEndDate && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{dg.applicationEndDate}</div></div>}
+                          {dg.examDate && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>考试日期</div><div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{dg.examDate}</div></div>}
+                          {dg.resultDate && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div><div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{dg.resultDate}</div></div>}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-center py-3" style={{ color: tokens.colors.text.muted }}>暂未设置具体日期</p>
+                )}
+              </div>
+              {/* 录取信息 */}
+              {(detailSchool.acceptanceRate || detailSchool.requirements) && (
+                <div className="flex items-center gap-4 text-sm" style={{ color: tokens.colors.text.secondary }}>
+                  {detailSchool.acceptanceRate && <span>录取率: <strong>{detailSchool.acceptanceRate}</strong></span>}
+                  {detailSchool.requirements && <span>要求: {detailSchool.requirements}</span>}
+                </div>
+              )}
+              {/* 招生研究科 */}
+              {detailSchool.programs && detailSchool.programs.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>招生研究科</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {detailSchool.programs.map((p, i) => (
+                      <span key={i} className="text-xs px-2.5 py-1 rounded-full" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* 已申请该校的学生 - 仅老师和管理员可见 */}
+              {user.role !== 'student' && (() => {
+                const students = getStudentsForSchool(detailSchool.name);
+                return students.length > 0 ? (
+                  <div>
+                    <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>
+                      <Users size={12} className="inline mr-1" />已申请该校的学生 ({students.length})
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {students.map((s, i) => (
+                        <div key={i} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${tokens.colors.border.subtle}` }}>
+                          <span className="text-lg">{s.avatar}</span>
+                          <div>
+                            <div className="text-sm font-medium" style={{ color: tokens.colors.text.primary }}>{s.name}</div>
+                            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>{s.studentId} {s.subject && `· ${s.subject}`}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+              {/* 募集要项链接 */}
+              {detailSchool.requirementsUrl && (
+                <a href={detailSchool.requirementsUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-sm transition"
+                  style={{ color: tokens.colors.accent.success }}>
+                  <BookOpen size={14} />查看募集要项 <ExternalLink size={12} />
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

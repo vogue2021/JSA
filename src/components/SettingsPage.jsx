@@ -207,15 +207,18 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
   }, [user.role, allUsers, studentList]);
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex gap-2 border-b pb-2 overflow-x-auto">
+    <div className="space-y-4 p-4 animate-fade-in">
+      <div className="flex gap-2 pb-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.colors.border.subtle}` }}>
         {tabs.map(tab => {
           const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition whitespace-nowrap ${
-                activeTab === tab.id ? 'bg-blue-50 text-blue-600' : 'text-themed-secondary hover:bg-themed-elevated'
-              }`}>
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition whitespace-nowrap"
+              style={{
+                background: isActive ? (isDark ? 'rgba(99,102,241,0.12)' : '#eff6ff') : 'transparent',
+                color: isActive ? tokens.colors.accent.primary : tokens.colors.text.muted,
+              }}>
               <Icon size={18} /> {tab.label}
             </button>
           );
@@ -224,7 +227,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
 
       {/* 个人信息 */}
       {activeTab === 'profile' && (
-        <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle overflow-hidden">
+        <div className="glass-panel overflow-hidden">
           {/* 头部 */}
           <div className={`p-6 text-white bg-gradient-to-r ${
             user.role === 'admin' ? 'from-red-500 to-purple-500' :
@@ -375,90 +378,90 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
         <div className="space-y-6">
           {/* 概览指标卡片 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-themed-surface rounded-xl p-4 border-2 border-themed-subtle">
+            <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users size={16} className="text-blue-600" />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }}>
+                  <Users size={16} style={{ color: '#3b82f6' }} />
                 </div>
-                <span className="text-xs text-themed-secondary">学生总数</span>
+                <span className="text-xs" style={{ color: tokens.colors.text.muted }}>学生总数</span>
               </div>
-              <div className="text-2xl font-bold text-themed-primary">{analyticsData.totalStudents}</div>
+              <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{analyticsData.totalStudents}</div>
               {analyticsData.unassignedStudents > 0 && (
-                <p className="text-xs text-orange-500 mt-1">{analyticsData.unassignedStudents} 人待分配</p>
+                <p className="text-xs mt-1" style={{ color: '#f97316' }}>{analyticsData.unassignedStudents} 人待分配</p>
               )}
             </div>
-            <div className="bg-themed-surface rounded-xl p-4 border-2 border-themed-subtle">
+            <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <GraduationCap size={16} className="text-purple-600" />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)' }}>
+                  <GraduationCap size={16} style={{ color: '#a855f7' }} />
                 </div>
-                <span className="text-xs text-themed-secondary">老师人数</span>
+                <span className="text-xs" style={{ color: tokens.colors.text.muted }}>老师人数</span>
               </div>
-              <div className="text-2xl font-bold text-themed-primary">{analyticsData.totalTeachers}</div>
+              <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{analyticsData.totalTeachers}</div>
             </div>
-            <div className="bg-themed-surface rounded-xl p-4 border-2 border-themed-subtle">
+            <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                  <School size={16} className="text-green-600" />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }}>
+                  <School size={16} style={{ color: '#22c55e' }} />
                 </div>
-                <span className="text-xs text-themed-secondary">报考总数</span>
+                <span className="text-xs" style={{ color: tokens.colors.text.muted }}>报考总数</span>
               </div>
-              <div className="text-2xl font-bold text-themed-primary">{analyticsData.totalApplications}</div>
-              <p className="text-xs text-themed-muted mt-1">信息库 {analyticsData.schoolDbCount} 所</p>
+              <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{analyticsData.totalApplications}</div>
+              <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>信息库 {analyticsData.schoolDbCount} 所</p>
             </div>
-            <div className="bg-themed-surface rounded-xl p-4 border-2 border-themed-subtle">
+            <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <TrendingUp size={16} className="text-yellow-600" />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)' }}>
+                  <TrendingUp size={16} style={{ color: '#eab308' }} />
                 </div>
-                <span className="text-xs text-themed-secondary">合格率</span>
+                <span className="text-xs" style={{ color: tokens.colors.text.muted }}>合格率</span>
               </div>
-              <div className="text-2xl font-bold text-themed-primary">{analyticsData.admissionRate}%</div>
-              <p className="text-xs text-green-500 mt-1">{analyticsData.totalAdmitted} 人合格</p>
+              <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{analyticsData.admissionRate}%</div>
+              <p className="text-xs mt-1" style={{ color: '#22c55e' }}>{analyticsData.totalAdmitted} 人合格</p>
             </div>
           </div>
 
           {/* 申请状态分布 */}
-          <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-5">
+          <div className="glass-panel p-5">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart size={20} className="text-blue-500" /> 申请状态分布</h4>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-blue-50 rounded-xl">
-                <Clock size={24} className="mx-auto mb-2 text-blue-500" />
-                <div className="text-2xl font-bold text-blue-700">{analyticsData.totalPreparing}</div>
-                <div className="text-xs text-blue-500 mt-1">准备中</div>
+              <div className="glass-card text-center p-4">
+                <Clock size={24} className="mx-auto mb-2" style={{ color: '#3b82f6' }} />
+                <div className="text-2xl font-bold" style={{ color: '#3b82f6' }}>{analyticsData.totalPreparing}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>准备中</div>
                 {analyticsData.totalApplications > 0 && (
-                  <div className="w-full bg-blue-200 rounded-full h-1.5 mt-2">
-                    <div className="bg-blue-500 h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalPreparing / analyticsData.totalApplications * 100)}%`}} />
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalPreparing / analyticsData.totalApplications * 100)}%`, background: '#3b82f6'}} />
                   </div>
                 )}
               </div>
-              <div className="text-center p-4 bg-green-50 rounded-xl">
-                <CheckCircle size={24} className="mx-auto mb-2 text-green-500" />
-                <div className="text-2xl font-bold text-green-700">{analyticsData.totalContacted}</div>
-                <div className="text-xs text-green-500 mt-1">已联系</div>
+              <div className="glass-card text-center p-4">
+                <CheckCircle size={24} className="mx-auto mb-2" style={{ color: '#22c55e' }} />
+                <div className="text-2xl font-bold" style={{ color: '#22c55e' }}>{analyticsData.totalContacted}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已联系</div>
                 {analyticsData.totalApplications > 0 && (
-                  <div className="w-full bg-green-200 rounded-full h-1.5 mt-2">
-                    <div className="bg-green-500 h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalContacted / analyticsData.totalApplications * 100)}%`}} />
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalContacted / analyticsData.totalApplications * 100)}%`, background: '#22c55e'}} />
                   </div>
                 )}
               </div>
-              <div className="text-center p-4 bg-purple-50 rounded-xl">
-                <AlertCircle size={24} className="mx-auto mb-2 text-purple-500" />
-                <div className="text-2xl font-bold text-purple-700">{analyticsData.totalSubmitted}</div>
-                <div className="text-xs text-purple-500 mt-1">已提交</div>
+              <div className="glass-card text-center p-4">
+                <AlertCircle size={24} className="mx-auto mb-2" style={{ color: '#a855f7' }} />
+                <div className="text-2xl font-bold" style={{ color: '#a855f7' }}>{analyticsData.totalSubmitted}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已提交</div>
                 {analyticsData.totalApplications > 0 && (
-                  <div className="w-full bg-purple-200 rounded-full h-1.5 mt-2">
-                    <div className="bg-purple-500 h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalSubmitted / analyticsData.totalApplications * 100)}%`}} />
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalSubmitted / analyticsData.totalApplications * 100)}%`, background: '#a855f7'}} />
                   </div>
                 )}
               </div>
-              <div className="text-center p-4 bg-yellow-50 rounded-xl">
-                <TrendingUp size={24} className="mx-auto mb-2 text-yellow-500" />
-                <div className="text-2xl font-bold text-yellow-700">{analyticsData.totalAdmitted}</div>
-                <div className="text-xs text-yellow-500 mt-1">已合格</div>
+              <div className="glass-card text-center p-4">
+                <TrendingUp size={24} className="mx-auto mb-2" style={{ color: '#eab308' }} />
+                <div className="text-2xl font-bold" style={{ color: '#eab308' }}>{analyticsData.totalAdmitted}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已合格</div>
                 {analyticsData.totalApplications > 0 && (
-                  <div className="w-full bg-yellow-200 rounded-full h-1.5 mt-2">
-                    <div className="bg-yellow-500 h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalAdmitted / analyticsData.totalApplications * 100)}%`}} />
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalAdmitted / analyticsData.totalApplications * 100)}%`, background: '#eab308'}} />
                   </div>
                 )}
               </div>
@@ -466,13 +469,13 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           </div>
 
           {/* 各学校报考情况 */}
-          <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-5">
+          <div className="glass-panel p-5">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><School size={20} className="text-green-500" /> 各学校报考情况</h4>
             {analyticsData.sortedSchools.length > 0 ? (
               <div className="space-y-3">
                 {analyticsData.sortedSchools.map((school, idx) => (
                   <div key={school.name} className="flex items-center gap-4 p-3 bg-themed-elevated rounded-lg hover:bg-themed-elevated transition">
-                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm font-bold text-blue-600">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -490,16 +493,16 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full" title="报考人数">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
                         {school.total}人报考
                       </span>
                       {school.admitted > 0 && (
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full" title="合格人数">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(234,179,8,0.12)' : 'rgba(234,179,8,0.08)', color: '#eab308' }}>
                           {school.admitted}人合格
                         </span>
                       )}
                       {school.submitted > 0 && (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full" title="已提交">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
                           {school.submitted}人提交
                         </span>
                       )}
@@ -517,7 +520,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           </div>
 
           {/* 老师名下学生分布 */}
-          <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-5">
+          <div className="glass-panel p-5">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Users size={20} className="text-purple-500" /> 老师名下学生分布</h4>
             <div className="space-y-3">
               {analyticsData.teachers.map(teacher => {
@@ -525,15 +528,14 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
                 const maxCount = Math.max(...Object.values(analyticsData.teacherStudentCounts), 1);
                 return (
                   <div key={teacher.email} className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-lg">👨‍🏫</div>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)' }}>👨‍🏫</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-themed-primary text-sm truncate">{teacher.name}</span>
                         <span className="text-sm font-bold text-purple-600">{count} 人</span>
                       </div>
-                      <div className="w-full bg-purple-100 rounded-full h-2">
-                        <div className="bg-purple-500 h-2 rounded-full transition-all"
-                          style={{width: `${(count / maxCount) * 100}%`}} />
+                      <div className="w-full rounded-full h-2" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.2)' }}>
+                        <div className="h-2 rounded-full transition-all" style={{ background: '#a855f7', width: `${(count / maxCount) * 100}%` }} />
                       </div>
                     </div>
                   </div>
@@ -541,15 +543,14 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
               })}
               {analyticsData.unassignedStudents > 0 && (
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-lg">❓</div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)' }}>❓</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium text-orange-600 text-sm">待分配</span>
                       <span className="text-sm font-bold text-orange-600">{analyticsData.unassignedStudents} 人</span>
                     </div>
-                    <div className="w-full bg-orange-100 rounded-full h-2">
-                      <div className="bg-orange-500 h-2 rounded-full transition-all"
-                        style={{width: `${(analyticsData.unassignedStudents / Math.max(...Object.values(analyticsData.teacherStudentCounts), 1)) * 100}%`}} />
+                    <div className="w-full rounded-full h-2" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.2)' }}>
+                      <div className="h-2 rounded-full transition-all" style={{ background: '#f97316', width: `${(analyticsData.unassignedStudents / Math.max(...Object.values(analyticsData.teacherStudentCounts), 1)) * 100}%` }} />
                     </div>
                   </div>
                 </div>
@@ -564,11 +565,11 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
 
       {/* 安全设置 */}
       {activeTab === 'security' && (
-        <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-6">
+        <div className="glass-panel p-6">
           <h4 className="font-bold text-lg mb-6 flex items-center gap-2"><Lock size={20} /> 修改密码</h4>
           {pwdSuccess ? (
             <div className="text-center py-8">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }}>
                 <Check size={32} className="text-green-600" />
               </div>
               <p className="text-green-600 font-semibold">密码修改成功！</p>
@@ -607,6 +608,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
 
 // === 日志面板组件 ===
 const LogsPanel = () => {
+  const { isDark, tokens } = useTheme();
   const [logs, setLogs] = useState([]);
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -652,13 +654,13 @@ const LogsPanel = () => {
   };
 
   const getLevelStyle = (level) => {
-    switch (level) {
-      case 'info': return 'bg-blue-100 text-blue-700';
-      case 'warn': return 'bg-yellow-100 text-yellow-700';
-      case 'error': return 'bg-red-100 text-red-700';
-      case 'action': return 'bg-green-100 text-green-700';
-      default: return 'bg-gray-100 text-themed-primary';
-    }
+    const styles = {
+      info: { background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' },
+      warn: { background: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' },
+      error: { background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: '#ef4444' },
+      action: { background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
+    };
+    return styles[level] || { background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.primary };
   };
 
   const getLevelLabel = (level) => {
@@ -684,7 +686,7 @@ const LogsPanel = () => {
   return (
     <div className="space-y-4">
       {/* 工具栏 */}
-      <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle p-4">
+      <div className="glass-panel p-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <h4 className="font-bold text-lg flex items-center gap-2">
@@ -698,11 +700,13 @@ const LogsPanel = () => {
               <Filter size={14} /> 筛选 {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
             <button onClick={handleExportLogs}
-              className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm hover:bg-blue-100">
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition"
+              style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
               <Download size={14} /> 导出
             </button>
             <button onClick={handleClearLogs}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100">
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition"
+              style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
               <Trash2 size={14} /> 清空
             </button>
           </div>
@@ -757,14 +761,14 @@ const LogsPanel = () => {
       </div>
 
       {/* 日志列表 */}
-      <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle overflow-hidden">
+      <div className="glass-panel overflow-hidden">
         {paginatedLogs.length > 0 ? (
           <div className="divide-y">
             {paginatedLogs.map(log => (
               <div key={log.id} className="px-4 py-3 hover:bg-themed-elevated transition">
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0 mt-0.5">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getLevelStyle(log.level)}`}>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={getLevelStyle(log.level)}>
                       {getLevelLabel(log.level)}
                     </span>
                   </div>

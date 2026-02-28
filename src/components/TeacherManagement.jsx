@@ -215,8 +215,12 @@ const TeacherManagement = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
+    <div className="space-y-6 animate-fade-in">
+      <div className="glass-panel p-5 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl lg:text-2xl font-bold mb-1" style={{ color: tokens.colors.text.primary }}>老师管理</h2>
+          <p className="text-sm" style={{ color: tokens.colors.text.muted }}>管理老师信息与权限分配</p>
+        </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
@@ -242,9 +246,11 @@ const TeacherManagement = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setFilterDepartment('all')}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                filterDepartment === 'all' ? 'bg-purple-500 text-white' : (isDark ? 'bg-[rgba(255,255,255,0.06)] text-themed-secondary hover:bg-[rgba(255,255,255,0.1)]' : 'bg-gray-100 text-themed-secondary hover:bg-gray-200')
-                }`}
+                className="px-3 py-1 rounded-full text-xs font-medium transition"
+                style={{
+                  background: filterDepartment === 'all' ? '#a855f7' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                  color: filterDepartment === 'all' ? '#fff' : tokens.colors.text.secondary,
+                }}
               >
                 全部
               </button>
@@ -252,9 +258,11 @@ const TeacherManagement = () => {
                 <button
                   key={dept}
                   onClick={() => setFilterDepartment(dept)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                    filterDepartment === dept ? 'bg-purple-500 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                  }`}
+                  className="px-3 py-1 rounded-full text-xs font-medium transition"
+                  style={{
+                    background: filterDepartment === dept ? '#a855f7' : (isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)'),
+                    color: filterDepartment === dept ? '#fff' : '#a855f7',
+                  }}
                 >
                   {dept}
                 </button>
@@ -270,7 +278,7 @@ const TeacherManagement = () => {
                   onClick={() => handleSelectTeacher(teacher)}
                   className={`p-4 rounded-lg border-2 cursor-pointer transition ${
                     selectedTeacher?.teacherId === teacher.teacherId
-                      ? (isDark ? 'border-purple-500 bg-[rgba(168,85,247,0.12)]' : 'border-purple-500 bg-purple-50')
+                      ? (isDark ? 'border-purple-500 bg-[rgba(168,85,247,0.12)]' : 'border-purple-500 bg-[rgba(168,85,247,0.06)]')
                       : (isDark ? 'border-[rgba(255,255,255,0.1)] hover:border-purple-400 bg-[rgba(255,255,255,0.04)]' : 'border-gray-200 hover:border-purple-300 bg-white')
                   }`}
                 >
@@ -278,15 +286,15 @@ const TeacherManagement = () => {
                     {detail.photo ? (
                       <img src={detail.photo} alt={teacher.name} className="w-12 h-12 rounded-full object-cover" />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                        <GraduationCap size={24} className="text-purple-600" />
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)' }}>
+                        <GraduationCap size={24} style={{ color: '#a855f7' }} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{teacher.name}</div>
                       <div className="text-xs text-themed-secondary truncate">{teacher.email}</div>
                       {detail.department && (
-                        <span className="inline-block mt-1 px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-[10px] font-medium">{detail.department}</span>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>{detail.department}</span>
                       )}
                       {!detail.department && <div className="text-xs text-themed-muted">未设置部门</div>}
                     </div>
@@ -305,21 +313,23 @@ const TeacherManagement = () => {
         {(!isMobile || mobileShowDetail) && (
         <div className="lg:col-span-2">
           {selectedTeacher ? (
-            <div className="bg-themed-surface rounded-xl border-2 border-themed-subtle overflow-hidden">
+            <div className="glass-panel overflow-hidden">
               {/* 头部 */}
-              <div className="bg-gradient-to-r from-purple-500 to-blue-500 p-4 sm:p-6 text-white">
+              <div className="glass-panel p-4 sm:p-6">
                 {isMobile && (
-                  <button onClick={() => setMobileShowDetail(false)} className="flex items-center gap-1 mb-3 text-white/80 hover:text-white text-sm">
+                  <button onClick={() => setMobileShowDetail(false)} className="flex items-center gap-1 mb-3 text-sm transition" style={{ color: tokens.colors.text.muted }}
+                    onMouseEnter={e => e.currentTarget.style.color = tokens.colors.text.primary}
+                    onMouseLeave={e => e.currentTarget.style.color = tokens.colors.text.muted}>
                     <ChevronLeft size={16} /> 返回列表
                   </button>
                 )}
                 <div className="flex items-center gap-3 sm:gap-4">
                   <div className="relative flex-shrink-0">
                     {editForm.photo ? (
-                      <img src={editForm.photo} alt="" className="w-20 h-20 rounded-full object-cover border-4 border-white/30" />
+                      <img src={editForm.photo} alt="" className="w-20 h-20 rounded-full object-cover" style={{ border: `4px solid ${isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}` }} />
                     ) : (
-                      <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center">
-                        <GraduationCap size={36} className="text-white" />
+                      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: isDark ? 'rgba(168,85,247,0.2)' : 'rgba(168,85,247,0.1)' }}>
+                        <GraduationCap size={36} style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }} />
                       </div>
                     )}
                     {isEditing && (
@@ -330,26 +340,38 @@ const TeacherManagement = () => {
                     )}
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold">{editForm.name}</h3>
-                    <p className="text-purple-100 text-sm">{editForm.email}</p>
-                    <p className="text-purple-200 text-xs mt-1">ID: {selectedTeacher.teacherId}</p>
+                    <h3 className="text-xl font-bold" style={{ color: tokens.colors.text.primary }}>{editForm.name}</h3>
+                    <p className="text-sm" style={{ color: tokens.colors.text.secondary }}>{editForm.email}</p>
+                    <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>ID: {selectedTeacher.teacherId}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {!isEditing ? (
                       <>
-                        <button onClick={() => setIsEditing(true)} className="flex items-center gap-1 px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 text-sm">
+                        <button onClick={() => setIsEditing(true)} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm transition"
+                          style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
+                          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.18)'}
+                          onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
                           <Edit size={14} /> 编辑
                         </button>
-                        <button onClick={() => setShowDeleteConfirm(selectedTeacher)} className="flex items-center gap-1 px-3 py-2 bg-red-500/80 rounded-lg hover:bg-red-500 text-sm">
+                        <button onClick={() => setShowDeleteConfirm(selectedTeacher)} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm transition"
+                          style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: isDark ? '#fca5a5' : '#dc2626' }}
+                          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.18)'}
+                          onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'}>
                           <Trash2 size={14} /> 注销
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={handleSave} className="flex items-center gap-1 px-3 py-2 bg-green-500 rounded-lg hover:bg-green-600 text-sm">
+                        <button onClick={handleSave} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm transition"
+                          style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
+                          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.18)'}
+                          onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}>
                           <Save size={14} /> 保存
                         </button>
-                        <button onClick={() => setIsEditing(false)} className="flex items-center gap-1 px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 text-sm">
+                        <button onClick={() => setIsEditing(false)} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm transition"
+                          style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}
+                          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}
+                          onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}>
                           <X size={14} /> 取消
                         </button>
                       </>
@@ -376,7 +398,7 @@ const TeacherManagement = () => {
                 <div>
                   <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Briefcase size={20} /> 职务信息</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    <Field label="所属部门" value={editForm.department} editing={isEditing} onChange={v => setEditForm({...editForm, department: v})} placeholder="例: 升学指导部" />
+                    <Field label="所属部门" value={editForm.department} editing={isEditing} type="select" options={['', '学部升学组', '学管', '教务', '其他']} onChange={v => setEditForm({...editForm, department: v})} />
                     <Field label="在读/毕业学校" value={editForm.school} editing={isEditing} onChange={v => setEditForm({...editForm, school: v})} />
                     <Field label="学部/学科" value={editForm.faculty} editing={isEditing} onChange={v => setEditForm({...editForm, faculty: v})} />
                     <Field label="最终学历" value={editForm.education} editing={isEditing} type="select" options={['', '学士', '硕士', '博士', '其他']} onChange={v => setEditForm({...editForm, education: v})} />
@@ -396,7 +418,7 @@ const TeacherManagement = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {permissionOptions.map(perm => (
                       <label key={perm.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition cursor-pointer ${
-                        (editForm.permissions || []).includes(perm.id) ? (isDark ? 'border-purple-400 bg-[rgba(168,85,247,0.12)]' : 'border-purple-300 bg-purple-50') : (isDark ? 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]' : 'border-gray-200 hover:border-gray-300')
+                        (editForm.permissions || []).includes(perm.id) ? (isDark ? 'border-purple-400 bg-[rgba(168,85,247,0.12)]' : 'border-purple-300 bg-[rgba(168,85,247,0.06)]') : (isDark ? 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]' : 'border-gray-200 hover:border-gray-300')
                       } ${!isEditing ? 'pointer-events-none' : ''}`}>
                         <input
                           type="checkbox"
@@ -478,8 +500,14 @@ const TeacherManagement = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">所属部门</label>
-                <input type="text" value={addForm.department} onChange={e => setAddForm({...addForm, department: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg" placeholder="例: 升学指导部" />
+                <select value={addForm.department} onChange={e => setAddForm({...addForm, department: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg">
+                  <option value="">请选择部门</option>
+                  <option value="学部升学组">学部升学组</option>
+                  <option value="学管">学管</option>
+                  <option value="教务">教务</option>
+                  <option value="其他">其他</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">文科/理科</label>

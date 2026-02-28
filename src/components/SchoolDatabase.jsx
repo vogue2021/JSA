@@ -5,24 +5,27 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { getDefaultSchools } from '../data/defaultSchools';
 
 // CSV 格式说明
 const CSV_FORMAT_HELP = `CSV文件格式说明：
 第一行为表头，字段用逗号分隔。支持的字段：
-name（必填）,type,location,acceptanceRate,requirements,notes,programs,applicationPeriods,requirementsUrl
+name（必填）,type,location,acceptanceRate,requirements,notes,programs,xuexinCert,overseasCert,requirementsUrl
 
-其中 programs 和 applicationPeriods 用分号(;)分隔多个值。
+其中 programs 用分号(;)分隔多个值。xuexinCert 和 overseasCert 可填：是/否/不确定。
 重要日期通过页面录入，CSV暂不支持导入多组日期。
 示例：
-name,type,location,programs,applicationPeriods
-東京大学,国立,东京都文京区,工学研究科;理学研究科,秋季(10月-11月);春季(1月-2月)`;
+name,type,location,programs,xuexinCert,overseasCert
+東京大学,国立,东京都文京区,工学研究科;理学研究科,是,是`;
 
 const emptyForm = {
   name: '', type: '国立', location: '',
   programs: [], requirements: '', notes: '',
-  acceptanceRate: '', applicationPeriods: [],
+  acceptanceRate: '',
+  xuexinCert: '不确定', overseasCert: '不确定',
   importantDates: [], // 支持多组日期（一审、二审等）
   requirementsUrl: '',
+  requiredMaterials: [], // 所需材料列表
 };
 
 const SchoolDatabase = () => {
@@ -54,42 +57,7 @@ const SchoolDatabase = () => {
   const [schoolDb, setSchoolDb] = useState(() => {
     const saved = localStorage.getItem('schoolDatabase');
     if (saved) return JSON.parse(saved);
-    return [
-      {
-        id: 1, name: '東京大学', type: '国立', location: '东京都文京区',
-        programs: ['工学研究科', '理学研究科', '情报理工学研究科', '经济学研究科', '法学政治学研究科'],
-        requirements: '日语N1 + EJU高分 + 校内考', notes: '顶级院校，竞争激烈',
-        acceptanceRate: '约10%',
-        applicationPeriods: ['秋季(10月-11月)', '春季(1月-2月)'],
-        importantDates: [
-          { id: 1, label: '一审', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '' },
-        ],
-        requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/index.html',
-      },
-      {
-        id: 2, name: '京都大学', type: '国立', location: '京都府京都市',
-        programs: ['情报学研究科', '工学研究科', '理学研究科', '经济学研究科'],
-        requirements: '日语N1 + EJU高分 + 研究计划', notes: '自由学风，重视研究能力',
-        acceptanceRate: '约12%',
-        applicationPeriods: ['秋季(9月-10月)'],
-        importantDates: [
-          { id: 1, label: '一审', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '' },
-        ],
-        requirementsUrl: '',
-      },
-      {
-        id: 3, name: '早稲田大学', type: '私立', location: '东京都新宿区',
-        programs: ['基干理工学研究科', '创造理工学研究科', '商学研究科', '国际交流研究科'],
-        requirements: '日语N2以上 + EJU成绩', notes: '知名度高，留学生项目丰富',
-        acceptanceRate: '约20%',
-        applicationPeriods: ['秋季(9月-10月)', '春季(1月-2月)'],
-        importantDates: [
-          { id: 1, label: '一审', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '' },
-          { id: 2, label: '二审', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '' },
-        ],
-        requirementsUrl: '',
-      },
-    ];
+    return getDefaultSchools();
   });
 
   useEffect(() => {
@@ -98,7 +66,7 @@ const SchoolDatabase = () => {
 
   const [formData, setFormData] = useState({ ...emptyForm });
   const [newProgram, setNewProgram] = useState('');
-  const [newPeriod, setNewPeriod] = useState('');
+  const [newMaterial, setNewMaterial] = useState('');
 
   const filteredSchools = schoolDb.filter(s => {
     const matchSearch = s.name.includes(searchQuery) || s.location?.includes(searchQuery);
@@ -157,7 +125,7 @@ const SchoolDatabase = () => {
       const obj = { ...emptyForm, id: Date.now() + i };
       headers.forEach((h, idx) => {
         const val = values[idx] || '';
-        if (h === 'programs' || h === 'applicationPeriods') {
+        if (h === 'programs') {
           obj[h] = val ? val.split(';').map(v => v.trim()).filter(v => v) : [];
         } else if (h === 'ranking') {
           obj[h] = val ? parseInt(val) || '' : '';
@@ -193,8 +161,8 @@ const SchoolDatabase = () => {
 
   // 导出 CSV 模板
   const downloadTemplate = () => {
-    const headers = 'name,nameJa,type,location,website,ranking,difficulty,acceptanceRate,requirements,notes,programs,applicationPeriods,applicationStartDate,applicationEndDate,examDate,resultDate,requirementsUrl';
-    const example = '东京大学,東京大学,国立,东京都文京区,https://www.u-tokyo.ac.jp/,1,极难,约10%,日语N1 + EJU高分,顶级院校,工学研究科;理学研究科,秋季(10月-11月);春季(1月-2月),,,,https://www.u-tokyo.ac.jp/ja/admissions/index.html';
+    const headers = 'name,nameJa,type,location,website,ranking,difficulty,acceptanceRate,requirements,notes,programs,xuexinCert,overseasCert,applicationStartDate,applicationEndDate,examDate,resultDate,requirementsUrl';
+    const example = '东京大学,東京大学,国立,东京都文京区,https://www.u-tokyo.ac.jp/,1,极难,约10%,日语N1 + EJU高分,顶级院校,工学研究科;理学研究科,是,是,,,,https://www.u-tokyo.ac.jp/ja/admissions/index.html';
     const csv = '\uFEFF' + headers + '\n' + example;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -204,8 +172,13 @@ const SchoolDatabase = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
+    <div className="space-y-6 animate-fade-in">
+      {/* 标题区域 */}
+      <div className="glass-panel p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl lg:text-2xl font-bold mb-1" style={{ color: tokens.colors.text.primary }}>学校信息库</h2>
+          <p className="text-sm" style={{ color: tokens.colors.text.muted }}>管理和维护学校信息数据库</p>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={downloadTemplate}
             className="flex items-center gap-2 px-3 py-2 bg-themed-elevated text-themed-primary rounded-lg hover:bg-themed-elevated transition text-sm">
@@ -215,11 +188,15 @@ const SchoolDatabase = () => {
             className="flex items-center gap-2 px-3 py-2 bg-themed-elevated text-themed-primary rounded-lg hover:bg-themed-elevated transition text-sm">
             <FileText size={14} /> 格式说明
           </button>
-          <label className="flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-sm cursor-pointer">
+          <label className="flex items-center gap-2 px-3 py-2 rounded-lg transition text-sm cursor-pointer"
+            style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
             <Upload size={14} /> 批量导入CSV
             <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
           </label>
-          <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm">
+          <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm"
+            style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
+            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
+            onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
             <Plus size={16} /> 录入学校
           </button>
         </div>
@@ -236,7 +213,7 @@ const SchoolDatabase = () => {
       )}
 
       {/* 搜索和筛选 */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="glass-panel p-4 flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-themed-muted" size={18} />
           <input type="text" placeholder="搜索学校名称、地点..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -245,7 +222,12 @@ const SchoolDatabase = () => {
         <div className="flex flex-wrap gap-2">
           {['all', '国立', '公立', '私立'].map(t => (
             <button key={t} onClick={() => setFilterType(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${filterType === t ? 'bg-blue-500 text-white' : 'bg-themed-elevated text-themed-secondary hover:bg-themed-elevated'}`}>
+              className="px-4 py-2 rounded-lg text-sm font-medium transition"
+              style={{
+                background: filterType === t ? tokens.colors.accent.primary : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                color: filterType === t ? tokens.colors.text.inverse : tokens.colors.text.secondary,
+                border: filterType === t ? 'none' : `1px solid ${tokens.colors.border.subtle}`,
+              }}>
               {t === 'all' ? '全部' : t}
             </button>
           ))}
@@ -254,34 +236,54 @@ const SchoolDatabase = () => {
 
       {/* 统计 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-4 rounded-lg text-center" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff' }}>
-          <div className="text-2xl font-bold" style={{ color: '#3b82f6' }}>{schoolDb.length}</div>
-          <div className="text-xs" style={{ color: isDark ? '#93c5fd' : '#3b82f6' }}>总学校数</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }}>
+              <School size={18} style={{ color: '#3b82f6' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>总学校数</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schoolDb.length}</div>
         </div>
-        <div className="p-4 rounded-lg text-center" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4' }}>
-          <div className="text-2xl font-bold" style={{ color: '#22c55e' }}>{schoolDb.filter(s => s.type === '国立').length}</div>
-          <div className="text-xs" style={{ color: isDark ? '#86efac' : '#16a34a' }}>国立</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }}>
+              <Award size={18} style={{ color: '#22c55e' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>国立</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schoolDb.filter(s => s.type === '国立').length}</div>
         </div>
-        <div className="p-4 rounded-lg text-center" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : '#faf5ff' }}>
-          <div className="text-2xl font-bold" style={{ color: '#a855f7' }}>{schoolDb.filter(s => s.type === '公立').length}</div>
-          <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#9333ea' }}>公立</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)' }}>
+              <BookOpen size={18} style={{ color: '#a855f7' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>公立</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schoolDb.filter(s => s.type === '公立').length}</div>
         </div>
-        <div className="p-4 rounded-lg text-center" style={{ background: isDark ? 'rgba(249,115,22,0.12)' : '#fff7ed' }}>
-          <div className="text-2xl font-bold" style={{ color: '#f97316' }}>{schoolDb.filter(s => s.type === '私立').length}</div>
-          <div className="text-xs" style={{ color: isDark ? '#fdba74' : '#ea580c' }}>私立</div>
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)' }}>
+              <MapPin size={18} style={{ color: '#f97316' }} />
+            </div>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>私立</span>
+          </div>
+          <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schoolDb.filter(s => s.type === '私立').length}</div>
         </div>
       </div>
 
       {/* 学校列表 */}
       <div className="space-y-4">
         {filteredSchools.map(school => (
-          <div key={school.id} className="bg-themed-surface border-2 border-themed-subtle rounded-xl overflow-hidden hover:shadow-md transition-all duration-200">
+          <div key={school.id} className="glass-panel overflow-hidden">
             <div className="p-4 sm:p-5 cursor-pointer" onClick={() => setExpandedId(expandedId === school.id ? null : school.id)}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold text-lg">{school.name}</h3>
-                    <span className="text-xs px-2 py-1 bg-themed-elevated rounded-full">{school.type}</span>
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}>{school.type}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-themed-secondary flex-wrap">
                     {school.location && <span className="flex items-center gap-1"><MapPin size={14} /> {school.location}</span>}
@@ -296,24 +298,26 @@ const SchoolDatabase = () => {
               </div>
             </div>
             {expandedId === school.id && (
-              <div className="border-t p-4 sm:p-5 bg-themed-elevated space-y-4 animate-fade-in">
+              <div className="border-t p-4 sm:p-5 space-y-4 animate-fade-in" style={{ background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h5 className="text-sm font-medium text-themed-secondary mb-2">开设研究科/学部</h5>
                     <div className="flex flex-wrap gap-2">
                       {(school.programs || []).map((p, i) => (
-                        <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs">{p}</span>
+                        <span key={i} className="px-3 py-1 rounded-full text-xs" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>{p}</span>
                       ))}
                       {(!school.programs || school.programs.length === 0) && <span className="text-xs text-themed-muted">暂无</span>}
                     </div>
                   </div>
                   <div>
-                    <h5 className="text-sm font-medium text-themed-secondary mb-2">出愿时间</h5>
-                    <div className="flex flex-wrap gap-2">
-                      {(school.applicationPeriods || []).map((p, i) => (
-                        <span key={i} className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs">{p}</span>
-                      ))}
-                      {(!school.applicationPeriods || school.applicationPeriods.length === 0) && <span className="text-xs text-themed-muted">暂无</span>}
+                    <h5 className="text-sm font-medium text-themed-secondary mb-2">认证需求</h5>
+                    <div className="flex flex-wrap gap-3">
+                      <span className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: school.xuexinCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)') : school.xuexinCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)') : (isDark ? 'rgba(234,179,8,0.12)' : 'rgba(234,179,8,0.08)'), color: school.xuexinCert === '是' ? '#22c55e' : school.xuexinCert === '否' ? '#ef4444' : '#eab308' }}>
+                        学信网认证: {school.xuexinCert || '不确定'}
+                      </span>
+                      <span className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: school.overseasCert === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)') : school.overseasCert === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)') : (isDark ? 'rgba(234,179,8,0.12)' : 'rgba(234,179,8,0.08)'), color: school.overseasCert === '是' ? '#22c55e' : school.overseasCert === '否' ? '#ef4444' : '#eab308' }}>
+                        海外认证: {school.overseasCert || '不确定'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -327,22 +331,22 @@ const SchoolDatabase = () => {
                           <div className="text-xs font-semibold text-themed-secondary mb-1">{dateGroup.label || `第${gi+1}审`}</div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             {dateGroup.applicationStartDate && (
-                              <div className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
                                 <Calendar size={12} /> 出愿开始: {dateGroup.applicationStartDate}
                               </div>
                             )}
                             {dateGroup.applicationEndDate && (
-                              <div className="flex items-center gap-1 text-xs bg-red-50 text-red-700 px-2 py-1 rounded">
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
                                 <Calendar size={12} /> 出愿截止: {dateGroup.applicationEndDate}
                               </div>
                             )}
                             {dateGroup.examDate && (
-                              <div className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded">
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.08)', color: '#f97316' }}>
                                 <Calendar size={12} /> 考试日期: {dateGroup.examDate}
                               </div>
                             )}
                             {dateGroup.resultDate && (
-                              <div className="flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)', color: '#22c55e' }}>
                                 <Calendar size={12} /> 合格发表: {dateGroup.resultDate}
                               </div>
                             )}
@@ -354,6 +358,19 @@ const SchoolDatabase = () => {
                 )}
                 {school.requirements && (
                   <div><h5 className="text-sm font-medium text-themed-secondary mb-1">申请要求</h5><p className="text-sm text-themed-primary">{school.requirements}</p></div>
+                )}
+                {/* 所需材料 */}
+                {school.requiredMaterials && school.requiredMaterials.length > 0 && (
+                  <div>
+                    <h5 className="text-sm font-medium text-themed-secondary mb-2">所需材料</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {school.requiredMaterials.map((m, i) => (
+                        <span key={i} className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
+                          <FileText size={12} />{m}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {school.notes && (
                   <div><h5 className="text-sm font-medium text-themed-secondary mb-1">备注</h5><p className="text-sm text-themed-primary">{school.notes}</p></div>
@@ -385,8 +402,8 @@ const SchoolDatabase = () => {
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">学校名称（日文）*</label>
+              <div>
+                  <label className="block text-sm font-medium mb-1">学校名称*</label>
                   <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg" placeholder="例: 東京大学" />
                 </div>
@@ -495,7 +512,7 @@ const SchoolDatabase = () => {
                 <label className="block text-sm font-medium mb-1">开设研究科/学部</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {(formData.programs || []).map((p, i) => (
-                    <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs flex items-center gap-1">
+                    <span key={i} className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
                       {p} <button onClick={() => setFormData({...formData, programs: formData.programs.filter((_, idx) => idx !== i)})} className="hover:text-red-500"><X size={12} /></button>
                     </span>
                   ))}
@@ -510,23 +527,19 @@ const SchoolDatabase = () => {
                 </div>
               </div>
 
-              {/* 出愿时间 */}
-              <div>
-                <label className="block text-sm font-medium mb-1">出愿时间（文字描述）</label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {(formData.applicationPeriods || []).map((p, i) => (
-                    <span key={i} className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs flex items-center gap-1">
-                      {p} <button onClick={() => setFormData({...formData, applicationPeriods: formData.applicationPeriods.filter((_, idx) => idx !== i)})} className="hover:text-red-500"><X size={12} /></button>
-                    </span>
-                  ))}
+              {/* 认证需求 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">学信网认证</label>
+                  <select value={formData.xuexinCert || '不确定'} onChange={e => setFormData({...formData, xuexinCert: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="是">是 ✅</option><option value="否">否 ❌</option><option value="不确定">不确定 ❓</option>
+                  </select>
                 </div>
-                <div className="flex gap-2">
-                  <input type="text" value={newPeriod} onChange={e => setNewPeriod(e.target.value)}
-                    className="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="例: 秋季(10月-11月)" onKeyDown={e => {
-                      if (e.key === 'Enter' && newPeriod.trim()) { e.preventDefault(); setFormData({...formData, applicationPeriods: [...(formData.applicationPeriods || []), newPeriod.trim()]}); setNewPeriod(''); }
-                    }} />
-                  <button type="button" onClick={() => { if (newPeriod.trim()) { setFormData({...formData, applicationPeriods: [...(formData.applicationPeriods || []), newPeriod.trim()]}); setNewPeriod(''); }}}
-                    className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"><Plus size={16} /></button>
+                <div>
+                  <label className="block text-sm font-medium mb-1">海外认证</label>
+                  <select value={formData.overseasCert || '不确定'} onChange={e => setFormData({...formData, overseasCert: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="是">是 ✅</option><option value="否">否 ❌</option><option value="不确定">不确定 ❓</option>
+                  </select>
                 </div>
               </div>
 
@@ -539,6 +552,26 @@ const SchoolDatabase = () => {
                 <label className="block text-sm font-medium mb-1">备注</label>
                 <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg" rows="2" />
+              </div>
+
+              {/* 所需材料 */}
+              <div>
+                <label className="block text-sm font-medium mb-1">所需材料</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {(formData.requiredMaterials || []).map((m, i) => (
+                    <span key={i} className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
+                      {m} <button onClick={() => setFormData({...formData, requiredMaterials: formData.requiredMaterials.filter((_, idx) => idx !== i)})} className="hover:text-red-500"><X size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={newMaterial} onChange={e => setNewMaterial(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="输入所需材料名称（如毕业证明、成绩单等）" onKeyDown={e => {
+                      if (e.key === 'Enter' && newMaterial.trim()) { e.preventDefault(); setFormData({...formData, requiredMaterials: [...(formData.requiredMaterials || []), newMaterial.trim()]}); setNewMaterial(''); }
+                    }} />
+                  <button type="button" onClick={() => { if (newMaterial.trim()) { setFormData({...formData, requiredMaterials: [...(formData.requiredMaterials || []), newMaterial.trim()]}); setNewMaterial(''); }}}
+                    className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600"><Plus size={16} /></button>
+                </div>
               </div>
             </div>
             <div className="p-6 flex gap-3 sticky bottom-0" style={{ borderTop: `1px solid ${tokens.colors.border.subtle}`, background: tokens.colors.surface.solid }}>
