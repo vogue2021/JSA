@@ -33,7 +33,7 @@ export const useApiState = () => {
 };
 
 // 数据版本号 - 每次修改默认数据时递增，强制刷新 localStorage 缓存
-const DATA_VERSION = 'v1.9.0';
+const DATA_VERSION = 'v2.0.0';
 
 export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);

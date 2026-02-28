@@ -123,7 +123,7 @@ const StudentListPage = ({
 
   const getStudentStatusSummary = (studentId) => {
     const schools = studentSchoolData[studentId]?.schools || [];
-    const counts = { preparing: 0, contacted: 0, submitted: 0, admitted: 0 };
+    const counts = { preparing: 0, applied: 0, submitted: 0, admitted: 0 };
     schools.forEach(s => {
       const status = s.status || 'preparing';
       if (counts[status] !== undefined) counts[status]++;
@@ -453,9 +453,9 @@ const StudentListPage = ({
                               提{statusSummary.submitted}
                             </span>
                           )}
-                          {statusSummary.contacted > 0 && (
+                          {statusSummary.applied > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
-                              联{statusSummary.contacted}
+                              愿{statusSummary.applied}
                             </span>
                           )}
                           {statusSummary.preparing > 0 && (

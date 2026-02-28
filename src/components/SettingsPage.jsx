@@ -141,7 +141,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
 
     // 从 localStorage 读取所有学生的学校数据
     const allSchoolApplications = [];
-    const schoolStats = {}; // schoolName -> { total, preparing, contacted, submitted, admitted }
+    const schoolStats = {}; // schoolName -> { total, preparing, applied, submitted, admitted }
     const teacherStudentCounts = {}; // teacherId -> count
 
     students.forEach(student => {
@@ -158,7 +158,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
         studentSchools.forEach(school => {
           allSchoolApplications.push({ ...school, studentName: student.name, studentId: student.studentId });
           if (!schoolStats[school.name]) {
-            schoolStats[school.name] = { total: 0, preparing: 0, contacted: 0, submitted: 0, admitted: 0, type: school.type || '' };
+            schoolStats[school.name] = { total: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, type: school.type || '' };
           }
           schoolStats[school.name].total++;
           const status = school.status || 'preparing';
@@ -179,7 +179,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     const totalAdmitted = allSchoolApplications.filter(a => a.status === 'admitted').length;
     const totalSubmitted = allSchoolApplications.filter(a => a.status === 'submitted').length;
     const totalPreparing = allSchoolApplications.filter(a => a.status === 'preparing').length;
-    const totalContacted = allSchoolApplications.filter(a => a.status === 'contacted').length;
+    const totalApplied = allSchoolApplications.filter(a => a.status === 'applied').length;
     const unassignedStudents = students.filter(s => !s.teacherId || s.teacherId === 'unassigned').length;
 
     // 学校信息库数据
@@ -197,7 +197,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
       totalAdmitted,
       totalSubmitted,
       totalPreparing,
-      totalContacted,
+      totalApplied,
       admissionRate: totalApplications > 0 ? Math.round(totalAdmitted / totalApplications * 100) : 0,
       sortedSchools,
       teacherStudentCounts,
@@ -437,11 +437,11 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
               </div>
               <div className="glass-card text-center p-4">
                 <CheckCircle size={24} className="mx-auto mb-2" style={{ color: '#22c55e' }} />
-                <div className="text-2xl font-bold" style={{ color: '#22c55e' }}>{analyticsData.totalContacted}</div>
-                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已联系</div>
+                <div className="text-2xl font-bold" style={{ color: '#22c55e' }}>{analyticsData.totalApplied}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已出愿</div>
                 {analyticsData.totalApplications > 0 && (
                   <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.2)' }}>
-                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalContacted / analyticsData.totalApplications * 100)}%`, background: '#22c55e'}} />
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalApplied / analyticsData.totalApplications * 100)}%`, background: '#22c55e'}} />
                   </div>
                 )}
               </div>

@@ -210,7 +210,7 @@ const escapeICS = (str) => {
 };
 
 const getStatusText = (status) => {
-  const texts = { preparing: '准备中', contacted: '已联系', submitted: '已提交', admitted: '已合格' };
+  const texts = { preparing: '准备中', applied: '已出愿', submitted: '已提交', admitted: '已合格' };
   return texts[status] || '未知';
 };
 

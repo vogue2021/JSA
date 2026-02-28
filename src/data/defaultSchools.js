@@ -6,7 +6,7 @@
 export const getDefaultSchools = () => [
   {
     id: 1, name: '東京大学', nameJa: '東京大学', type: '国立', location: '东京都文京区',
-    programs: ['工学研究科', '理学研究科', '情报理工学研究科', '经济学研究科', '法学政治学研究科'],
+    programs: ['工学部', '理学部', '情报理工学部', '经济学部', '法学部'],
     requirements: '日语N1 + EJU高分 + 校内考', notes: '顶级院校，竞争激烈',
     acceptanceRate: '约10%', difficulty: '★★★★★', ranking: 1,
     xuexinCert: '是', overseasCert: '是',
@@ -18,8 +18,8 @@ export const getDefaultSchools = () => [
   },
   {
     id: 2, name: '京都大学', nameJa: '京都大学', type: '国立', location: '京都府京都市',
-    programs: ['情报学研究科', '工学研究科', '理学研究科', '经济学研究科'],
-    requirements: '日语N1 + EJU高分 + 研究计划', notes: '自由学风，重视研究能力',
+    programs: ['工学部', '理学部', '情报学部', '经济学部'],
+    requirements: '日语N1 + EJU高分 + 校内考', notes: '自由学风，校内考难度较高',
     acceptanceRate: '约12%', difficulty: '★★★★★', ranking: 2,
     xuexinCert: '是', overseasCert: '是',
     importantDates: [
@@ -29,7 +29,7 @@ export const getDefaultSchools = () => [
   },
   {
     id: 3, name: '早稲田大学', nameJa: '早稲田大学', type: '私立', location: '东京都新宿区',
-    programs: ['基干理工学研究科', '创造理工学研究科', '商学研究科', '国际交流研究科'],
+    programs: ['基干理工学部', '创造理工学部', '商学部', '国际教养学部'],
     requirements: '日语N2以上 + EJU成绩', notes: '知名度高，留学生项目丰富',
     acceptanceRate: '约20%', difficulty: '★★★★', ranking: 5,
     xuexinCert: '是', overseasCert: '是',
@@ -41,7 +41,7 @@ export const getDefaultSchools = () => [
   },
   {
     id: 4, name: '大阪大学', nameJa: '大阪大学', type: '国立', location: '大阪府吹田市',
-    programs: ['工学研究科', '基础工学研究科', '情报科学研究科', '经济学研究科'],
+    programs: ['工学部', '基础工学部', '情报科学部', '经济学部'],
     requirements: '日语N1 + EJU + 校内考', notes: '关西地区顶级院校，理工科强势',
     acceptanceRate: '约15%', difficulty: '★★★★☆', ranking: 3,
     xuexinCert: '是', overseasCert: '是',
@@ -52,8 +52,8 @@ export const getDefaultSchools = () => [
   },
   {
     id: 5, name: '東北大学', nameJa: '東北大学', type: '国立', location: '宫城县仙台市',
-    programs: ['工学研究科', '情报科学研究科', '理学研究科', '经济学研究科'],
-    requirements: '日语N1 + EJU成绩', notes: '旧帝大之一，研究实力雄厚',
+    programs: ['工学部', '情报科学部', '理学部', '经济学部'],
+    requirements: '日语N1 + EJU成绩', notes: '旧帝大之一，学部留学生招收积极',
     acceptanceRate: '约18%', difficulty: '★★★★', ranking: 4,
     xuexinCert: '是', overseasCert: '是',
     importantDates: [
@@ -64,7 +64,7 @@ export const getDefaultSchools = () => [
   },
   {
     id: 6, name: '慶應義塾大学', nameJa: '慶應義塾大学', type: '私立', location: '东京都港区',
-    programs: ['理工学研究科', '商学研究科', '经济学研究科', '政策与媒体研究科'],
+    programs: ['理工学部', '商学部', '经济学部', '综合政策学部'],
     requirements: '日语N2以上 + EJU/英语成绩', notes: '私立双雄之一，校友资源丰富',
     acceptanceRate: '约18%', difficulty: '★★★★', ranking: 6,
     xuexinCert: '是', overseasCert: '是',
@@ -75,7 +75,7 @@ export const getDefaultSchools = () => [
   },
   {
     id: 7, name: '名古屋大学', nameJa: '名古屋大学', type: '国立', location: '爱知县名古屋市',
-    programs: ['工学研究科', '情报学研究科', '理学研究科', '国际开发研究科'],
+    programs: ['工学部', '情报学部', '理学部', '国际开发学部'],
     requirements: '日语N1 + EJU成绩', notes: '中部地区最高学府，诺贝尔奖辈出',
     acceptanceRate: '约16%', difficulty: '★★★★', ranking: 7,
     xuexinCert: '是', overseasCert: '是',
@@ -87,7 +87,7 @@ export const getDefaultSchools = () => [
   },
   {
     id: 8, name: '九州大学', nameJa: '九州大学', type: '国立', location: '福冈县福冈市',
-    programs: ['工学研究科', '系统情报科学研究科', '经济学研究科', '综合理工学研究科'],
+    programs: ['工学部', '系统情报科学部', '经济学部', '综合理工学部'],
     requirements: '日语N2以上 + EJU成绩', notes: '九州地区顶尖院校，国际化程度高',
     acceptanceRate: '约20%', difficulty: '★★★☆', ranking: 8,
     xuexinCert: '是', overseasCert: '是',

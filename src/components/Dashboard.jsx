@@ -126,10 +126,10 @@ const Dashboard = ({
     const allEvents = [];
     let totalMaterials = 0;
     let completedMaterials = 0;
-    const schoolStats = {}; // schoolName -> { total, preparing, contacted, submitted, admitted, type }
+    const schoolStats = {}; // schoolName -> { total, preparing, applied, submitted, admitted, type }
     const teacherStudentMap = {}; // teacherId -> [students]
     const schoolTypeMap = {}; // 国立/公立/私立 -> count
-    const statusCounts = { preparing: 0, contacted: 0, submitted: 0, admitted: 0 };
+    const statusCounts = { preparing: 0, applied: 0, submitted: 0, admitted: 0 };
 
     visibleStudents.forEach(student => {
       // 按老师分组
@@ -159,7 +159,7 @@ const Dashboard = ({
 
           // 按学校统计
           if (!schoolStats[school.name]) {
-            schoolStats[school.name] = { total: 0, preparing: 0, contacted: 0, submitted: 0, admitted: 0, type: school.type || '' };
+            schoolStats[school.name] = { total: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, type: school.type || '' };
           }
           schoolStats[school.name].total++;
           if (schoolStats[school.name][status] !== undefined) schoolStats[school.name][status]++;
@@ -265,7 +265,7 @@ const Dashboard = ({
   }, [filterGroup, filteredStudents, aggregatedData.allSchoolApps]);
 
   const filteredStatusCounts = useMemo(() => {
-    const counts = { preparing: 0, contacted: 0, submitted: 0, admitted: 0 };
+    const counts = { preparing: 0, applied: 0, submitted: 0, admitted: 0 };
     filteredSchoolApps.forEach(a => {
       const status = a.status || 'preparing';
       if (counts[status] !== undefined) counts[status]++;
@@ -279,7 +279,7 @@ const Dashboard = ({
   // 饼图数据
   const statusPieData = [
     { label: '准备中', value: filteredStatusCounts.preparing, color: '#3b82f6' },
-    { label: '已联系', value: filteredStatusCounts.contacted, color: '#22c55e' },
+    { label: '已出愿', value: filteredStatusCounts.applied, color: '#22c55e' },
     { label: '已提交', value: filteredStatusCounts.submitted, color: '#a855f7' },
     { label: '已合格', value: filteredStatusCounts.admitted, color: '#eab308' },
   ];
@@ -423,7 +423,7 @@ const Dashboard = ({
             <div className="flex flex-wrap gap-2">
               {[
                 { key: 'preparing', label: '准备中', color: 'blue' },
-                { key: 'contacted', label: '已联系', color: 'green' },
+                { key: 'applied', label: '已出愿', color: 'green' },
                 { key: 'submitted', label: '已提交', color: 'purple' },
                 { key: 'admitted', label: '已合格', color: 'yellow' },
               ].map(s => (
@@ -579,7 +579,7 @@ const Dashboard = ({
                   <th className="text-left py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>类型</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>报考</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>准备中</th>
-                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已联系</th>
+                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已出愿</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已提交</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已合格</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>合格率</th>
@@ -610,7 +610,7 @@ const Dashboard = ({
                     </td>
                     <td className="py-2.5 px-3 text-center font-bold" style={{ color: tokens.colors.text.primary }}>{school.total}</td>
                     <td className="py-2.5 px-3 text-center" style={{ color: '#3b82f6' }}>{school.preparing || 0}</td>
-                    <td className="py-2.5 px-3 text-center" style={{ color: '#22c55e' }}>{school.contacted || 0}</td>
+                    <td className="py-2.5 px-3 text-center" style={{ color: '#22c55e' }}>{school.applied || 0}</td>
                     <td className="py-2.5 px-3 text-center" style={{ color: '#a855f7' }}>{school.submitted || 0}</td>
                     <td className="py-2.5 px-3 text-center font-bold" style={{ color: '#eab308' }}>{school.admitted || 0}</td>
                     <td className="py-2.5 px-3 text-center">

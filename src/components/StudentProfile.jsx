@@ -702,7 +702,7 @@ const StatusBadge = ({ status }) => {
   const { isDark } = useTheme();
   const config = {
     preparing: { label: '准备中', bg: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' },
-    contacted: { label: '已联系', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
+    applied: { label: '已出愿', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
     submitted: { label: '已提交', bg: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: '#a855f7' },
     admitted: { label: '已合格', bg: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' },
   };

@@ -483,14 +483,14 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           { id: 1, type: 'exam', title: 'JLPT N1考试', date: '2025-12-07', daysLeft: 59, category: '日语考试', urgent: false, notes: '需要达到130分以上', completed: false, schoolId: null },
           { id: 2, type: 'deadline', title: '东京大学出愿截止', date: '2025-11-15', daysLeft: 37, category: '出愿', urgent: true, notes: '记得提前准备材料', completed: false, schoolId: 1 },
           { id: 3, type: 'exam', title: 'EJU考试(理科)', date: '2025-11-09', daysLeft: 31, category: '留考', urgent: true, notes: '目标分数700+', completed: false, schoolId: null },
-          { id: 4, type: 'contact', title: '京都大学教授邮件跟进', date: '2025-10-15', daysLeft: 6, category: '研究室联系', urgent: false, notes: '询问研究室招生情况', completed: false, schoolId: 2 },
+          { id: 4, type: 'exam', title: '京都大学校内考准备', date: '2025-10-15', daysLeft: 6, category: '考试', urgent: false, notes: '准备校内考笔试和面试', completed: false, schoolId: 2 },
         ],
         schools: [
           {
             id: 1,
             name: '东京大学',
             type: '国立',
-            program: '工学研究科',
+            program: '工学部',
             status: 'preparing',
             applicationStartDate: '2025-10-01',
             applicationEndDate: '2025-11-15',
@@ -499,7 +499,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/graduate.html',
             teacherNotes: '重点院校，需要JLPT N1和EJU高分',
             materials: [
-              { name: '研究计划书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
+              { name: '志望理由书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
               { name: '推荐信', deadline: '2025-11-05', url: '' }
             ]
           },
@@ -507,14 +507,14 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             id: 2,
             name: '京都大学',
             type: '国立',
-            program: '情报学研究科',
-            status: 'contacted',
+            program: '工学部',
+            status: 'applied',
             applicationStartDate: '2025-10-15',
             applicationEndDate: '2025-11-20',
             examDate: '2026-01-10',
             resultDate: '2026-02-15',
             requirementsUrl: 'https://www.kyoto-u.ac.jp/ja/admissions/',
-            teacherNotes: '已联系田中教授，等待回复',
+            teacherNotes: '已完成出愿，等待考试',
             materials: [
               { name: '志望理由书', deadline: '2025-11-15', url: '' }
             ]
@@ -523,7 +523,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
             id: 3,
             name: '早稻田大学',
             type: '私立',
-            program: '基干理工学研究科',
+            program: '基干理工学部',
             status: 'preparing',
             applicationStartDate: '2025-09-20',
             applicationEndDate: '2025-10-31',
@@ -544,7 +544,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           ],
           schoolSpecific: {
             '东京大学': [
-              { id: 101, item: '研究计划书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
+              { id: 101, item: '志望理由书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
               { id: 102, item: '推荐信', completed: false, deadline: '2025-11-05', checkedBy: null, checkedAt: null, url: '' },
             ],
             '京都大学': [
@@ -651,6 +651,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
   const [showChangelogPanel, setShowChangelogPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
+  const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [feedbackContent, setFeedbackContent] = useState('');
   const [feedbackContact, setFeedbackContact] = useState('');
@@ -926,7 +927,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const getStatusColor = (status) => {
     const colors = {
       preparing: isDark ? 'bg-[rgba(59,130,246,0.15)] text-blue-400 border-[rgba(59,130,246,0.3)]' : 'bg-blue-100 text-blue-700 border-blue-200',
-      contacted: isDark ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border-[rgba(34,197,94,0.3)]' : 'bg-green-100 text-green-700 border-green-200',
+      applied: isDark ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border-[rgba(34,197,94,0.3)]' : 'bg-green-100 text-green-700 border-green-200',
       submitted: isDark ? 'bg-[rgba(168,85,247,0.15)] text-purple-400 border-[rgba(168,85,247,0.3)]' : 'bg-purple-100 text-purple-700 border-purple-200',
       admitted: isDark ? 'bg-[rgba(234,179,8,0.15)] text-yellow-400 border-[rgba(234,179,8,0.3)]' : 'bg-yellow-100 text-yellow-700 border-yellow-200',
     };
@@ -936,7 +937,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const getStatusText = (status) => {
     const texts = {
       preparing: '准备中',
-      contacted: '已联系',
+      applied: '已出愿',
       submitted: '已提交',
       admitted: '已合格',
     };
@@ -947,7 +948,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     const colors = {
       exam: 'bg-red-50 border-red-200',
       deadline: 'bg-orange-50 border-orange-200',
-      contact: 'bg-blue-50 border-blue-200',
+      interview: 'bg-purple-50 border-purple-200',
       document: 'bg-green-50 border-green-200',
     };
     return colors[type] || (isDark ? 'bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)]' : 'bg-gray-50 border-gray-200');
@@ -957,7 +958,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     const icons = {
       exam: '📝',
       deadline: '⏰',
-      contact: '✉️',
+      interview: '🎤',
       document: '📄',
     };
     return icons[type] || '📌';
@@ -1108,7 +1109,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                 >
                   <option value="exam">考试</option>
                   <option value="deadline">截止日期</option>
-                  <option value="contact">联系</option>
+                  <option value="interview">面试</option>
                   <option value="document">文档</option>
                 </select>
               </div>
@@ -1123,9 +1124,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   <option value="日语考试">日语考试</option>
                   <option value="出愿">出愿</option>
                   <option value="留考">留考</option>
-                  <option value="研究室联系">研究室联系</option>
                   <option value="材料准备">材料准备</option>
-                  <option value="考试">考试</option>
+                  <option value="校内考">校内考</option>
+                  <option value="面试">面试</option>
                   <option value="合格发表">合格发表</option>
                 </select>
               </div>
@@ -1437,7 +1438,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="preparing">准备中</option>
-                  <option value="contacted">已联系</option>
+                  <option value="applied">已出愿</option>
                   <option value="submitted">已提交</option>
                   <option value="admitted">已合格</option>
                 </select>
@@ -3024,9 +3025,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             <option value="日语考试">日语考试</option>
             <option value="出愿">出愿</option>
             <option value="留考">留考</option>
-            <option value="研究室联系">研究室联系</option>
             <option value="材料准备">材料准备</option>
-            <option value="考试">考试</option>
+            <option value="校内考">校内考</option>
+            <option value="面试">面试</option>
             <option value="合格发表">合格发表</option>
           </select>
           {/* 视图切换 */}
@@ -4065,6 +4066,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   >
                     <Mail size={16} style={{ color: tokens.colors.text.muted }} /> 反馈建议
                   </button>
+                  {user?.role === 'admin' && (
+                    <button
+                      onClick={() => { setShowSidebarUserMenu(false); setShowFeedbackHistory(true); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
+                      style={{ color: tokens.colors.text.secondary }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <FileText size={16} style={{ color: tokens.colors.text.muted }} /> 查看反馈
+                    </button>
+                  )}
                   <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="my-1" />
                   <button
                     onClick={() => { setShowSidebarUserMenu(false); onLogout(); }}
@@ -4314,7 +4326,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                     schoolDetailModal.status === 'admitted' ? 'bg-yellow-400 text-yellow-900' :
                     schoolDetailModal.status === 'submitted' ? 'bg-purple-400 text-purple-900' :
-                    schoolDetailModal.status === 'contacted' ? 'bg-green-400 text-green-900' :
+                    schoolDetailModal.status === 'applied' ? 'bg-green-400 text-green-900' :
                     'bg-blue-400 text-blue-900'
                   }`}>
                     {getStatusText(schoolDetailModal.status)}
@@ -4537,6 +4549,15 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </div>
             <div className="p-5 space-y-4">
               {[
+                { version: 'v2.0.0', date: '2026-02-28', changes: [
+                  '🆕 学部入试流程适配：申请状态从「已联系」改为「已出愿」，符合学部升学流程',
+                  '🆕 事件类型移除「联系」类型，新增「面试」类型；事件分类移除「研究室联系」，新增「校内考」「面试」',
+                  '🆕 管理员可查看用户反馈记录（左下角菜单→查看反馈），支持清空操作',
+                  '✏️ 默认数据中研究科全部改为学部名称（如工学研究科→工学部）',
+                  '✏️ 研究计划书材料改为志望理由书，京都大学教授联系事件改为校内考准备',
+                  '✏️ 学校信息库8所学校的programs字段全部改为学部名称',
+                  '🐛 修复CalendarView重复interview键的问题',
+                ]},
                 { version: 'v1.9.0', date: '2026-02-28', changes: [
                   '🆕 老师部门划分：所属部门改为下拉选择（学部升学组/学管/教务/其他）',
                   '🆕 学生信息页面新增文理科字段的展示和编辑',
@@ -4698,6 +4719,73 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
               ><Mail size={18} /> 提交反馈</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 管理员查看反馈历史弹窗 */}
+      {showFeedbackHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowFeedbackHistory(false)}>
+          <div className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden" style={{ background: tokens.colors.surface.solid, border: `1px solid ${tokens.colors.border.subtle}` }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5" style={{ borderBottom: `1px solid ${tokens.colors.border.subtle}` }}>
+              <h3 className="text-lg font-bold" style={{ color: tokens.colors.text.primary }}>📬 用户反馈记录</h3>
+              <button onClick={() => setShowFeedbackHistory(false)} className="p-1 rounded-lg transition" style={{ color: tokens.colors.text.muted }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3" style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+              {(() => {
+                let history = [];
+                try { history = JSON.parse(localStorage.getItem('feedbackHistory') || '[]'); } catch {}
+                if (history.length === 0) {
+                  return <div className="text-center py-10" style={{ color: tokens.colors.text.muted }}>暂无反馈记录</div>;
+                }
+                return history.map((fb, idx) => {
+                  const typeLabels = { suggestion: '💡 功能建议', bug: '🐛 错误报告', other: '📝 其他' };
+                  const typeColors = { suggestion: '#3b82f6', bug: '#ef4444', other: '#8b5cf6' };
+                  return (
+                    <div key={idx} className="rounded-xl p-4" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${tokens.colors.border.subtle}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: isDark ? `rgba(${typeColors[fb.type] === '#3b82f6' ? '59,130,246' : typeColors[fb.type] === '#ef4444' ? '239,68,68' : '139,92,246'},0.15)` : `rgba(${typeColors[fb.type] === '#3b82f6' ? '59,130,246' : typeColors[fb.type] === '#ef4444' ? '239,68,68' : '139,92,246'},0.1)`, color: typeColors[fb.type] || '#8b5cf6' }}>
+                          {typeLabels[fb.type] || '📝 其他'}
+                        </span>
+                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
+                          {fb.time ? new Date(fb.time).toLocaleString('zh-CN') : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm mb-2" style={{ color: tokens.colors.text.primary, whiteSpace: 'pre-wrap' }}>{fb.content}</p>
+                      <div className="flex items-center gap-3 text-xs" style={{ color: tokens.colors.text.muted }}>
+                        <span>👤 {fb.user || '匿名'}</span>
+                        {fb.contact && <span>📧 {fb.contact}</span>}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              {(() => {
+                let history = [];
+                try { history = JSON.parse(localStorage.getItem('feedbackHistory') || '[]'); } catch {}
+                if (history.length > 0) {
+                  return (
+                    <div className="flex justify-end pt-2">
+                      <button onClick={() => {
+                        if (window.confirm('确定清空所有反馈记录？')) {
+                          localStorage.removeItem('feedbackHistory');
+                          setShowFeedbackHistory(false);
+                          setTimeout(() => setShowFeedbackHistory(true), 50);
+                          showNotification('反馈记录已清空');
+                        }
+                      }} className="text-xs px-3 py-1.5 rounded-lg transition" style={{ background: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+                        清空记录
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
         </div>

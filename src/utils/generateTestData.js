@@ -58,14 +58,14 @@ const TEACHER_DATA = [
 
 const AVATARS = ['👨‍🎓', '👩‍🎓', '🧑‍🎓', '👨‍💻', '👩‍💻'];
 const SUBJECTS = ['文科', '理科', '文科', '理科']; // 均匀分布
-const STATUSES = ['preparing', 'contacted', 'submitted', 'admitted'];
-const EVENT_TYPES = ['exam', 'deadline', 'interview', 'contact', 'material'];
-const EVENT_CATEGORIES = ['考试', '出愿', '面试', '联系', '材料'];
+const STATUSES = ['preparing', 'applied', 'submitted', 'admitted'];
+const EVENT_TYPES = ['exam', 'deadline', 'interview', 'document', 'material'];
+const EVENT_CATEGORIES = ['考试', '出愿', '面试', '校内考', '材料'];
 
 const TAGS_POOL = [
   '重点关注', '成绩优秀', '需要辅导', '日语N1', '日语N2',
   'EJU高分', '有奖学金', '在职考研', '跨专业', '二次出愿',
-  '面试辅导', '研究计划书', '英语授课', '10月入学', '4月入学',
+  '面试辅导', '志望理由书', '英语授课', '10月入学', '4月入学',
 ];
 
 const GENERAL_MATERIALS = [
@@ -75,7 +75,7 @@ const GENERAL_MATERIALS = [
   { id: 4, name: '在留卡复印件', category: '基本材料' },
   { id: 5, name: 'JLPT成绩证明', category: '成绩材料' },
   { id: 6, name: 'EJU成绩证明', category: '成绩材料' },
-  { id: 7, name: '研究计划书', category: '申请材料' },
+  { id: 7, name: '志望理由书', category: '申请材料' },
   { id: 8, name: '志望理由书', category: '申请材料' },
   { id: 9, name: '推荐信', category: '申请材料' },
   { id: 10, name: '照片（3x4）', category: '基本材料' },
@@ -116,7 +116,7 @@ function generateStudentSchools(studentIndex) {
     let status;
     const r = Math.random();
     if (r < 0.3 - statusWeight * 0.15) status = 'preparing';
-    else if (r < 0.55 - statusWeight * 0.1) status = 'contacted';
+    else if (r < 0.55 - statusWeight * 0.1) status = 'applied';
     else if (r < 0.8) status = 'submitted';
     else status = 'admitted';
 
@@ -298,7 +298,7 @@ export function generateTestData() {
   console.log(`   - ${students.length} 名学生（全部可登录）`);
   console.log(`   - ${TEACHER_DATA.length} 位老师（全部可登录）`);
   console.log(`   - 每位学生有 1-4 所志愿学校`);
-  console.log(`   - 包含不同申请状态：准备中/已联系/已提交/已合格`);
+  console.log(`   - 包含不同申请状态：准备中/已出愿/已提交/已合格`);
   console.log(`   `);
   console.log(`   📧 登录账号信息：`);
   console.log(`   管理员: admin@jsa.com / admin123`);
