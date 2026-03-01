@@ -43,6 +43,20 @@ export const schoolsAPI = {
   getByStudent: async (studentId) => {
     return await apiRequest(`/schools/student/${studentId}`);
   },
+  // 获取全局学校报考统计（仪表盘使用）
+  getStats: async ({ teacherId } = {}) => {
+    const params = new URLSearchParams();
+    if (teacherId) params.append('teacher_id', teacherId);
+    const qs = params.toString();
+    return await apiRequest(`/schools/stats${qs ? '?' + qs : ''}`);
+  },
+  // 获取全局事件统计（仪表盘使用）
+  getEventStats: async ({ teacherId } = {}) => {
+    const params = new URLSearchParams();
+    if (teacherId) params.append('teacher_id', teacherId);
+    const qs = params.toString();
+    return await apiRequest(`/schools/stats/events${qs ? '?' + qs : ''}`);
+  },
   create: async (schoolData) => {
     return await apiRequest('/schools', {
       method: 'POST',
@@ -172,6 +186,33 @@ export const teachersAPI = {
   delete: async (id) => {
     return await apiRequest(`/teachers/${id}`, {
       method: 'DELETE',
+    });
+  },
+};
+
+// 反馈 API
+export const feedbackAPI = {
+  // 提交反馈（公开，无需登录）
+  submit: async (data) => {
+    return await apiRequest('/feedback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  // 管理员查询反馈列表
+  getList: async ({ status, type, page = 1, pageSize = 20 } = {}) => {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (type) params.append('type', type);
+    params.append('page', page);
+    params.append('pageSize', pageSize);
+    return await apiRequest(`/feedback?${params.toString()}`);
+  },
+  // 管理员更新反馈状态
+  updateStatus: async (id, data) => {
+    return await apiRequest(`/feedback/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   },
 };

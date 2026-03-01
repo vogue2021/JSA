@@ -8,28 +8,30 @@
  * - 每个学生有时间线事件
  * - 每个学生有材料清单
  */
+import { SCHOOL_STATUS, EVENT_TYPE, SUBJECT_TYPE, DEPARTMENT } from '../constants/schoolProcess';
 
+// 学部（本科）名称 —— 统一使用学部而非研究科
 const SCHOOL_DATA = [
-  { name: '东京大学', type: '国立', program: '工学研究科' },
-  { name: '京都大学', type: '国立', program: '理学研究科' },
-  { name: '大阪大学', type: '国立', program: '経済学研究科' },
-  { name: '東北大学', type: '国立', program: '情報科学研究科' },
-  { name: '名古屋大学', type: '国立', program: '環境学研究科' },
-  { name: '九州大学', type: '国立', program: '人文科学研究院' },
-  { name: '北海道大学', type: '国立', program: '農学研究院' },
-  { name: '東京工業大学', type: '国立', program: '工学院' },
-  { name: '筑波大学', type: '国立', program: '人文社会科学研究科' },
-  { name: '一橋大学', type: '国立', program: '経営管理研究科' },
-  { name: '早稲田大学', type: '私立', program: '政治学研究科' },
-  { name: '慶應義塾大学', type: '私立', program: '経済学研究科' },
-  { name: '上智大学', type: '私立', program: '外国語学研究科' },
-  { name: '明治大学', type: '私立', program: '商学研究科' },
-  { name: '立教大学', type: '私立', program: '社会学研究科' },
-  { name: '横浜国立大学', type: '国立', program: '国際社会科学研究院' },
-  { name: '神戸大学', type: '国立', program: '法学研究科' },
-  { name: '大阪公立大学', type: '公立', program: '経営学研究科' },
-  { name: '東京都立大学', type: '公立', program: '人文科学研究科' },
-  { name: '横浜市立大学', type: '公立', program: '医学研究科' },
+  { name: '东京大学', type: '国立', program: '工学部' },
+  { name: '京都大学', type: '国立', program: '理学部' },
+  { name: '大阪大学', type: '国立', program: '経済学部' },
+  { name: '東北大学', type: '国立', program: '情報科学部' },
+  { name: '名古屋大学', type: '国立', program: '環境学部' },
+  { name: '九州大学', type: '国立', program: '人文科学部' },
+  { name: '北海道大学', type: '国立', program: '農学部' },
+  { name: '東京工業大学', type: '国立', program: '工学部' },
+  { name: '筑波大学', type: '国立', program: '人文社会科学部' },
+  { name: '一橋大学', type: '国立', program: '経営学部' },
+  { name: '早稲田大学', type: '私立', program: '政治経済学部' },
+  { name: '慶應義塾大学', type: '私立', program: '経済学部' },
+  { name: '上智大学', type: '私立', program: '外国語学部' },
+  { name: '明治大学', type: '私立', program: '商学部' },
+  { name: '立教大学', type: '私立', program: '社会学部' },
+  { name: '横浜国立大学', type: '国立', program: '国際社会科学部' },
+  { name: '神戸大学', type: '国立', program: '法学部' },
+  { name: '大阪公立大学', type: '公立', program: '経営学部' },
+  { name: '東京都立大学', type: '公立', program: '人文社会学部' },
+  { name: '横浜市立大学', type: '公立', program: '医学部' },
 ];
 
 const STUDENT_NAMES = [
@@ -49,17 +51,18 @@ const STUDENT_PINYIN = [
   'xufang', 'dengwei', 'suli', 'tangqiang',
 ];
 
-// 老师数据
+// 老师数据（department 使用 DEPARTMENT 枚举，faculty 使用学部名称）
 const TEACHER_DATA = [
-  { name: '王老师', pinyin: 'wang', department: '升学指导部', subject: '文科', gender: '男', education: '硕士', school: '早稲田大学', faculty: '教育学研究科' },
-  { name: '李老师', pinyin: 'li', department: '升学指导部', subject: '理科', gender: '女', education: '博士', school: '東京大学', faculty: '工学研究科' },
-  { name: '张老师', pinyin: 'zhang', department: '日语教学部', subject: '文科', gender: '男', education: '硕士', school: '京都大学', faculty: '文学研究科' },
+  { name: '王老师', pinyin: 'wang', department: DEPARTMENT.ACADEMIC, subject: SUBJECT_TYPE.LIBERAL, gender: '男', education: '硕士', school: '早稲田大学', faculty: '教育学部' },
+  { name: '李老师', pinyin: 'li', department: DEPARTMENT.ACADEMIC, subject: SUBJECT_TYPE.SCIENCE, gender: '女', education: '博士', school: '東京大学', faculty: '工学部' },
+  { name: '张老师', pinyin: 'zhang', department: DEPARTMENT.ACADEMIC_AFFAIRS, subject: SUBJECT_TYPE.LIBERAL, gender: '男', education: '硕士', school: '京都大学', faculty: '文学部' },
 ];
 
 const AVATARS = ['👨‍🎓', '👩‍🎓', '🧑‍🎓', '👨‍💻', '👩‍💻'];
-const SUBJECTS = ['文科', '理科', '文科', '理科']; // 均匀分布
-const STATUSES = ['preparing', 'applied', 'submitted', 'admitted'];
-const EVENT_TYPES = ['exam', 'deadline', 'interview', 'document', 'material'];
+const SUBJECTS = [SUBJECT_TYPE.LIBERAL, SUBJECT_TYPE.SCIENCE, SUBJECT_TYPE.LIBERAL, SUBJECT_TYPE.SCIENCE]; // 均匀分布
+const STATUSES = [SCHOOL_STATUS.PREPARING, SCHOOL_STATUS.APPLIED, SCHOOL_STATUS.SUBMITTED, SCHOOL_STATUS.ADMITTED, SCHOOL_STATUS.REJECTED];
+// 事件类型使用枚举字典，移除已废弃的 'material'（统一为 'document'）
+const EVENT_TYPES = [EVENT_TYPE.EXAM, EVENT_TYPE.DEADLINE, EVENT_TYPE.INTERVIEW, EVENT_TYPE.DOCUMENT, EVENT_TYPE.OTHER];
 const EVENT_CATEGORIES = ['考试', '出愿', '面试', '校内考', '材料'];
 
 const TAGS_POOL = [
@@ -115,10 +118,12 @@ function generateStudentSchools(studentIndex) {
     const statusWeight = Math.min(studentIndex / 20, 1);
     let status;
     const r = Math.random();
-    if (r < 0.3 - statusWeight * 0.15) status = 'preparing';
-    else if (r < 0.55 - statusWeight * 0.1) status = 'applied';
-    else if (r < 0.8) status = 'submitted';
-    else status = 'admitted';
+    if (r < 0.2 - statusWeight * 0.1) status = SCHOOL_STATUS.NOT_STARTED;
+    else if (r < 0.45 - statusWeight * 0.15) status = SCHOOL_STATUS.PREPARING;
+    else if (r < 0.65 - statusWeight * 0.1) status = SCHOOL_STATUS.APPLIED;
+    else if (r < 0.8) status = SCHOOL_STATUS.SUBMITTED;
+    else if (r < 0.92) status = SCHOOL_STATUS.ADMITTED;
+    else status = SCHOOL_STATUS.REJECTED;
 
     const appStart = randomDate(-2, 2);
     const appEnd = randomDate(0, 3);
@@ -153,7 +158,7 @@ function generateStudentEvents(studentName, schools) {
         category: '出愿',
         urgent: Math.random() > 0.5,
         notes: `${school.program} 出愿截止日`,
-        completed: school.status === 'submitted' || school.status === 'admitted',
+        completed: school.status === SCHOOL_STATUS.SUBMITTED || school.status === SCHOOL_STATUS.ADMITTED || school.status === SCHOOL_STATUS.REJECTED,
         schoolId: school.id,
       });
     }
@@ -167,7 +172,7 @@ function generateStudentEvents(studentName, schools) {
         category: '考试',
         urgent: false,
         notes: `${school.program} 入学考试`,
-        completed: school.status === 'admitted',
+        completed: school.status === SCHOOL_STATUS.ADMITTED || school.status === SCHOOL_STATUS.REJECTED,
         schoolId: school.id,
       });
     }
@@ -298,7 +303,7 @@ export function generateTestData() {
   console.log(`   - ${students.length} 名学生（全部可登录）`);
   console.log(`   - ${TEACHER_DATA.length} 位老师（全部可登录）`);
   console.log(`   - 每位学生有 1-4 所志愿学校`);
-  console.log(`   - 包含不同申请状态：准备中/已出愿/已提交/已合格`);
+   console.log(`   - 包含不同申请状态：准备中/已出愿/出愿结束/已合格`);
   console.log(`   `);
   console.log(`   📧 登录账号信息：`);
   console.log(`   管理员: admin@jsa.com / admin123`);

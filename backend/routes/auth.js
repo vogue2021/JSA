@@ -8,9 +8,17 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const { validateLogin, validateRegister } = require('../validators/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-// 内存存储验证码（生产环境应使用 Redis）
-const verificationCodes = new Map();
+// ─── 验证码持久化辅助函数（SQLite，替代内存 Map）────────────────────────────
+// 清理过期验证码（定期调用，防止表膨胀）
+async function cleanExpiredCodes() {
+  try {
+    await db('verification_codes').where('expires_at', '<', Date.now()).delete();
+  } catch (e) { /* 忽略清理失败 */ }
+}
+// 每小时清理一次（.unref() 确保测试环境下 Jest 可以正常退出）
+setInterval(cleanExpiredCodes, 60 * 60 * 1000).unref();
 
 // 邮箱传输器配置
 const createTransporter = () => {
@@ -38,12 +46,32 @@ router.post('/send-verification', async (req, res) => {
       return res.status(400).json({ success: false, message: '请提供有效的邮箱地址' });
     }
 
+    // ── 频率限制：同一邮箱 60 秒内只能发送一次 ──
+    const existing = await db('verification_codes')
+      .where({ email })
+      .orderBy('created_at', 'desc')
+      .first();
+    if (existing && existing.last_sent_at && Date.now() - existing.last_sent_at < 60 * 1000) {
+      const waitSec = Math.ceil((60 * 1000 - (Date.now() - existing.last_sent_at)) / 1000);
+      return res.status(429).json({ success: false, message: `发送过于频繁，请 ${waitSec} 秒后重试` });
+    }
+
     // 生成 6 位数字验证码
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10分钟过期
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
-    // 存储验证码
-    verificationCodes.set(email, { code, expiresAt, attempts: 0 });
+    // 持久化存储验证码（先删除旧记录，再插入新记录）
+    await db('verification_codes').where({ email }).delete();
+    await db('verification_codes').insert({
+      email,
+      code,
+      expires_at: expiresAt,
+      attempts: 0,
+      verified: false,
+      last_sent_at: Date.now(),
+      ip: clientIp,
+    });
 
     // 尝试发送真实邮件
     const transporter = createTransporter();
@@ -78,34 +106,38 @@ router.post('/send-verification', async (req, res) => {
   }
 });
 
+// 清理过期验证码（启动时执行一次）
+cleanExpiredCodes();
+
 // 验证验证码接口
-router.post('/verify-code', (req, res) => {
+router.post('/verify-code', async (req, res) => {
   try {
     const { email, code } = req.body;
-    const record = verificationCodes.get(email);
+    const record = await db('verification_codes').where({ email }).first();
 
     if (!record) {
       return res.status(400).json({ success: false, message: '请先获取验证码' });
     }
 
-    if (Date.now() > record.expiresAt) {
-      verificationCodes.delete(email);
+    if (Date.now() > record.expires_at) {
+      await db('verification_codes').where({ email }).delete();
       return res.status(400).json({ success: false, message: '验证码已过期，请重新获取' });
     }
 
     if (record.attempts >= 5) {
-      verificationCodes.delete(email);
+      await db('verification_codes').where({ email }).delete();
       return res.status(400).json({ success: false, message: '验证尝试次数过多，请重新获取验证码' });
     }
 
-    record.attempts++;
+    // 递增尝试次数
+    await db('verification_codes').where({ email }).update({ attempts: record.attempts + 1 });
 
-    if (record.code !== code) {
+    if (record.code !== String(code)) {
       return res.status(400).json({ success: false, message: '验证码错误' });
     }
 
     // 验证成功，标记已验证
-    verificationCodes.set(email, { ...record, verified: true });
+    await db('verification_codes').where({ email }).update({ verified: true });
     res.json({ success: true, message: '邮箱验证成功' });
   } catch (error) {
     console.error('Verify code error:', error);
@@ -172,7 +204,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         ...additionalData
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production',
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
@@ -216,13 +248,17 @@ router.post('/register', async (req, res) => {
 
     const { studentId, email, password, name, verificationCode } = value;
 
-    // 验证邮箱验证码（检查内存中的记录）
-    const codeRecord = verificationCodes.get(email);
-    if (codeRecord && !codeRecord.verified) {
-      // 如果有未验证的记录，检查验证码是否匹配
-      if (!verificationCode || codeRecord.code !== verificationCode) {
-        return res.status(400).json({ success: false, message: '邮箱验证码错误或未验证' });
+    // 验证邮箱验证码（从数据库查询）
+    const codeRecord = await db('verification_codes').where({ email }).first();
+    if (codeRecord) {
+      if (!codeRecord.verified) {
+        // 有记录但未验证：检查验证码是否匹配
+        if (!verificationCode || codeRecord.code !== String(verificationCode)) {
+          return res.status(400).json({ success: false, message: '邮箱验证码错误或未验证' });
+        }
       }
+      // 注册成功后清理验证码记录
+      await db('verification_codes').where({ email }).delete();
     }
 
     // Check if student ID exists and is not registered
@@ -326,7 +362,7 @@ router.get('/verify', (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production');
     res.json({
       success: true,
       user: decoded
@@ -340,10 +376,12 @@ router.get('/verify', (req, res) => {
 });
 
 // Change password endpoint
-// 修改密码接口
-router.post('/change-password', async (req, res) => {
+// 修改密码接口（必须携带有效 JWT，后端从 token 中取 userId，防止越权改密）
+router.post('/change-password', authenticateToken, async (req, res) => {
   try {
-    const { userId, oldPassword, newPassword } = req.body;
+    // 从 JWT 中取 userId，忽略 body 中的 userId 参数（防越权）
+    const userId = req.user.id;
+    const { oldPassword, newPassword } = req.body;
 
     // Find user
     const user = await db('users')

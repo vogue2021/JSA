@@ -123,7 +123,7 @@ const StudentListPage = ({
 
   const getStudentStatusSummary = (studentId) => {
     const schools = studentSchoolData[studentId]?.schools || [];
-    const counts = { preparing: 0, applied: 0, submitted: 0, admitted: 0 };
+    const counts = { not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0 };
     schools.forEach(s => {
       const status = s.status || 'preparing';
       if (counts[status] !== undefined) counts[status]++;
@@ -319,10 +319,13 @@ const StudentListPage = ({
                     <School size={12} className="text-themed-muted" />
                     <span className="text-themed-secondary">报考 {schoolCount} 所</span>
                     {statusSummary.admitted > 0 && (
-                      <span className="text-green-600 font-medium">{statusSummary.admitted} 合格</span>
+                      <span className="text-yellow-600 font-medium">{statusSummary.admitted} 合格</span>
+                    )}
+                    {statusSummary.rejected > 0 && (
+                      <span className="text-red-500 font-medium">{statusSummary.rejected} 未合格</span>
                     )}
                     {statusSummary.submitted > 0 && (
-                      <span className="text-purple-600 font-medium">{statusSummary.submitted} 已提交</span>
+                      <span className="text-orange-600 font-medium">{statusSummary.submitted} 邮寄完成</span>
                     )}
                   </div>
 
@@ -448,9 +451,14 @@ const StudentListPage = ({
                               合{statusSummary.admitted}
                             </span>
                           )}
+                          {statusSummary.rejected > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                              否{statusSummary.rejected}
+                            </span>
+                          )}
                           {statusSummary.submitted > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: '#a855f7' }}>
-                              提{statusSummary.submitted}
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)', color: '#f97316' }}>
+                              邮{statusSummary.submitted}
                             </span>
                           )}
                           {statusSummary.applied > 0 && (

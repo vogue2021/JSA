@@ -701,10 +701,12 @@ const InfoField = ({ label, value, editing, onChange, type = 'text', placeholder
 const StatusBadge = ({ status }) => {
   const { isDark } = useTheme();
   const config = {
+    not_started: { label: '未开始', bg: isDark ? 'rgba(156,163,175,0.15)' : 'rgba(156,163,175,0.1)', color: '#9ca3af' },
     preparing: { label: '准备中', bg: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' },
-    applied: { label: '已出愿', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
-    submitted: { label: '已提交', bg: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: '#a855f7' },
-    admitted: { label: '已合格', bg: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' },
+    applied: { label: '出愿完成', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' },
+    submitted: { label: '邮寄完成', bg: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.1)', color: '#f97316' },
+    admitted: { label: '合格', bg: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.1)', color: '#eab308' },
+    rejected: { label: '未合格', bg: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: '#ef4444' },
   };
   const { label, bg, color } = config[status] || { label: '未知', bg: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: isDark ? '#9ca3af' : '#6b7280' };
   return <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: bg, color }}>{label}</span>;

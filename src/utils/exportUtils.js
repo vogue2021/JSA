@@ -2,6 +2,7 @@
  * 数据导出工具
  * 支持 Excel(CSV)、PDF、ICS 格式导出
  */
+import { SCHOOL_STATUS_LABELS, EVENT_TYPE_LABELS } from '../constants/schoolProcess';
 
 // CSV 导出（兼容 Excel）
 export const exportToCSV = (data, filename) => {
@@ -43,7 +44,7 @@ export const exportStudentToCSV = (student, studentData) => {
   const schools = studentData?.schools || [];
   if (schools.length > 0) {
     rows.push(['志愿学校']);
-    rows.push(['学校名称', '类型', '研究科', '状态', '出愿开始', '出愿截止', '考试日期', '合格发表']);
+    rows.push(['学校名称', '类型', '学部/专业', '状态', '出愿开始', '出愿截止', '考试日期', '合格发表']);
     schools.forEach(s => {
       rows.push([s.name, s.type, s.program, getStatusText(s.status),
         s.applicationStartDate, s.applicationEndDate, s.examDate, s.resultDate]);
@@ -210,8 +211,12 @@ const escapeICS = (str) => {
 };
 
 const getStatusText = (status) => {
-  const texts = { preparing: '准备中', applied: '已出愿', submitted: '已提交', admitted: '已合格' };
-  return texts[status] || '未知';
+  return SCHOOL_STATUS_LABELS[status] || '未知';
+};
+
+// 事件类型文本（供导出使用）
+export const getEventTypeText = (type) => {
+  return EVENT_TYPE_LABELS[type] || type || '其他';
 };
 
 // 通用下载函数

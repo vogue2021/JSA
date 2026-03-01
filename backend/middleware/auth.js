@@ -15,7 +15,7 @@ const authenticateToken = (req, res, next) => {
     });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production', (err, user) => {
     if (err) {
       return res.status(403).json({
         success: false,

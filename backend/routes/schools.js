@@ -5,6 +5,118 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 
+// ─── 统计接口 ────────────────────────────────────────────────────────────────
+
+// GET /api/schools/stats
+// 获取全局学校报考统计（按学校名聚合，供仪表盘使用）
+// 支持 ?teacher_id=xxx 按老师筛选
+router.get('/stats', async (req, res, next) => {
+  try {
+    const { teacher_id } = req.query;
+
+    // 构建基础查询：关联 students 表以支持按老师筛选
+    let query = db('schools as s')
+      .join('students as st', 's.student_id', 'st.student_id')
+      .select(
+        's.name',
+        's.type',
+        's.program',
+        's.status',
+        db.raw('COUNT(*) as count')
+      )
+      .groupBy('s.name', 's.type', 's.program', 's.status');
+
+    if (teacher_id) {
+      query = query.where('st.teacher_id', teacher_id);
+    }
+
+    const rows = await query;
+
+    // 聚合：按学校名汇总各状态数量
+    const schoolMap = {};
+    rows.forEach(row => {
+      const name = row.name;
+      if (!schoolMap[name]) {
+        schoolMap[name] = {
+          name,
+          type: row.type || '',
+          total: 0,
+          not_started: 0,
+          preparing: 0,
+          applied: 0,
+          submitted: 0,
+          admitted: 0,
+          rejected: 0,
+        };
+      }
+      const status = row.status || 'preparing';
+      const cnt = Number(row.count) || 0;
+      schoolMap[name].total += cnt;
+      if (schoolMap[name][status] !== undefined) {
+        schoolMap[name][status] += cnt;
+      }
+    });
+
+    // 按报考总数降序排列
+    const sortedSchools = Object.values(schoolMap).sort((a, b) => b.total - a.total);
+
+    // 全局状态汇总
+    const statusCounts = { not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0 };
+    const schoolTypeMap = {};
+    sortedSchools.forEach(s => {
+      Object.keys(statusCounts).forEach(k => { statusCounts[k] += s[k] || 0; });
+      if (s.type) schoolTypeMap[s.type] = (schoolTypeMap[s.type] || 0) + s.total;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        sortedSchools,
+        statusCounts,
+        schoolTypeMap,
+        totalApplications: sortedSchools.reduce((sum, s) => sum + s.total, 0),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/schools/stats/events
+// 获取全局事件统计（紧急/即将到期，供仪表盘使用）
+router.get('/stats/events', async (req, res, next) => {
+  try {
+    const { teacher_id } = req.query;
+    const today = new Date().toISOString().split('T')[0];
+    const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    let query = db('events as e')
+      .join('students as st', 'e.student_id', 'st.student_id')
+      .where('e.completed', false);
+
+    if (teacher_id) {
+      query = query.where('st.teacher_id', teacher_id);
+    }
+
+    const allEvents = await query.select('e.*', 'st.name as student_name');
+
+    const urgentEvents = allEvents.filter(e => e.urgent).length;
+    const upcomingEvents = allEvents.filter(e => {
+      const d = e.date;
+      return d >= today && d <= sevenDaysLater;
+    }).length;
+
+    res.json({
+      success: true,
+      data: { totalEvents: allEvents.length, urgentEvents, upcomingEvents },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── 学生维度接口 ─────────────────────────────────────────────────────────────
+
 // Get all schools for a student
 // 获取学生的所有志愿学校
 router.get('/student/:studentId', async (req, res, next) => {

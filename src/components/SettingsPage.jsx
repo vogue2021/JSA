@@ -8,6 +8,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../utils/logService';
+import { runMigration, getMigrationStats } from '../utils/migrationUtils';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
   const { showNotification } = useApp();
@@ -129,6 +130,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     { id: 'profile', label: '个人信息', icon: User },
     { id: 'security', label: '安全设置', icon: Lock },
     ...(user.role === 'admin' ? [{ id: 'analytics', label: '数据统计', icon: BarChart3 }] : []),
+    ...(user.role === 'admin' ? [{ id: 'migration', label: '数据迁移', icon: Download }] : []),
     ...(user.role === 'admin' ? [{ id: 'logs', label: '系统日志', icon: FileText }] : []),
   ];
 
@@ -141,7 +143,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
 
     // 从 localStorage 读取所有学生的学校数据
     const allSchoolApplications = [];
-    const schoolStats = {}; // schoolName -> { total, preparing, applied, submitted, admitted }
+    const schoolStats = {}; // schoolName -> { total, not_started, preparing, applied, submitted, admitted, rejected }
     const teacherStudentCounts = {}; // teacherId -> count
 
     students.forEach(student => {
@@ -158,7 +160,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
         studentSchools.forEach(school => {
           allSchoolApplications.push({ ...school, studentName: student.name, studentId: student.studentId });
           if (!schoolStats[school.name]) {
-            schoolStats[school.name] = { total: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, type: school.type || '' };
+            schoolStats[school.name] = { total: 0, not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0, type: school.type || '' };
           }
           schoolStats[school.name].total++;
           const status = school.status || 'preparing';
@@ -177,6 +179,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     // 总体统计
     const totalApplications = allSchoolApplications.length;
     const totalAdmitted = allSchoolApplications.filter(a => a.status === 'admitted').length;
+    const totalRejected = allSchoolApplications.filter(a => a.status === 'rejected').length;
     const totalSubmitted = allSchoolApplications.filter(a => a.status === 'submitted').length;
     const totalPreparing = allSchoolApplications.filter(a => a.status === 'preparing').length;
     const totalApplied = allSchoolApplications.filter(a => a.status === 'applied').length;
@@ -195,6 +198,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
       unassignedStudents,
       totalApplications,
       totalAdmitted,
+      totalRejected,
       totalSubmitted,
       totalPreparing,
       totalApplied,
@@ -424,7 +428,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           {/* 申请状态分布 */}
           <div className="glass-panel p-5">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart size={20} className="text-blue-500" /> 申请状态分布</h4>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="glass-card text-center p-4">
                 <Clock size={24} className="mx-auto mb-2" style={{ color: '#3b82f6' }} />
                 <div className="text-2xl font-bold" style={{ color: '#3b82f6' }}>{analyticsData.totalPreparing}</div>
@@ -438,7 +442,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
               <div className="glass-card text-center p-4">
                 <CheckCircle size={24} className="mx-auto mb-2" style={{ color: '#22c55e' }} />
                 <div className="text-2xl font-bold" style={{ color: '#22c55e' }}>{analyticsData.totalApplied}</div>
-                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已出愿</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>出愿完成</div>
                 {analyticsData.totalApplications > 0 && (
                   <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.2)' }}>
                     <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalApplied / analyticsData.totalApplications * 100)}%`, background: '#22c55e'}} />
@@ -446,22 +450,32 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
                 )}
               </div>
               <div className="glass-card text-center p-4">
-                <AlertCircle size={24} className="mx-auto mb-2" style={{ color: '#a855f7' }} />
-                <div className="text-2xl font-bold" style={{ color: '#a855f7' }}>{analyticsData.totalSubmitted}</div>
-                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已提交</div>
+                <AlertCircle size={24} className="mx-auto mb-2" style={{ color: '#f97316' }} />
+                <div className="text-2xl font-bold" style={{ color: '#f97316' }}>{analyticsData.totalSubmitted}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>邮寄完成</div>
                 {analyticsData.totalApplications > 0 && (
-                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.2)' }}>
-                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalSubmitted / analyticsData.totalApplications * 100)}%`, background: '#a855f7'}} />
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalSubmitted / analyticsData.totalApplications * 100)}%`, background: '#f97316'}} />
                   </div>
                 )}
               </div>
               <div className="glass-card text-center p-4">
                 <TrendingUp size={24} className="mx-auto mb-2" style={{ color: '#eab308' }} />
                 <div className="text-2xl font-bold" style={{ color: '#eab308' }}>{analyticsData.totalAdmitted}</div>
-                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>已合格</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>合格</div>
                 {analyticsData.totalApplications > 0 && (
                   <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(234,179,8,0.15)' : 'rgba(234,179,8,0.2)' }}>
                     <div className="h-1.5 rounded-full" style={{width: `${Math.round(analyticsData.totalAdmitted / analyticsData.totalApplications * 100)}%`, background: '#eab308'}} />
+                  </div>
+                )}
+              </div>
+              <div className="glass-card text-center p-4">
+                <AlertCircle size={24} className="mx-auto mb-2" style={{ color: '#ef4444' }} />
+                <div className="text-2xl font-bold" style={{ color: '#ef4444' }}>{analyticsData.totalRejected || 0}</div>
+                <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>未合格</div>
+                {analyticsData.totalApplications > 0 && (
+                  <div className="w-full rounded-full h-1.5 mt-2" style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.2)' }}>
+                    <div className="h-1.5 rounded-full" style={{width: `${Math.round((analyticsData.totalRejected || 0) / analyticsData.totalApplications * 100)}%`, background: '#ef4444'}} />
                   </div>
                 )}
               </div>
@@ -501,9 +515,14 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
                           {school.admitted}人合格
                         </span>
                       )}
+                      {school.rejected > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+                          {school.rejected}人未合格
+                        </span>
+                      )}
                       {school.submitted > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
-                          {school.submitted}人提交
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.08)', color: '#f97316' }}>
+                          {school.submitted}人邮寄
                         </span>
                       )}
                     </div>
@@ -560,6 +579,9 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
         </div>
       )}
 
+      {/* 数据迁移（仅管理员） */}
+      {activeTab === 'migration' && user.role === 'admin' && <MigrationPanel />}
+
       {/* 系统日志（仅管理员） */}
       {activeTab === 'logs' && user.role === 'admin' && <LogsPanel />}
 
@@ -600,6 +622,151 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
               </button>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// === 数据迁移面板组件（管理员专用）===
+const MigrationPanel = () => {
+  const { isDark, tokens } = useTheme();
+  const [stats, setStats] = useState(null);
+  const [migrating, setMigrating] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [report, setReport] = useState(null);
+  const { showNotification } = useApp();
+
+  const loadStats = () => {
+    try {
+      const s = getMigrationStats();
+      setStats(s);
+    } catch (e) {
+      setStats({ students: 0, schools: 0, events: 0, materials: 0, feedbacks: 0 });
+    }
+  };
+
+  React.useEffect(() => { loadStats(); }, []);
+
+  const handleMigrate = async (dryRun) => {
+    setMigrating(true);
+    setReport(null);
+    setProgress(dryRun ? '正在统计待迁移数据...' : '正在迁移数据，请勿关闭页面...');
+    try {
+      const result = await runMigration({
+        dryRun,
+        onProgress: (msg) => setProgress(msg),
+      });
+      setReport(result);
+      if (!dryRun) {
+        showNotification('数据迁移完成！');
+        loadStats();
+      }
+    } catch (e) {
+      setProgress(`迁移失败: ${e.message}`);
+      showNotification(`迁移失败: ${e.message}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const statItems = [
+    { label: '学生', value: stats?.students ?? '-', color: '#6366f1' },
+    { label: '学校申请', value: stats?.schools ?? '-', color: '#10b981' },
+    { label: '时间线事件', value: stats?.events ?? '-', color: '#f59e0b' },
+    { label: '材料清单', value: stats?.materials ?? '-', color: '#8b5cf6' },
+    { label: '反馈记录', value: stats?.feedbacks ?? '-', color: '#ec4899' },
+  ];
+
+  return (
+    <div className="glass-panel p-6 space-y-6">
+      <div>
+        <h4 className="font-bold text-lg mb-1 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+          <Download size={20} /> 数据迁移
+        </h4>
+        <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
+          将浏览器 localStorage 中的数据迁移到后端数据库，实现跨设备同步和数据持久化。
+        </p>
+      </div>
+
+      {/* 待迁移数据统计 */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium" style={{ color: tokens.colors.text.secondary }}>localStorage 中的数据</span>
+          <button onClick={loadStats} className="text-xs px-2 py-1 rounded"
+            style={{ background: 'rgba(99,102,241,0.1)', color: tokens.colors.accent.primary }}>
+            刷新统计
+          </button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {statItems.map(item => (
+            <div key={item.label} className="glass-card p-3 text-center">
+              <div className="text-2xl font-bold" style={{ color: item.color }}>{item.value}</div>
+              <div className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 迁移操作 */}
+      <div className="space-y-3">
+        <div className="p-4 rounded-lg" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <p className="text-sm font-medium mb-1" style={{ color: '#f59e0b' }}>⚠️ 迁移前注意事项</p>
+          <ul className="text-xs space-y-1" style={{ color: tokens.colors.text.muted }}>
+            <li>• 请确保已登录管理员账号（需要有效 JWT Token）</li>
+            <li>• 建议先使用「演练模式」确认数据量，再执行正式迁移</li>
+            <li>• 迁移过程中请勿关闭页面或刷新浏览器</li>
+            <li>• 迁移完成后，localStorage 数据不会自动删除（可手动清理）</li>
+          </ul>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleMigrate(true)}
+            disabled={migrating}
+            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all"
+            style={{ background: 'rgba(99,102,241,0.1)', color: tokens.colors.accent.primary, border: '1px solid rgba(99,102,241,0.2)' }}
+          >
+            {migrating ? '处理中...' : '🔍 演练模式（仅统计）'}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm('确认将 localStorage 数据迁移到后端数据库？此操作不可撤销。')) {
+                handleMigrate(false);
+              }
+            }}
+            disabled={migrating}
+            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all"
+            style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}
+          >
+            {migrating ? '迁移中...' : '🚀 正式迁移'}
+          </button>
+        </div>
+      </div>
+
+      {/* 进度和报告 */}
+      {(migrating || progress) && (
+        <div className="p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
+          <p className="text-sm" style={{ color: tokens.colors.text.secondary }}>{progress}</p>
+        </div>
+      )}
+
+      {report && (
+        <div className="p-4 rounded-lg space-y-2" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+          <p className="text-sm font-medium" style={{ color: '#10b981' }}>📊 迁移报告</p>
+          {[
+            { label: '学生', r: report.students },
+            { label: '学校申请', r: report.schools },
+            { label: '时间线事件', r: report.events },
+            { label: '材料清单', r: report.materials },
+          ].map(({ label, r }) => (
+            <div key={label} className="flex justify-between text-xs" style={{ color: tokens.colors.text.muted }}>
+              <span>{label}</span>
+              <span style={{ color: r.failed > 0 ? '#ef4444' : '#10b981' }}>
+                {r.success}/{r.total} 成功{r.failed > 0 ? `，${r.failed} 失败` : ''}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

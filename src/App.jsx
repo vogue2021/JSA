@@ -8,7 +8,7 @@ import {
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon
 } from 'lucide-react';
-import { schoolsAPI, eventsAPI, materialsAPI } from './services/api';
+import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -23,386 +23,13 @@ import CalendarView from './components/CalendarView';
 import UpcomingSchools from './components/UpcomingSchools';
 import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
+import AuthPage from './components/AuthPage';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
 import { generateTestData } from './utils/generateTestData';
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
-
-// 登录注册页面组件
-const AuthPage = ({ onLogin, allUsers }) => {
-  const { isDark, tokens, backgroundStyle, glassEnabled } = useTheme();
-  // 用户账号数据库（仅用于登录页快速切换，实际登录验证使用allUsers）
-  const [users] = useState([
-    // 管理员账号
-    {
-      id: 'admin1',
-      email: 'admin@jsa.com',
-      password: 'admin123',
-      role: 'admin',
-      name: '系统管理员'
-    },
-    // 老师账号
-    {
-      id: 'teacher1',
-      email: 'wang@school.com',
-      password: 'wang123',
-      role: 'teacher',
-      teacherId: 'teacher_1',
-      name: '王老师'
-    },
-    {
-      id: 'teacher2',
-      email: 'li@school.com',
-      password: 'li123',
-      role: 'teacher',
-      teacherId: 'teacher_2',
-      name: '李老师'
-    },
-    {
-      id: 'teacher3',
-      email: 'zhang@school.com',
-      password: 'zhang123',
-      role: 'teacher',
-      teacherId: 'teacher_3',
-      name: '张老师'
-    },
-    {
-      id: 'teacher4',
-      email: 'chen@school.com',
-      password: 'chen123',
-      role: 'teacher',
-      teacherId: 'teacher_4',
-      name: '陈老师'
-    },
-    {
-      id: 'teacher5',
-      email: 'zhao@school.com',
-      password: 'zhao123',
-      role: 'teacher',
-      teacherId: 'teacher_5',
-      name: '赵老师'
-    },
-    // 学生账号（已注册的）
-    {
-      id: 'student1',
-      email: 'zhangsan@student.jsa.com',
-      password: 'stu2024001',
-      role: 'student',
-      studentId: '2024001',
-      name: '张三'
-    },
-    {
-      id: 'student2',
-      email: 'lisi@student.jsa.com',
-      password: 'stu2024002',
-      role: 'student',
-      studentId: '2024002',
-      name: '李四'
-    },
-    {
-      id: 'student3',
-      email: 'wangwu@student.jsa.com',
-      password: 'stu2024003',
-      role: 'student',
-      studentId: '2024003',
-      name: '王五'
-    }
-  ]);
-
-  const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-  const [errors, setErrors] = useState({});
-
-  const validateEmail = (email) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const newErrors = {};
-
-    if (!formData.email) newErrors.email = '请输入邮箱';
-    else if (!validateEmail(formData.email)) newErrors.email = '邮箱格式不正确';
-
-    if (!formData.password) newErrors.password = '请输入密码';
-    else if (formData.password.length < 6) newErrors.password = '密码至少6位';
-
-    // 登录逻辑 - 验证密码
-    if (Object.keys(newErrors).length === 0) {
-      const user = allUsers.find(u =>
-        u.email === formData.email &&
-        u.password === formData.password &&
-        u.role === userType
-      );
-
-      if (user) {
-        const userData = {
-          role: user.role,
-          name: user.name,
-          email: user.email,
-          studentId: user.studentId || null,
-          teacherId: user.teacherId || null,
-          isAdmin: user.role === 'admin'
-        };
-        logAction(LOG_CATEGORIES.AUTH, `用户登录: ${user.name} (${user.role})`, { email: user.email });
-        onLogin(userData);
-        return;
-      } else {
-        newErrors.password = '邮箱或密码错误';
-      }
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 themed-bg noise-overlay" style={backgroundStyle}>
-      {/* 登录页背景光斑 */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="animate-glow-float absolute rounded-full" style={{
-          width: '50vw', height: '50vw', top: '5%', left: '-5%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%)',
-          filter: 'blur(80px)',
-        }} />
-        <div className="animate-glow-float-slow absolute rounded-full" style={{
-          width: '40vw', height: '40vw', bottom: '10%', right: '-5%',
-          background: 'radial-gradient(circle, rgba(139,92,246,0.18), transparent 70%)',
-          filter: 'blur(60px)',
-        }} />
-        <div className="animate-glow-float absolute rounded-full" style={{
-          width: '30vw', height: '30vw', top: '50%', left: '60%',
-          background: 'radial-gradient(circle, rgba(16,185,129,0.12), transparent 70%)',
-          filter: 'blur(50px)', animationDelay: '4s',
-        }} />
-      </div>
-
-      <div className="max-w-5xl w-full grid lg:grid-cols-2 rounded-2xl overflow-hidden relative z-10 animate-scale-in"
-        style={{
-          background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
-          backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
-          WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
-          border: `1px solid ${tokens.colors.border.hairline}`,
-          boxShadow: `${tokens.shadow.elevation}, ${tokens.shadow.innerHighlight}`,
-        }}>
-        {/* 左侧装饰面板 */}
-        <div className="hidden lg:flex flex-col justify-center items-center p-12 text-white relative overflow-hidden">
-          <div className="absolute inset-0" style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))',
-          }} />
-          {/* 装饰光斑 */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute w-40 h-40 rounded-full animate-pulse-glow" style={{
-              top: '15%', right: '10%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%)',
-            }} />
-            <div className="absolute w-32 h-32 rounded-full animate-pulse-glow" style={{
-              bottom: '20%', left: '5%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.1), transparent 70%)',
-              animationDelay: '1.5s',
-            }} />
-          </div>
-          <div className="mb-8 relative z-10">
-            <div className="w-32 h-32 rounded-full flex items-center justify-center mb-6"
-              style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
-              <GraduationCap size={64} className="text-white" />
-            </div>
-            <h1 className="text-4xl font-bold mb-4">日本留学考学助手</h1>
-            <p className="text-center" style={{ color: 'rgba(255,255,255,0.8)' }}>
-              专业的日本留学申请管理平台<br/>
-              让留学之路更加清晰高效
-            </p>
-          </div>
-
-          <div className="space-y-4 w-full max-w-sm relative z-10">
-            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
-              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
-              <Calendar className="text-white" size={24} />
-              <span>智能时间线管理</span>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
-              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
-              <School className="text-white" size={24} />
-              <span>多校申请追踪</span>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl p-3 transition-all"
-              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
-              <FileText className="text-white" size={24} />
-              <span>材料清单管理</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 右侧登录表单 */}
-        <div className="p-8 lg:p-12">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>
-              欢迎回来
-            </h2>
-            <p style={{ color: tokens.colors.text.secondary }}>
-              登录您的账号继续管理留学申请
-            </p>
-          </div>
-
-          {/* 角色选择 */}
-          <div className="mb-6">
-              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>我是</label>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setUserType('student')}
-                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
-                  style={{
-                    borderColor: userType === 'student' ? tokens.colors.accent.primary : tokens.colors.border.subtle,
-                    background: userType === 'student' ? (isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)') : 'transparent',
-                    color: userType === 'student' ? tokens.colors.accent.primary : tokens.colors.text.secondary,
-                  }}
-                >
-                  <User size={20} />
-                  <span className="font-medium">学生</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserType('teacher')}
-                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
-                  style={{
-                    borderColor: userType === 'teacher' ? tokens.colors.accent.secondary : tokens.colors.border.subtle,
-                    background: userType === 'teacher' ? (isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)') : 'transparent',
-                    color: userType === 'teacher' ? tokens.colors.accent.secondary : tokens.colors.text.secondary,
-                  }}
-                >
-                  <GraduationCap size={20} />
-                  <span className="font-medium">老师</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserType('admin')}
-                  className="p-3 rounded-xl border-2 transition flex items-center justify-center gap-2"
-                  style={{
-                    borderColor: userType === 'admin' ? tokens.colors.accent.danger : tokens.colors.border.subtle,
-                    background: userType === 'admin' ? (isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)') : 'transparent',
-                    color: userType === 'admin' ? tokens.colors.accent.danger : tokens.colors.text.secondary,
-                  }}
-                >
-                  <Shield size={20} />
-                  <span className="font-medium">管理员</span>
-                </button>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                    ${errors.email ? 'border-red-500' : ''}`}
-                  style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder="your@email.com"
-                />
-              </div>
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                    ${errors.password ? 'border-red-500' : ''}`}
-                  style={{ borderColor: errors.password ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder="••••••••"
-                />
-              </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-              style={{
-                background: userType === 'student'
-                  ? (isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)')
-                  : userType === 'teacher'
-                    ? (isDark ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)')
-                    : (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'),
-                color: userType === 'student' ? '#3b82f6' : userType === 'teacher' ? '#8b5cf6' : '#ef4444',
-                backdropFilter: 'blur(8px)',
-                border: `1px solid ${userType === 'student'
-                  ? (isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.15)')
-                  : userType === 'teacher'
-                    ? (isDark ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.15)')
-                    : (isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.15)')}`,
-              }}
-              onMouseEnter={e => {
-                const alpha = isDark ? 0.25 : 0.18;
-                const rgb = userType === 'student' ? '59,130,246' : userType === 'teacher' ? '139,92,246' : '239,68,68';
-                e.currentTarget.style.background = `rgba(${rgb},${alpha})`;
-              }}
-              onMouseLeave={e => {
-                const alpha = isDark ? 0.15 : 0.1;
-                const rgb = userType === 'student' ? '59,130,246' : userType === 'teacher' ? '139,92,246' : '239,68,68';
-                e.currentTarget.style.background = `rgba(${rgb},${alpha})`;
-              }}
-            >
-              登录
-              <ArrowRight size={20} />
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
-              账号由管理员统一创建，如需账号请联系管理员
-            </p>
-          </div>
-
-          {/* 测试账号提示 */}
-            <div className="mt-6 p-4 rounded-xl text-xs" style={{              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-              border: `1px solid ${tokens.colors.border.subtle}`,
-              color: tokens.colors.text.secondary,
-            }}>
-              <p className="font-semibold mb-2">测试账号：</p>
-              {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
-              {userType === 'teacher' && (
-                <>
-                  <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师：</p>
-                  <p>王老师: wang@school.com / wang123</p>
-                  <p>李老师: li@school.com / li123</p>
-                  <p>张老师: zhang@school.com / zhang123</p>
-                  <p>陈老师: chen@school.com / chen123</p>
-                  <p>赵老师: zhao@school.com / zhao123</p>
-                  <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>学管老师：</p>
-                  <p>高老师: gao@school.com / gao123</p>
-                  <p>林老师: lin@school.com / lin123</p>
-                </>
-              )}
-              {userType === 'student' && (
-                <>
-                  <p>张三: zhangsan@student.jsa.com / stu2024001</p>
-                  <p>李四: lisi@student.jsa.com / stu2024002</p>
-                  <p>王五: wangwu@student.jsa.com / stu2024003</p>
-                </>
-              )}
-            </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+// AuthPage 已拆分到 src/components/AuthPage.jsx
 
 // 主应用组件
 const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStudentList }) => {
@@ -926,20 +553,24 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
 
   const getStatusColor = (status) => {
     const colors = {
+      not_started: isDark ? 'bg-[rgba(156,163,175,0.15)] text-gray-400 border-[rgba(156,163,175,0.3)]' : 'bg-gray-100 text-gray-600 border-gray-200',
       preparing: isDark ? 'bg-[rgba(59,130,246,0.15)] text-blue-400 border-[rgba(59,130,246,0.3)]' : 'bg-blue-100 text-blue-700 border-blue-200',
       applied: isDark ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border-[rgba(34,197,94,0.3)]' : 'bg-green-100 text-green-700 border-green-200',
-      submitted: isDark ? 'bg-[rgba(168,85,247,0.15)] text-purple-400 border-[rgba(168,85,247,0.3)]' : 'bg-purple-100 text-purple-700 border-purple-200',
+      submitted: isDark ? 'bg-[rgba(249,115,22,0.15)] text-orange-400 border-[rgba(249,115,22,0.3)]' : 'bg-orange-100 text-orange-700 border-orange-200',
       admitted: isDark ? 'bg-[rgba(234,179,8,0.15)] text-yellow-400 border-[rgba(234,179,8,0.3)]' : 'bg-yellow-100 text-yellow-700 border-yellow-200',
+      rejected: isDark ? 'bg-[rgba(239,68,68,0.15)] text-red-400 border-[rgba(239,68,68,0.3)]' : 'bg-red-100 text-red-700 border-red-200',
     };
     return colors[status] || (isDark ? 'bg-[rgba(255,255,255,0.06)] text-gray-300 border-[rgba(255,255,255,0.1)]' : 'bg-gray-100 text-gray-700 border-gray-200');
   };
 
   const getStatusText = (status) => {
     const texts = {
+      not_started: '未开始',
       preparing: '准备中',
-      applied: '已出愿',
-      submitted: '已提交',
-      admitted: '已合格',
+      applied: '出愿完成',
+      submitted: '邮寄完成',
+      admitted: '合格',
+      rejected: '未合格',
     };
     return texts[status] || '未开始';
   };
@@ -1437,10 +1068,12 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
                   onChange={(e) => setFormData({...formData, status: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="not_started">未开始</option>
                   <option value="preparing">准备中</option>
-                  <option value="applied">已出愿</option>
-                  <option value="submitted">已提交</option>
-                  <option value="admitted">已合格</option>
+                  <option value="applied">出愿完成</option>
+                  <option value="submitted">邮寄完成</option>
+                  <option value="admitted">合格</option>
+                  <option value="rejected">未合格</option>
                 </select>
               </div>
             </div>
@@ -4145,6 +3778,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             events={filteredEvents}
             schools={schools}
             checklist={checklist}
+            currentStudent={currentStudent}
             getVisibleStudents={getVisibleStudents}
             getTeacherList={getTeacherList}
             onNavigate={(tab) => setActiveTab(tab)}
@@ -4325,8 +3959,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <div className="mt-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                     schoolDetailModal.status === 'admitted' ? 'bg-yellow-400 text-yellow-900' :
-                    schoolDetailModal.status === 'submitted' ? 'bg-purple-400 text-purple-900' :
+                    schoolDetailModal.status === 'rejected' ? 'bg-red-400 text-red-900' :
+                    schoolDetailModal.status === 'submitted' ? 'bg-orange-400 text-orange-900' :
                     schoolDetailModal.status === 'applied' ? 'bg-green-400 text-green-900' :
+                    schoolDetailModal.status === 'not_started' ? 'bg-gray-400 text-gray-900' :
                     'bg-blue-400 text-blue-900'
                   }`}>
                     {getStatusText(schoolDetailModal.status)}
@@ -4693,14 +4329,28 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </div>
               {/* 提交 */}
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!feedbackContent.trim()) return;
                   const typeLabels = { suggestion: '功能建议', bug: '错误报告', other: '其他' };
-                  const subject = encodeURIComponent(`[JSA反馈] ${typeLabels[feedbackType] || '反馈'}`);
-                  const body = encodeURIComponent(`反馈类型: ${typeLabels[feedbackType]}\n\n内容:\n${feedbackContent}\n\n联系方式: ${feedbackContact || '未提供'}\n\n提交时间: ${new Date().toLocaleString('zh-CN')}`);
-                  // 使用 location.href 确保 mailto 链接在所有浏览器中正确触发邮件客户端
-                  window.location.href = `mailto:jiangpeng527@gmail.com?subject=${subject}&body=${body}`;
-                  // 同时存储到 localStorage 作为备份记录
+                  // 优先调用后端 API 入库，失败时降级到 mailto + localStorage
+                  let submitted = false;
+                  try {
+                    await feedbackAPI.submit({
+                      type: feedbackType,
+                      content: feedbackContent.trim(),
+                      contact: feedbackContact.trim() || undefined,
+                    });
+                    submitted = true;
+                  } catch (e) {
+                    console.warn('后端反馈提交失败，降级到 mailto:', e);
+                  }
+                  if (!submitted) {
+                    // 降级：通过 mailto 发送
+                    const subject = encodeURIComponent(`[JSA反馈] ${typeLabels[feedbackType] || '反馈'}`);
+                    const body = encodeURIComponent(`反馈类型: ${typeLabels[feedbackType]}\n\n内容:\n${feedbackContent}\n\n联系方式: ${feedbackContact || '未提供'}\n\n提交时间: ${new Date().toLocaleString('zh-CN')}`);
+                    window.location.href = `mailto:jiangpeng527@gmail.com?subject=${subject}&body=${body}`;
+                  }
+                  // 同时存储到 localStorage 作为本地备份记录
                   try {
                     const feedbackHistory = JSON.parse(localStorage.getItem('feedbackHistory') || '[]');
                     feedbackHistory.unshift({
@@ -4709,10 +4359,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       contact: feedbackContact,
                       time: new Date().toISOString(),
                       user: user?.name || '匿名',
+                      synced: submitted,
                     });
                     localStorage.setItem('feedbackHistory', JSON.stringify(feedbackHistory.slice(0, 50)));
                   } catch (e) { /* ignore */ }
-                  showNotification('感谢反馈！我们会尽快处理 🙏');
+                  showNotification(submitted ? '反馈已提交，感谢您的反馈！🙏' : '感谢反馈！我们会尽快处理 🙏');
                   setFeedbackContent(''); setFeedbackContact(''); setFeedbackType('suggestion'); setShowFeedbackPanel(false);
                 }}
                 disabled={!feedbackContent.trim()}

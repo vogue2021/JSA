@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Users, Clock, School, AlertCircle, CheckSquare,
   TrendingUp, Calendar, UserCheck, BookOpen, ArrowRight,
-  Filter, BarChart3, PieChart, GraduationCap, ChevronDown, ChevronUp
+  Filter, BarChart3, PieChart, GraduationCap, ChevronDown, ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { schoolsAPI } from '../services/api';
 
 // === SVG 饼图组件 ===
 const PieChartSVG = ({ data, size = 160 }) => {
@@ -105,6 +107,7 @@ const Dashboard = ({
   events,
   schools,
   checklist,
+  currentStudent,
   getVisibleStudents,
   getTeacherList,
   onNavigate,
@@ -120,16 +123,53 @@ const Dashboard = ({
   const [filterGroup, setFilterGroup] = useState('all'); // all | teacher_xxx | type_国立 | status_xxx | school_xxx
   const [showFilters, setShowFilters] = useState(false);
 
+  // ─── 后端统计数据 ──────────────────────────────────────────────────────────
+  const [backendStats, setBackendStats] = useState(null); // { sortedSchools, statusCounts, schoolTypeMap, totalApplications }
+  const [backendEventStats, setBackendEventStats] = useState(null); // { totalEvents, urgentEvents, upcomingEvents }
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(null);
+
+  const fetchBackendStats = useCallback(async () => {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      const teacherId = user.role === 'teacher' ? (user.teacherId || null) : null;
+      const opts = teacherId ? { teacherId } : {};
+      const [schoolStats, eventStats] = await Promise.all([
+        schoolsAPI.getStats(opts),
+        schoolsAPI.getEventStats(opts),
+      ]);
+      setBackendStats(schoolStats);
+      setBackendEventStats(eventStats);
+    } catch (err) {
+      // 后端不可用时降级到 localStorage 数据，不报错
+      setStatsError('后端统计暂不可用，显示本地缓存数据');
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [user.role, user.teacherId]);
+
+  useEffect(() => {
+    fetchBackendStats();
+  }, [fetchBackendStats]);
+
   // === 聚合全部学生数据（从 localStorage 读取每个学生的完整数据）===
   const aggregatedData = useMemo(() => {
     const allSchoolApps = [];
     const allEvents = [];
     let totalMaterials = 0;
     let completedMaterials = 0;
-    const schoolStats = {}; // schoolName -> { total, preparing, applied, submitted, admitted, type }
+    const schoolStats = {}; // schoolName -> { total, not_started, preparing, applied, submitted, admitted, rejected, type }
     const teacherStudentMap = {}; // teacherId -> [students]
     const schoolTypeMap = {}; // 国立/公立/私立 -> count
-    const statusCounts = { preparing: 0, applied: 0, submitted: 0, admitted: 0 };
+    const statusCounts = { not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0 };
+
+    // 一次性读取 studentData 大对象（App.jsx 将所有学生数据存储在此）
+    let allStudentDataParsed = null;
+    try {
+      const raw = localStorage.getItem('studentData');
+      if (raw) allStudentDataParsed = JSON.parse(raw);
+    } catch {}
 
     visibleStudents.forEach(student => {
       // 按老师分组
@@ -138,28 +178,34 @@ const Dashboard = ({
       teacherStudentMap[tid].push(student);
 
       // 从 localStorage 读取学生数据
-      try {
+    try {
         const key = student.studentId || 'default';
-        const savedData = localStorage.getItem(`studentData_${key}`);
-        if (!savedData) return;
-        const data = JSON.parse(savedData);
+        // App.jsx 将所有学生数据存储在 localStorage.studentData（大对象，key 为 studentId）
+        // 同时兼容旧的 studentData_${key} 格式
+        let data = allStudentDataParsed?.[key] || {};
+        if (!data || Object.keys(data).length === 0) {
+          const legacyData = localStorage.getItem(`studentData_${key}`);
+          if (legacyData) data = JSON.parse(legacyData);
+        }
 
         // 聚合事件
-        const studentEvents = data.events || [];
+        const studentEvents = data.events || (student.studentId === (currentStudent?.studentId) ? (events || []) : []);
         studentEvents.forEach(e => {
           allEvents.push({ ...e, studentName: student.name, studentId: student.studentId });
         });
 
         // 聚合学校申请
         const studentSchools = data.schools || [];
-        studentSchools.forEach(school => {
+        // 若 localStorage 无数据，使用传入的 schools prop 作为兜底（当前选中学生）
+        const schoolsToProcess = studentSchools.length > 0 ? studentSchools : (student.studentId === (currentStudent?.studentId) ? (schools || []) : []);
+        schoolsToProcess.forEach(school => {
           allSchoolApps.push({ ...school, studentName: student.name, studentId: student.studentId, teacherId: student.teacherId });
           const status = school.status || 'preparing';
           if (statusCounts[status] !== undefined) statusCounts[status]++;
 
           // 按学校统计
           if (!schoolStats[school.name]) {
-            schoolStats[school.name] = { total: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, type: school.type || '' };
+          schoolStats[school.name] = { total: 0, not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0, type: school.type || '' };
           }
           schoolStats[school.name].total++;
           if (schoolStats[school.name][status] !== undefined) schoolStats[school.name][status]++;
@@ -174,7 +220,9 @@ const Dashboard = ({
         const generalItems = cl.general || [];
         totalMaterials += generalItems.length;
         completedMaterials += generalItems.filter(i => i.completed).length;
-      } catch {}
+      } catch {
+        // 解析失败时静默忽略
+      }
     });
 
     // 排序学校
@@ -205,6 +253,7 @@ const Dashboard = ({
       totalMaterials,
       completedMaterials,
       materialProgress: totalMaterials > 0 ? Math.round(completedMaterials / totalMaterials * 100) : 0,
+      // localStorage 兜底数据（后端不可用时使用）
       sortedSchools,
       schoolTypeMap,
       teacherStudentMap,
@@ -212,15 +261,44 @@ const Dashboard = ({
     };
   }, [visibleStudents, teachers]);
 
+  // ─── 优先使用后端统计数据，降级到 localStorage ─────────────────────────────
+  // 各学校报考详情：优先后端，降级 localStorage
+  const finalSortedSchools = backendStats?.sortedSchools?.length > 0
+    ? backendStats.sortedSchools
+    : aggregatedData.sortedSchools;
+
+  // 申请状态分布：优先后端，降级 localStorage
+  const finalStatusCounts = backendStats?.statusCounts || aggregatedData.statusCounts;
+
+  // 学校类型分布：优先后端，降级 localStorage
+  const finalSchoolTypeMap = backendStats?.schoolTypeMap || aggregatedData.schoolTypeMap;
+
+  // 报考总数：优先后端，降级 localStorage
+  const finalTotalApplications = backendStats?.totalApplications ?? aggregatedData.totalApplications;
+
+  // 事件统计：优先后端，降级 localStorage
+  const finalUrgentEvents = backendEventStats?.urgentEvents ?? aggregatedData.urgentEvents;
+  const finalUpcomingEvents = backendEventStats?.upcomingEvents ?? aggregatedData.upcomingEvents;
+
   // 学生-学校映射缓存（必须在 filteredStudents 之前定义）
   const studentSchoolMap = useMemo(() => {
     const map = {};
+    // 一次性读取 studentData 大对象，避免多次 localStorage 读取
+    let allStudentDataParsed = null;
+    try {
+      const raw = localStorage.getItem('studentData');
+      if (raw) allStudentDataParsed = JSON.parse(raw);
+    } catch {}
     visibleStudents.forEach(student => {
       try {
         const key = student.studentId || 'default';
-        const savedData = localStorage.getItem(`studentData_${key}`);
-        if (savedData) {
-          const data = JSON.parse(savedData);
+        let data = allStudentDataParsed?.[key] || null;
+        if (!data) {
+          // 兼容旧格式
+          const legacyData = localStorage.getItem(`studentData_${key}`);
+          if (legacyData) data = JSON.parse(legacyData);
+        }
+        if (data) {
           map[student.studentId] = data.schools || [];
         }
       } catch {}
@@ -276,22 +354,30 @@ const Dashboard = ({
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? '早上好' : currentHour < 18 ? '下午好' : '晚上好';
 
-  // 饼图数据
-  const statusPieData = [
-    { label: '准备中', value: filteredStatusCounts.preparing, color: '#3b82f6' },
-    { label: '已出愿', value: filteredStatusCounts.applied, color: '#22c55e' },
-    { label: '已提交', value: filteredStatusCounts.submitted, color: '#a855f7' },
-    { label: '已合格', value: filteredStatusCounts.admitted, color: '#eab308' },
-  ];
+  // 饼图数据（筛选时使用 filteredStatusCounts，否则使用后端/localStorage 数据）
+  const statusPieData = filterGroup === 'all'
+    ? [
+        { label: '准备中', value: finalStatusCounts.preparing || 0, color: '#3b82f6' },
+        { label: '出愿完成', value: finalStatusCounts.applied || 0, color: '#22c55e' },
+        { label: '邮寄完成', value: finalStatusCounts.submitted || 0, color: '#a855f7' },
+        { label: '合格', value: finalStatusCounts.admitted || 0, color: '#eab308' },
+        { label: '未合格', value: finalStatusCounts.rejected || 0, color: '#ef4444' },
+      ]
+    : [
+        { label: '准备中', value: filteredStatusCounts.preparing || 0, color: '#3b82f6' },
+        { label: '出愿完成', value: filteredStatusCounts.applied || 0, color: '#22c55e' },
+        { label: '邮寄完成', value: filteredStatusCounts.submitted || 0, color: '#a855f7' },
+        { label: '合格', value: filteredStatusCounts.admitted || 0, color: '#eab308' },
+      ];
 
-  const schoolTypePieData = Object.entries(aggregatedData.schoolTypeMap).map(([type, count]) => ({
+  const schoolTypePieData = Object.entries(finalSchoolTypeMap).map(([type, count]) => ({
     label: type,
     value: count,
     color: type === '国立' ? '#3b82f6' : type === '公立' ? '#22c55e' : type === '私立' ? '#f97316' : '#9ca3af',
   }));
 
-  // 柱状图数据 - top 8 学校
-  const schoolBarData = aggregatedData.sortedSchools.slice(0, 8).map((s, i) => ({
+  // 柱状图数据 - top 8 学校（使用后端/localStorage 数据）
+  const schoolBarData = finalSortedSchools.slice(0, 8).map((s, i) => ({
     label: s.name,
     value: s.total,
     color: ['#3b82f6', '#22c55e', '#a855f7', '#eab308', '#f97316', '#ec4899', '#14b8a6', '#8b5cf6'][i % 8],
@@ -334,11 +420,18 @@ const Dashboard = ({
             <h1 className="text-xl lg:text-2xl font-bold mb-1" style={{ color: tokens.colors.text.primary }}>
               {greeting}，{user.name}
             </h1>
-            <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
+      <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
               {user.role === 'admin'
-                ? `管理员仪表盘 — ${aggregatedData.totalStudents} 名学生 · ${aggregatedData.totalTeachers} 名老师 · ${aggregatedData.totalApplications} 条报考`
+                ? `管理员仪表盘 — ${aggregatedData.totalStudents} 名学生 · ${aggregatedData.totalTeachers} 名老师 · ${finalTotalApplications} 条报考`
                 : '教师管理端 — 查看您的学生和工作概况'}
             </p>
+            {/* 后端统计状态提示 */}
+            {/* 后端不可用时静默降级，不显示错误提示 */}
+            {statsLoading && (
+              <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>
+                <RefreshCw size={12} className="animate-spin" /> 正在从数据库加载统计数据...
+              </p>
+            )}
           </div>
           {/* 过滤切换按钮 */}
           <button
@@ -424,7 +517,7 @@ const Dashboard = ({
               {[
                 { key: 'preparing', label: '准备中', color: 'blue' },
                 { key: 'applied', label: '已出愿', color: 'green' },
-                { key: 'submitted', label: '已提交', color: 'purple' },
+      { key: 'submitted', label: '出愿结束', color: 'purple' },
                 { key: 'admitted', label: '已合格', color: 'yellow' },
               ].map(s => (
                 <button key={s.key} onClick={() => setFilterGroup(filterGroup === `status_${s.key}` ? 'all' : `status_${s.key}`)}
@@ -486,10 +579,10 @@ const Dashboard = ({
             </div>
             <span className="text-sm" style={{ color: tokens.colors.text.muted }}>待处理事件</span>
           </div>
-          <div className="text-3xl font-bold animate-number" style={{ color: tokens.colors.text.primary }}>{aggregatedData.upcomingEvents}</div>
-          {aggregatedData.urgentEvents > 0 && (
+          <div className="text-3xl font-bold animate-number" style={{ color: tokens.colors.text.primary }}>{finalUpcomingEvents}</div>
+          {finalUrgentEvents > 0 && (
             <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.accent.danger }}>
-              <AlertCircle size={12} /> {aggregatedData.urgentEvents} 个紧急
+              <AlertCircle size={12} /> {finalUrgentEvents} 个紧急
             </p>
           )}
         </div>
@@ -502,9 +595,13 @@ const Dashboard = ({
             </div>
             <span className="text-sm" style={{ color: tokens.colors.text.muted }}>报考总数</span>
           </div>
-          <div className="text-3xl font-bold animate-number" style={{ color: tokens.colors.text.primary }}>{filteredSchoolApps.length}</div>
-          {aggregatedData.totalAdmitted > 0 && (
-            <p className="text-xs mt-1" style={{ color: tokens.colors.accent.success }}>{aggregatedData.admissionRate}% 合格率</p>
+          <div className="text-3xl font-bold animate-number" style={{ color: tokens.colors.text.primary }}>
+            {filterGroup === 'all' ? finalTotalApplications : filteredSchoolApps.length}
+          </div>
+          {finalStatusCounts.admitted > 0 && filterGroup === 'all' && (
+            <p className="text-xs mt-1" style={{ color: tokens.colors.accent.success }}>
+              {finalTotalApplications > 0 ? Math.round(finalStatusCounts.admitted / finalTotalApplications * 100) : 0}% 合格率
+            </p>
           )}
         </div>
 
@@ -565,11 +662,25 @@ const Dashboard = ({
       )}
 
       {/* 各学校报考详情表格 */}
-      {aggregatedData.sortedSchools.length > 0 && (
+      {finalSortedSchools.length > 0 && (
         <div className="glass-panel p-5 overflow-hidden">
           <h3 className="font-bold text-base mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
             <School size={18} style={{ color: '#22c55e' }} /> 各学校报考详情
           </h3>
+          {/* 数据来源标识 */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{
+              background: backendStats ? (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)') : (isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.08)'),
+              color: backendStats ? '#22c55e' : '#f97316',
+            }}>
+              {backendStats ? '✓ 数据库实时数据' : '⚠ 本地缓存数据'}
+            </span>
+            <button onClick={fetchBackendStats} disabled={statsLoading}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition"
+              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
+              <RefreshCw size={12} className={statsLoading ? 'animate-spin' : ''} /> 刷新
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -579,14 +690,15 @@ const Dashboard = ({
                   <th className="text-left py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>类型</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>报考</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>准备中</th>
-                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已出愿</th>
-                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已提交</th>
-                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>已合格</th>
+                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>出愿完成</th>
+                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>邮寄完成</th>
+                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>合格</th>
+                  <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>未合格</th>
                   <th className="text-center py-2 px-3 font-medium" style={{ color: tokens.colors.text.muted }}>合格率</th>
                 </tr>
               </thead>
               <tbody>
-                {aggregatedData.sortedSchools.map((school, idx) => (
+                {finalSortedSchools.map((school, idx) => (
                   <tr key={school.name} className="transition" style={{ borderBottom: `1px solid ${tokens.colors.border.subtle}` }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -611,8 +723,9 @@ const Dashboard = ({
                     <td className="py-2.5 px-3 text-center font-bold" style={{ color: tokens.colors.text.primary }}>{school.total}</td>
                     <td className="py-2.5 px-3 text-center" style={{ color: '#3b82f6' }}>{school.preparing || 0}</td>
                     <td className="py-2.5 px-3 text-center" style={{ color: '#22c55e' }}>{school.applied || 0}</td>
-                    <td className="py-2.5 px-3 text-center" style={{ color: '#a855f7' }}>{school.submitted || 0}</td>
+                    <td className="py-2.5 px-3 text-center" style={{ color: '#f97316' }}>{school.submitted || 0}</td>
                     <td className="py-2.5 px-3 text-center font-bold" style={{ color: '#eab308' }}>{school.admitted || 0}</td>
+                    <td className="py-2.5 px-3 text-center" style={{ color: '#ef4444' }}>{school.rejected || 0}</td>
                     <td className="py-2.5 px-3 text-center">
                       <span className="text-xs font-bold" style={{ color: school.admitted > 0 ? '#22c55e' : tokens.colors.text.muted }}>
                         {school.total > 0 ? Math.round(school.admitted / school.total * 100) : 0}%

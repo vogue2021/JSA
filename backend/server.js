@@ -19,14 +19,30 @@ const teacherRoutes = require('./routes/teachers');
 const schoolRoutes = require('./routes/schools');
 const eventRoutes = require('./routes/events');
 const materialRoutes = require('./routes/materials');
+const feedbackRoutes = require('./routes/feedback');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
 const { authenticateToken } = require('./middleware/auth');
+const { structuredLogger, auditLogger } = require('./middleware/logger');
 
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
+
+// 生产环境密钥强校验：缺失或长度不足则拒绝启动
+const jwtSecret = process.env.JWT_SECRET;
+const sessionSecret = process.env.SESSION_SECRET;
+
+if (isProduction) {
+  if (!jwtSecret || jwtSecret.length < 32) {
+    throw new Error('[安全] 生产环境必须配置强 JWT_SECRET（长度至少 32 位），当前值不符合要求，服务拒绝启动。');
+  }
+  if (!sessionSecret || sessionSecret.length < 32) {
+    throw new Error('[安全] 生产环境必须配置强 SESSION_SECRET（长度至少 32 位），当前值不符合要求，服务拒绝启动。');
+  }
+}
 
 // Security middleware
 app.use(helmet());
@@ -45,14 +61,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression middleware
 app.use(compression());
 
-// Logging middleware
+// Logging middleware（结构化日志替代 morgan，同时记录审计日志）
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('combined'));
+  app.use(structuredLogger);
 }
+app.use(auditLogger);
 
 // Session middleware
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  secret: sessionSecret || 'dev-session-secret-do-not-use-in-production',  // 生产环境由上方强校验保证非空
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -79,10 +96,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/students', authenticateToken, studentRoutes);
 app.use('/api/teachers', authenticateToken, teacherRoutes);
-// 临时移除认证，便于演示 - 生产环境需要加上 authenticateToken
-app.use('/api/schools', schoolRoutes);
-app.use('/api/events', eventRoutes);
-app.use('/api/materials', materialRoutes);
+// 恢复全量鉴权：所有核心业务接口均需有效 JWT
+app.use('/api/schools', authenticateToken, schoolRoutes);
+app.use('/api/events', authenticateToken, eventRoutes);
+app.use('/api/materials', authenticateToken, materialRoutes);
+// 反馈接口：提交公开，查询/更新需 admin 鉴权（路由内部控制）
+app.use('/api/feedback', feedbackRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -126,9 +145,11 @@ db.raw('SELECT 1')
     process.exit(1);
   });
 
-// Start server
-const server = app.listen(PORT, () => {
-  console.log(`
+// Start server（测试环境下不自动启动，由 supertest 管理）
+let server;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, () => {
+    console.log(`
 ╔════════════════════════════════════════════╗
 ║   Japan Study Abroad Application Backend   ║
 ║         日本留学考学助手后端服务              ║
@@ -137,8 +158,9 @@ const server = app.listen(PORT, () => {
 ║   Environment: ${process.env.NODE_ENV || 'development'}              ║
 ║   Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}   ║
 ╚════════════════════════════════════════════╝
-  `);
-});
+    `);
+  });
+}
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
