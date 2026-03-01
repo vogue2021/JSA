@@ -184,18 +184,21 @@ auth.post('/login', async (c) => {
       return c.json({ success: false, message: '邮箱或密码错误' }, 401)
     }
 
-    // 获取角色附加信息
+    // 获取角色附加信息（直接从 users 表读取，不再查 teachers 表）
     let additionalData = {}
     if (user.role === 'student') {
-      const student = await db.prepare(
-        'SELECT student_id FROM students WHERE user_id = ?'
-      ).bind(user.id).first()
-      additionalData = { studentId: student?.student_id }
+      // 优先用 users.student_id，再查 students 表
+      let studentId = user.student_id
+      if (!studentId) {
+        const student = await db.prepare(
+          'SELECT student_id FROM students WHERE user_id = ?'
+        ).bind(user.id).first()
+        studentId = student?.student_id
+      }
+      additionalData = { studentId }
     } else if (user.role === 'teacher') {
-      const teacher = await db.prepare(
-        'SELECT teacher_id FROM teachers WHERE user_id = ?'
-      ).bind(user.id).first()
-      additionalData = { teacherId: teacher?.teacher_id }
+      // 直接用 users.teacher_id
+      additionalData = { teacherId: user.teacher_id }
     }
 
     const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
@@ -329,6 +332,90 @@ auth.post('/change-password', async (c) => {
   } catch (error) {
     console.error('Change password error:', error)
     return c.json({ success: false, message: '密码修改失败' }, 500)
+  }
+})
+
+// ─── 初始化测试数据（仅在 users 表为空时可用，生产环境请删除此接口）──────────
+auth.post('/init-seed', async (c) => {
+  const db = c.env.DB
+  try {
+    // 安全检查：只有 users 表为空时才允许初始化
+    const count = await db.prepare('SELECT COUNT(*) as cnt FROM users').first()
+    if (count && count.cnt > 0) {
+      return c.json({ success: false, message: `数据库已有 ${count.cnt} 条用户记录，拒绝重复初始化` }, 403)
+    }
+
+    // 测试账号列表
+    const usersToCreate = [
+      { id: 'admin1', email: 'admin@jsa.com', password: 'admin123', role: 'admin', name: '系统管理员', teacherId: null, studentId: null },
+      { id: 'teacher1', email: 'wang@school.com', password: 'wang123', role: 'teacher', name: '王老师', teacherId: 'teacher_1', studentId: null },
+      { id: 'teacher2', email: 'li@school.com', password: 'li123', role: 'teacher', name: '李老师', teacherId: 'teacher_2', studentId: null },
+      { id: 'teacher3', email: 'zhang@school.com', password: 'zhang123', role: 'teacher', name: '张老师', teacherId: 'teacher_3', studentId: null },
+      { id: 'teacher4', email: 'chen@school.com', password: 'chen123', role: 'teacher', name: '陈老师', teacherId: 'teacher_4', studentId: null },
+      { id: 'teacher5', email: 'zhao@school.com', password: 'zhao123', role: 'teacher', name: '赵老师', teacherId: 'teacher_5', studentId: null },
+      { id: 'teacher6', email: 'gao@school.com', password: 'gao123', role: 'teacher', name: '高老师（学管）', teacherId: 'teacher_6', studentId: null },
+      { id: 'teacher7', email: 'lin@school.com', password: 'lin123', role: 'teacher', name: '林老师（学管）', teacherId: 'teacher_7', studentId: null },
+      { id: 'student1', email: 'zhangsan@student.jsa.com', password: 'stu2024001', role: 'student', name: '张三', teacherId: null, studentId: '2024001' },
+      { id: 'student2', email: 'lisi@student.jsa.com', password: 'stu2024002', role: 'student', name: '李四', teacherId: null, studentId: '2024002' },
+      { id: 'student3', email: 'wangwu@student.jsa.com', password: 'stu2024003', role: 'student', name: '王五', teacherId: null, studentId: '2024003' },
+    ]
+
+    // 测试学生列表
+    const studentsToCreate = [
+      { studentId: '2024001', userId: 'student1', name: '张三', email: 'zhangsan@student.jsa.com', teacherId: 'teacher_1', advisorId: 'teacher_6', birthday: '2001-05-12', highSchool: '北京十一中学', langSchool: '东京日本语学院', jlpt: 'N1-142', eju: '[{"date":"2025-06","japanese":310,"math":170,"science":145,"total":625}]', english: 'TOEFL 85', pkg: '私塾', pkgEnd: '2026-06-30', tags: '["理科","重点关注"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024002', userId: 'student2', name: '李四', email: 'lisi@student.jsa.com', teacherId: 'teacher_1', advisorId: 'teacher_6', birthday: '2002-01-20', highSchool: '上海外国语学校', langSchool: '大阪日本语学校', jlpt: 'N2-120', eju: '[]', english: '', pkg: '校内考专家 1+2', pkgEnd: '2026-03-31', tags: '["文科"]', subject: '文科', hasAccount: 1 },
+      { studentId: '2024003', userId: 'student3', name: '王五', email: 'wangwu@student.jsa.com', teacherId: 'teacher_2', advisorId: 'teacher_7', birthday: '2000-11-03', highSchool: '广州执信中学', langSchool: '京都国际学院', jlpt: 'N1-158', eju: '[{"date":"2025-06","japanese":340,"math":190,"science":160,"total":690}]', english: 'TOEIC 780', pkg: '丁老师规划 1+2+3', pkgEnd: '2027-03-31', tags: '["理科","优秀学生"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024004', userId: null, name: '赵六', email: '', teacherId: 'teacher_2', advisorId: 'teacher_7', birthday: '2001-08-15', highSchool: '成都七中', langSchool: '名古屋日本语学院', jlpt: 'N2-105', eju: '[{"date":"2025-06","japanese":280,"math":120,"science":0,"total":400}]', english: '', pkg: '校内考专家 1+2+3', pkgEnd: '2026-09-30', tags: '["文科","需加强"]', subject: '文科', hasAccount: 0 },
+      { studentId: '2024005', userId: null, name: '刘七', email: '', teacherId: 'teacher_3', advisorId: 'teacher_6', birthday: '2000-03-28', highSchool: '杭州学军中学', langSchool: '早稻田日本语学校', jlpt: 'N1-170', eju: '[{"date":"2025-06","japanese":355,"math":195,"science":170,"total":720}]', english: 'TOEFL 95', pkg: '丁老师规划 1+2', pkgEnd: '2026-08-31', tags: '["理科","优秀学生","即将毕业"]', subject: '理科', hasAccount: 0 },
+      { studentId: '2024006', userId: null, name: '孙八', email: '', teacherId: 'teacher_1', advisorId: '', birthday: '2003-06-10', highSchool: '武汉外国语学校', langSchool: '横滨国际学院', jlpt: 'N3', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["文科","新生"]', subject: '文科', hasAccount: 0 },
+      { studentId: '2024007', userId: null, name: '周九', email: '', teacherId: 'teacher_4', advisorId: 'teacher_7', birthday: '2001-12-25', highSchool: '深圳实验学校', langSchool: '东京外语学院', jlpt: 'N1-135', eju: '[{"date":"2025-06","japanese":320,"math":165,"science":140,"total":625}]', english: 'IELTS 6.5', pkg: '私塾', pkgEnd: '2026-05-31', tags: '["理科"]', subject: '理科', hasAccount: 0 },
+      { studentId: '2024008', userId: null, name: '吴十', email: '', teacherId: 'teacher_4', advisorId: '', birthday: '2003-09-01', highSchool: '南京外国语学校', langSchool: '神户日本语学校', jlpt: '', eju: '[]', english: '', pkg: '校内考专家 1+2', pkgEnd: '2026-12-31', tags: '["文科","新生","需加强"]', subject: '文科', hasAccount: 0 },
+      { studentId: '2024009', userId: null, name: '郑十一', email: '', teacherId: 'teacher_2', advisorId: 'teacher_6', birthday: '1999-07-14', highSchool: '重庆南开中学', langSchool: '大阪国际学院', jlpt: 'N1-165', eju: '[{"date":"2025-06","japanese":350,"math":185,"science":165,"total":700}]', english: 'TOEFL 100', pkg: '丁老师规划 1+2+3', pkgEnd: '2025-12-31', tags: '["理科","已合格"]', subject: '理科', hasAccount: 0 },
+      { studentId: '2024010', userId: null, name: '冯十二', email: '', teacherId: 'teacher_5', advisorId: 'teacher_7', birthday: '2002-04-22', highSchool: '天津南开中学', langSchool: '东京中央日本语学校', jlpt: 'N2-115', eju: '[{"date":"2025-06","japanese":290,"math":0,"science":0,"total":290}]', english: 'TOEIC 650', pkg: '私塾', pkgEnd: '2026-04-30', tags: '["文科"]', subject: '文科', hasAccount: 0 },
+      { studentId: '2024011', userId: null, name: '陈十三', email: '', teacherId: 'teacher_3', advisorId: '', birthday: '2002-10-08', highSchool: '西安高新一中', langSchool: '京都文化日本语学校', jlpt: 'N2-98', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["理科","新生"]', subject: '理科', hasAccount: 0 },
+      { studentId: '2024012', userId: null, name: '林十四', email: '', teacherId: '', advisorId: '', birthday: '2003-02-14', highSchool: '厦门外国语学校', langSchool: '', jlpt: '', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '[]', subject: '', hasAccount: 0 },
+    ]
+
+    // 批量哈希密码并插入用户
+    const userInserts = []
+    for (const u of usersToCreate) {
+      const hashed = await hashPassword(u.password)
+      userInserts.push(
+        db.prepare(
+          'INSERT OR IGNORE INTO users (id, email, password, role, name, teacher_id, student_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(u.id, u.email, hashed, u.role, u.name, u.teacherId, u.studentId)
+      )
+    }
+
+    // 批量插入学生
+    const studentInserts = studentsToCreate.map(s =>
+      db.prepare(
+        `INSERT OR IGNORE INTO students
+          (student_id, user_id, name, email, teacher_id, academic_advisor_id, birthday,
+           high_school, language_school, jlpt_score, eju_scores, english_score,
+           package_name, package_end_date, tags, subject, has_account)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        s.studentId, s.userId, s.name, s.email, s.teacherId, s.advisorId, s.birthday,
+        s.highSchool, s.langSchool, s.jlpt, s.eju, s.english,
+        s.pkg, s.pkgEnd, s.tags, s.subject, s.hasAccount
+      )
+    )
+
+    await db.batch([...userInserts, ...studentInserts])
+
+    return c.json({
+      success: true,
+      message: `初始化完成：创建了 ${usersToCreate.length} 个用户，${studentsToCreate.length} 个学生记录`,
+      accounts: {
+        admin: 'admin@jsa.com / admin123',
+        teachers: ['wang@school.com / wang123', 'li@school.com / li123', 'zhang@school.com / zhang123'],
+        students: ['zhangsan@student.jsa.com / stu2024001', 'lisi@student.jsa.com / stu2024002', 'wangwu@student.jsa.com / stu2024003'],
+      }
+    })
+  } catch (error) {
+    console.error('Init seed error:', error)
+    return c.json({ success: false, message: '初始化失败: ' + error.message }, 500)
   }
 })
 

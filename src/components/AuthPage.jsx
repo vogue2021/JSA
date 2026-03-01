@@ -9,15 +9,16 @@ import { logAction, LOG_CATEGORIES } from '../utils/logService';
 /**
  * 登录页面组件（从 App.jsx 拆分）
  * Props:
- *   onLogin(userData)  - 登录成功回调
- *   allUsers           - 用户列表（用于本地验证）
+ *   onLogin(userData, token)  - 登录成功回调
  */
-const AuthPage = ({ onLogin, allUsers }) => {
+const AuthPage = ({ onLogin }) => {
   const { isDark, tokens, backgroundStyle, glassEnabled } = useTheme();
 
   const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
+
+  const [isLoading, setIsLoading] = useState(false);
 
   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -30,50 +31,51 @@ const AuthPage = ({ onLogin, allUsers }) => {
     if (!formData.password) newErrors.password = '请输入密码';
     else if (formData.password.length < 6) newErrors.password = '密码至少6位';
 
-    if (Object.keys(newErrors).length === 0) {
-      const user = allUsers.find(u =>
-        u.email === formData.email &&
-        u.password === formData.password &&
-        u.role === userType
-      );
-      if (user) {
-        const userData = {
-          role: user.role,
-          name: user.name,
-          email: user.email,
-          studentId: user.studentId || null,
-          teacherId: user.teacherId || null,
-          isAdmin: user.role === 'admin',
-        };
-
-        // 尝试从后端获取真实 JWT token（用于后端 API 鉴权）
-        // 后端不可用时降级为纯本地登录，不影响现有功能
-        try {
-          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-          const resp = await fetch(`${API_BASE_URL}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email, password: formData.password }),
-          });
-          if (resp.ok) {
-            const result = await resp.json();
-            if (result.token) {
-              localStorage.setItem('authToken', result.token);
-            }
-          }
-        } catch {
-          // 后端不可用，清除旧 token，继续本地登录
-          localStorage.removeItem('authToken');
-        }
-
-        logAction(LOG_CATEGORIES.AUTH, `用户登录: ${user.name} (${user.role})`, { email: user.email });
-        onLogin(userData);
-        return;
-      } else {
-        newErrors.password = '邮箱或密码错误';
-      }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
     }
-    setErrors(newErrors);
+
+    setIsLoading(true);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787/api';
+      const resp = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password }),
+      });
+
+      const result = await resp.json();
+
+      if (!resp.ok || !result.success) {
+        setErrors({ password: result.message || '邮箱或密码错误' });
+        return;
+      }
+
+      // 验证角色是否匹配
+      if (result.user.role !== userType) {
+        setErrors({ password: `该账号不是${roleConfig[userType].label}账号，请切换角色` });
+        return;
+      }
+
+      const userData = {
+        id: result.user.id,
+        role: result.user.role,
+        name: result.user.name,
+        email: result.user.email,
+        studentId: result.user.studentId || null,
+        teacherId: result.user.teacherId || null,
+        isAdmin: result.user.role === 'admin',
+      };
+
+      logAction(LOG_CATEGORIES.AUTH, `用户登录: ${userData.name} (${userData.role})`, { email: userData.email });
+      onLogin(userData, result.token);
+    } catch (err) {
+      setErrors({ password: '网络错误，请检查网络连接后重试' });
+      console.error('登录失败:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const roleConfig = {
@@ -209,17 +211,20 @@ const AuthPage = ({ onLogin, allUsers }) => {
             </div>
 
             <button type="submit"
+              disabled={isLoading}
               className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
               style={{
                 background: isDark ? `rgba(${current.rgb},0.15)` : `rgba(${current.rgb},0.1)`,
                 color: current.color,
                 backdropFilter: 'blur(8px)',
                 border: `1px solid ${isDark ? `rgba(${current.rgb},0.2)` : `rgba(${current.rgb},0.15)`}`,
+                opacity: isLoading ? 0.7 : 1,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.25 : 0.18})`; }}
-              onMouseLeave={e => { e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.15 : 0.1})`; }}
+              onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.25 : 0.18})`; }}
+              onMouseLeave={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.15 : 0.1})`; }}
             >
-              登录 <ArrowRight size={20} />
+              {isLoading ? '登录中...' : <>登录 <ArrowRight size={20} /></>}
             </button>
           </form>
 
@@ -232,7 +237,7 @@ const AuthPage = ({ onLogin, allUsers }) => {
           {/* 测试账号提示 */}
           <div className="mt-6 p-4 rounded-xl text-xs"
             style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${tokens.colors.border.subtle}`, color: tokens.colors.text.secondary }}>
-            <p className="font-semibold mb-2">测试账号：</p>
+            <p className="font-semibold mb-2">测试账号（数据存储于 Cloudflare D1）：</p>
             {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
             {userType === 'teacher' && (
               <>

@@ -1,4 +1,5 @@
 // 学生路由 - Cloudflare Workers 版本
+// 数据来源：students 表（扩展信息）LEFT JOIN users 表（账号信息）
 import { Hono } from 'hono'
 
 const students = new Hono()
@@ -7,7 +8,36 @@ const isAdmin = (user) => user?.role === 'admin'
 const isTeacher = (user) => user?.role === 'teacher'
 const isStudent = (user) => user?.role === 'student'
 
-// ─── 搜索接口（放在 /:id 前面避免被参数路由遮蔽）─────────────────────────────
+// 将数据库行转换为前端格式
+function formatStudent(row) {
+  return {
+    id: row.user_id || row.student_id,
+    studentId: row.student_id,
+    userId: row.user_id,
+    name: row.name,
+    email: row.email || '',
+    teacherId: row.teacher_id || '',
+    academicAdvisorId: row.academic_advisor_id || '',
+    birthday: row.birthday || '',
+    highSchool: row.high_school || '',
+    languageSchool: row.language_school || '',
+    jlptScore: row.jlpt_score || '',
+    ejuScores: (() => { try { return JSON.parse(row.eju_scores || '[]') } catch { return [] } })(),
+    englishScore: row.english_score || '',
+    followUpNotes: row.follow_up_notes || '',
+    photo: row.photo || '',
+    packageName: row.package_name || '',
+    packageEndDate: row.package_end_date || '',
+    tags: (() => { try { return JSON.parse(row.tags || '[]') } catch { return [] } })(),
+    subject: row.subject || '',
+    hasAccount: Boolean(row.has_account),
+    isActive: Boolean(row.is_active !== 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// ─── 搜索接口 ─────────────────────────────────────────────────────────────────
 students.get('/search/query', async (c) => {
   const user = c.get('user')
   if (!isAdmin(user) && !isTeacher(user)) {
@@ -17,7 +47,7 @@ students.get('/search/query', async (c) => {
   const { q, teacher_id } = c.req.query()
   const db = c.env.DB
 
-  let sql = 'SELECT * FROM users WHERE role = \'student\''
+  let sql = 'SELECT * FROM students WHERE is_active = 1'
   const params = []
 
   if (isTeacher(user)) {
@@ -33,8 +63,9 @@ students.get('/search/query', async (c) => {
     params.push(teacher_id)
   }
 
+  sql += ' ORDER BY created_at DESC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: results })
+  return c.json({ success: true, data: results.map(formatStudent) })
 })
 
 // ─── 获取学生列表 ─────────────────────────────────────────────────────────────
@@ -42,7 +73,7 @@ students.get('/', async (c) => {
   const user = c.get('user')
   const db = c.env.DB
 
-  let sql = 'SELECT * FROM users WHERE role = \'student\''
+  let sql = 'SELECT * FROM students WHERE is_active = 1'
   const params = []
 
   if (isAdmin(user)) {
@@ -51,14 +82,16 @@ students.get('/', async (c) => {
     sql += ' AND teacher_id = ?'
     params.push(user.teacherId || '__none__')
   } else if (isStudent(user)) {
-    sql += ' AND id = ?'
-    params.push(user.id)
+    // 学生只能看自己
+    sql += ' AND student_id = ?'
+    params.push(user.studentId || '__none__')
   } else {
     return c.json({ success: false, message: '权限不足' }, 403)
   }
 
+  sql += ' ORDER BY created_at DESC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: results })
+  return c.json({ success: true, data: results.map(formatStudent) })
 })
 
 // ─── 按老师获取学生 ───────────────────────────────────────────────────────────
@@ -72,10 +105,10 @@ students.get('/teacher/:teacherId', async (c) => {
 
   const db = c.env.DB
   const { results } = await db.prepare(
-    'SELECT * FROM users WHERE role = \'student\' AND teacher_id = ?'
+    'SELECT * FROM students WHERE teacher_id = ? AND is_active = 1 ORDER BY created_at DESC'
   ).bind(teacherId).all()
 
-  return c.json({ success: true, data: results })
+  return c.json({ success: true, data: results.map(formatStudent) })
 })
 
 // ─── 获取单个学生（含统计）────────────────────────────────────────────────────
@@ -84,13 +117,14 @@ students.get('/:id', async (c) => {
   const { id } = c.req.param()
   const db = c.env.DB
 
+  // id 可能是 student_id 或 user_id
   const student = await db.prepare(
-    'SELECT * FROM users WHERE id = ? AND role = \'student\''
-  ).bind(id).first()
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  if (isStudent(user) && user.id !== id) {
+  if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
   if (isTeacher(user) && student.teacher_id !== user.teacherId) {
@@ -110,7 +144,7 @@ students.get('/:id', async (c) => {
   return c.json({
     success: true,
     data: {
-      ...student,
+      ...formatStudent(student),
       stats: {
         schoolCount: schoolCount?.count || 0,
         pendingEvents: eventCount?.count || 0,
@@ -122,6 +156,45 @@ students.get('/:id', async (c) => {
   })
 })
 
+// ─── 创建学生（仅管理员/老师）────────────────────────────────────────────────
+students.post('/', async (c) => {
+  const user = c.get('user')
+  if (!isAdmin(user) && !isTeacher(user)) {
+    return c.json({ success: false, message: '权限不足' }, 403)
+  }
+
+  const body = await c.req.json()
+  const db = c.env.DB
+
+  if (!body.student_id || !body.name) {
+    return c.json({ success: false, message: '学号和姓名为必填项' }, 400)
+  }
+
+  // 检查学号是否已存在
+  const existing = await db.prepare('SELECT student_id FROM students WHERE student_id = ?').bind(body.student_id).first()
+  if (existing) return c.json({ success: false, message: '该学号已存在' }, 400)
+
+  const teacherId = isTeacher(user) ? user.teacherId : (body.teacher_id || '')
+
+  await db.prepare(
+    `INSERT INTO students (student_id, name, email, teacher_id, academic_advisor_id,
+      birthday, high_school, language_school, jlpt_score, english_score, eju_scores,
+      follow_up_notes, package_name, package_end_date, tags, subject, has_account)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+  ).bind(
+    body.student_id, body.name, body.email || '',
+    teacherId, body.academic_advisor_id || '',
+    body.birthday || '', body.high_school || '', body.language_school || '',
+    body.jlpt_score || '', body.english_score || '',
+    JSON.stringify(body.eju_scores || []),
+    body.follow_up_notes || '', body.package_name || '', body.package_end_date || '',
+    JSON.stringify(body.tags || []), body.subject || ''
+  ).run()
+
+  const created = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(body.student_id).first()
+  return c.json({ success: true, data: formatStudent(created), message: '学生创建成功' }, 201)
+})
+
 // ─── 更新学生信息 ─────────────────────────────────────────────────────────────
 students.put('/:id', async (c) => {
   const user = c.get('user')
@@ -130,12 +203,12 @@ students.put('/:id', async (c) => {
   const db = c.env.DB
 
   const student = await db.prepare(
-    'SELECT * FROM users WHERE id = ? AND role = \'student\''
-  ).bind(id).first()
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  if (isStudent(user) && user.id !== id) {
+  if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
   if (isTeacher(user) && student.teacher_id !== user.teacherId) {
@@ -145,24 +218,34 @@ students.put('/:id', async (c) => {
   const fields = []
   const params = []
 
-  if (body.name !== undefined) { fields.push('name = ?'); params.push(body.name) }
-  if (body.email !== undefined) { fields.push('email = ?'); params.push(body.email) }
+  const updatable = ['name', 'email', 'birthday', 'high_school', 'language_school',
+    'jlpt_score', 'english_score', 'follow_up_notes', 'photo',
+    'package_name', 'package_end_date', 'subject']
 
+  updatable.forEach(f => {
+    if (body[f] !== undefined) { fields.push(`${f} = ?`); params.push(body[f]) }
+  })
+
+  // JSON 字段
+  if (body.eju_scores !== undefined) { fields.push('eju_scores = ?'); params.push(JSON.stringify(body.eju_scores)) }
+  if (body.tags !== undefined) { fields.push('tags = ?'); params.push(JSON.stringify(body.tags)) }
+
+  // 管理员专属字段
   if (isAdmin(user)) {
-    if (body.student_id !== undefined) { fields.push('student_id = ?'); params.push(body.student_id) }
     if (body.teacher_id !== undefined) { fields.push('teacher_id = ?'); params.push(body.teacher_id) }
-    if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active) }
+    if (body.academic_advisor_id !== undefined) { fields.push('academic_advisor_id = ?'); params.push(body.academic_advisor_id) }
+    if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0) }
   }
 
   if (fields.length === 0) return c.json({ success: false, message: '没有可更新的字段' }, 400)
 
-  fields.push('updated_at = datetime(\'now\')')
-  params.push(id)
+  fields.push("updated_at = datetime('now')")
+  params.push(student.student_id)
 
-  await db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).bind(...params).run()
-  const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first()
+  await db.prepare(`UPDATE students SET ${fields.join(', ')} WHERE student_id = ?`).bind(...params).run()
+  const updated = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(student.student_id).first()
 
-  return c.json({ success: true, data: updated, message: '学生信息更新成功' })
+  return c.json({ success: true, data: formatStudent(updated), message: '学生信息更新成功' })
 })
 
 // ─── 删除学生（仅管理员）─────────────────────────────────────────────────────
@@ -174,12 +257,16 @@ students.delete('/:id', async (c) => {
   const db = c.env.DB
 
   const student = await db.prepare(
-    'SELECT id FROM users WHERE id = ? AND role = \'student\''
-  ).bind(id).first()
+    'SELECT student_id FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
+  // 软删除
+  await db.prepare(
+    "UPDATE students SET is_active = 0, updated_at = datetime('now') WHERE student_id = ?"
+  ).bind(student.student_id).run()
+
   return c.json({ success: true, message: '学生已删除' })
 })
 
@@ -195,14 +282,14 @@ students.put('/:id/transfer', async (c) => {
 
   const db = c.env.DB
   const student = await db.prepare(
-    'SELECT id FROM users WHERE id = ? AND role = \'student\''
-  ).bind(id).first()
+    'SELECT student_id FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
   await db.prepare(
-    'UPDATE users SET teacher_id = ?, updated_at = datetime(\'now\') WHERE id = ?'
-  ).bind(teacher_id, id).run()
+    "UPDATE students SET teacher_id = ?, updated_at = datetime('now') WHERE student_id = ?"
+  ).bind(teacher_id, student.student_id).run()
 
   return c.json({ success: true, message: `学生已转移到教师 ${teacher_id}` })
 })

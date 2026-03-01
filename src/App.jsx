@@ -90,95 +90,131 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [schoolDetailModal, setSchoolDetailModal] = useState(null); // 学生点击学校卡片弹窗
   const [showSidebarUserMenu, setShowSidebarUserMenu] = useState(false); // 侧边栏头像菜单
 
-  // 学生数据存储（按学生ID隔离）
-  const [studentData, setStudentData] = useState(() => {
-    const saved = localStorage.getItem('studentData');
-    return saved ? JSON.parse(saved) : {};
-  });
+  // 学生数据存储（按学生ID隔离）- 从 API 加载，不再用 localStorage
+  const [studentData, setStudentData] = useState({});
+  const [studentDataLoading, setStudentDataLoading] = useState(false);
+
+  // API 基础地址
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787/api';
+
+  // 通用 API 请求（带 token）
+  const apiReq = async (endpoint, options = {}) => {
+    const token = localStorage.getItem('authToken');
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+      ...options,
+    };
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(err.message || `HTTP ${response.status}`);
+    }
+    if (response.status === 204) return null;
+    const result = await response.json();
+    return result.data !== undefined ? result.data : result;
+  };
+
+  // 从 API 加载当前学生的 events/schools/materials
+  const loadStudentDataFromAPI = async (studentId) => {
+    if (!studentId) return;
+    setStudentDataLoading(true);
+    try {
+      const [eventsData, schoolsData, materialsData] = await Promise.all([
+        apiReq(`/events/student/${studentId}`).catch(() => []),
+        apiReq(`/schools/student/${studentId}`).catch(() => []),
+        apiReq(`/materials/student/${studentId}`).catch(() => ({ general: [], schoolSpecific: {} })),
+      ]);
+
+      // 将 API 返回的 events 转换为前端格式
+      const events = Array.isArray(eventsData) ? eventsData.map(e => ({
+        id: e.id,
+        type: e.type,
+        title: e.title,
+        date: e.date,
+        daysLeft: e.days_left,
+        category: e.category,
+        urgent: Boolean(e.urgent),
+        notes: e.notes || '',
+        completed: Boolean(e.completed),
+        schoolId: e.school_id || null,
+      })) : [];
+
+      // 将 API 返回的 schools 转换为前端格式
+      const schools = Array.isArray(schoolsData) ? schoolsData.map(s => ({
+        id: s.id,
+        name: s.name,
+        nameJa: s.name_ja || '',
+        type: s.type,
+        program: s.program,
+        status: s.status,
+        applicationStartDate: s.application_start_date,
+        applicationEndDate: s.application_end_date,
+        examDate: s.exam_date,
+        resultDate: s.result_date,
+        requirementsUrl: s.requirements_url || '',
+        teacherNotes: s.teacher_notes || '',
+        materials: Array.isArray(s.materials) ? s.materials : [],
+      })) : [];
+
+      // 将 API 返回的 materials 转换为前端 checklist 格式
+      const general = Array.isArray(materialsData?.general) ? materialsData.general.map(m => ({
+        id: m.id,
+        item: m.item,
+        completed: Boolean(m.completed),
+        deadline: m.deadline,
+        checkedBy: m.checked_by || null,
+        checkedAt: m.checked_at || null,
+        url: m.url || '',
+      })) : [];
+
+      const schoolSpecific = {};
+      if (materialsData?.schoolSpecific) {
+        Object.entries(materialsData.schoolSpecific).forEach(([schoolName, mats]) => {
+          schoolSpecific[schoolName] = mats.map(m => ({
+            id: m.id,
+            item: m.item,
+            completed: Boolean(m.completed),
+            deadline: m.deadline,
+            checkedBy: m.checked_by || null,
+            checkedAt: m.checked_at || null,
+            url: m.url || '',
+          }));
+        });
+      }
+
+      setStudentData(prev => ({
+        ...prev,
+        [studentId]: { events, schools, checklist: { general, schoolSpecific } }
+      }));
+    } catch (err) {
+      console.error('加载学生数据失败:', err);
+      // 降级：使用空数据
+      setStudentData(prev => ({
+        ...prev,
+        [studentId]: { events: [], schools: [], checklist: { general: [], schoolSpecific: {} } }
+      }));
+    } finally {
+      setStudentDataLoading(false);
+    }
+  };
 
   // 获取当前学生的数据
   const getStudentDataKey = () => {
     return currentStudent?.studentId || 'default';
   };
 
-  // 获取或初始化学生数据
+  // 获取或初始化学生数据（返回空数据，实际数据由 API 加载）
   const getOrInitStudentData = () => {
     const key = getStudentDataKey();
     if (!studentData || !studentData[key]) {
       return {
-        events: [
-          { id: 1, type: 'exam', title: 'JLPT N1考试', date: '2025-12-07', daysLeft: 59, category: '日语考试', urgent: false, notes: '需要达到130分以上', completed: false, schoolId: null },
-          { id: 2, type: 'deadline', title: '东京大学出愿截止', date: '2025-11-15', daysLeft: 37, category: '出愿', urgent: true, notes: '记得提前准备材料', completed: false, schoolId: 1 },
-          { id: 3, type: 'exam', title: 'EJU考试(理科)', date: '2025-11-09', daysLeft: 31, category: '留考', urgent: true, notes: '目标分数700+', completed: false, schoolId: null },
-          { id: 4, type: 'exam', title: '京都大学校内考准备', date: '2025-10-15', daysLeft: 6, category: '考试', urgent: false, notes: '准备校内考笔试和面试', completed: false, schoolId: 2 },
-        ],
-        schools: [
-          {
-            id: 1,
-            name: '东京大学',
-            type: '国立',
-            program: '工学部',
-            status: 'preparing',
-            applicationStartDate: '2025-10-01',
-            applicationEndDate: '2025-11-15',
-            examDate: '2025-12-20',
-            resultDate: '2026-01-30',
-            requirementsUrl: 'https://www.u-tokyo.ac.jp/ja/admissions/graduate.html',
-            teacherNotes: '重点院校，需要JLPT N1和EJU高分',
-            materials: [
-              { name: '志望理由书', deadline: '2025-11-10', url: 'https://example.com/template1.pdf' },
-              { name: '推荐信', deadline: '2025-11-05', url: '' }
-            ]
-          },
-          {
-            id: 2,
-            name: '京都大学',
-            type: '国立',
-            program: '工学部',
-            status: 'applied',
-            applicationStartDate: '2025-10-15',
-            applicationEndDate: '2025-11-20',
-            examDate: '2026-01-10',
-            resultDate: '2026-02-15',
-            requirementsUrl: 'https://www.kyoto-u.ac.jp/ja/admissions/',
-            teacherNotes: '已完成出愿，等待考试',
-            materials: [
-              { name: '志望理由书', deadline: '2025-11-15', url: '' }
-            ]
-          },
-          {
-            id: 3,
-            name: '早稻田大学',
-            type: '私立',
-            program: '基干理工学部',
-            status: 'preparing',
-            applicationStartDate: '2025-09-20',
-            applicationEndDate: '2025-10-31',
-            examDate: '2025-11-25',
-            resultDate: '2025-12-20',
-            requirementsUrl: 'https://www.waseda.jp/inst/admission/',
-            teacherNotes: '保底院校，英语成绩要求较低',
-            materials: []
-          },
-        ],
-        checklist: {
-          general: [
-            { id: 1, item: '毕业证书(日文翻译+公证)', completed: true, deadline: '2025-09-30', checkedBy: 'teacher', checkedAt: '2025-09-15', url: '' },
-            { id: 2, item: '成绩单(日文翻译+公证)', completed: false, deadline: '2025-09-30', checkedBy: null, checkedAt: null, url: '' },
-            { id: 3, item: '护照复印件', completed: false, deadline: '2025-08-31', checkedBy: null, checkedAt: null, url: '' },
-            { id: 4, item: 'JLPT成绩单', completed: false, deadline: '2025-10-15', checkedBy: null, checkedAt: null, url: '' },
-            { id: 5, item: '银行存款证明', completed: false, deadline: '2025-10-31', checkedBy: null, checkedAt: null, url: '' },
-          ],
-          schoolSpecific: {
-            '东京大学': [
-              { id: 101, item: '志望理由书', completed: false, deadline: '2025-11-10', checkedBy: null, checkedAt: null, url: 'https://example.com/template1.pdf' },
-              { id: 102, item: '推荐信', completed: false, deadline: '2025-11-05', checkedBy: null, checkedAt: null, url: '' },
-            ],
-            '京都大学': [
-              { id: 201, item: '志望理由书', completed: false, deadline: '2025-11-15', checkedBy: null, checkedAt: null, url: '' },
-            ]
-          }
-        }
+        events: [],
+        schools: [],
+        checklist: { general: [], schoolSpecific: {} }
       };
     }
     return studentData[key];
@@ -203,65 +239,48 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const schools = currentStudentData.schools || [];
   const checklist = currentStudentData.checklist || {};
 
-  // 设置事件更新函数
-  const setUpcomingEvents = (newEvents) => {
-    const key = getStudentDataKey();
+  // 切换学生时从 API 加载数据
+  useEffect(() => {
+    const studentId = currentStudent?.studentId;
+    if (studentId && !studentData[studentId]) {
+      loadStudentDataFromAPI(studentId);
+    }
+  }, [currentStudent?.studentId]);
 
-    setStudentData(prev => {
-      // 使用 prev 中的最新数据，而不是可能过时的 currentStudentData
-      const currentData = prev[key] || getOrInitStudentData();
-      const resolvedEvents = typeof newEvents === 'function' ? newEvents(currentData.events || upcomingEvents) : newEvents;
-      const updated = {
-        ...prev,
-        [key]: {
-          ...currentData,
-          events: resolvedEvents
-        }
-      };
-      localStorage.setItem('studentData', JSON.stringify(updated));
-      return updated;
-    });
+  // 设置事件更新函数 - 调用 API
+  const setUpcomingEvents = async (newEvents) => {
+    const key = getStudentDataKey();
+    const resolvedEvents = typeof newEvents === 'function' ? newEvents(upcomingEvents) : newEvents;
+    // 乐观更新本地状态
+    setStudentData(prev => ({
+      ...prev,
+      [key]: { ...getOrInitStudentData(), events: resolvedEvents }
+    }));
+    // 注意：事件的增删改由各自的 Modal 直接调用 API，这里只做本地状态同步
   };
 
-  // 设置学校更新函数
-  const setSchools = (newSchools) => {
+  // 设置学校更新函数 - 调用 API
+  const setSchools = async (newSchools) => {
     const key = getStudentDataKey();
-
-    setStudentData(prev => {
-      // 使用 prev 中的最新数据
-      const currentData = prev[key] || getOrInitStudentData();
-      const currentSchools = currentData.schools || schools;
-      const resolvedSchools = typeof newSchools === 'function' ? newSchools(currentSchools) : newSchools;
-      const updated = {
-        ...prev,
-        [key]: {
-          ...currentData,
-          schools: resolvedSchools
-        }
-      };
-      localStorage.setItem('studentData', JSON.stringify(updated));
-      return updated;
-    });
+    const resolvedSchools = typeof newSchools === 'function' ? newSchools(schools) : newSchools;
+    // 乐观更新本地状态
+    setStudentData(prev => ({
+      ...prev,
+      [key]: { ...getOrInitStudentData(), schools: resolvedSchools }
+    }));
+    // 注意：学校的增删改由各自的 Modal 直接调用 API，这里只做本地状态同步
   };
 
-  // 设置清单更新函数
-  const setChecklist = (newChecklist) => {
+  // 设置清单更新函数 - 调用 API
+  const setChecklist = async (newChecklist) => {
     const key = getStudentDataKey();
-
-    setStudentData(prev => {
-      // 使用 prev 中的最新数据，而不是可能过时的 currentStudentData
-      const currentData = prev[key] || getOrInitStudentData();
-      const resolvedChecklist = typeof newChecklist === 'function' ? newChecklist(currentData.checklist || checklist) : newChecklist;
-      const updated = {
-        ...prev,
-        [key]: {
-          ...currentData,
-          checklist: resolvedChecklist
-        }
-      };
-      localStorage.setItem('studentData', JSON.stringify(updated));
-      return updated;
-    });
+    const resolvedChecklist = typeof newChecklist === 'function' ? newChecklist(checklist) : newChecklist;
+    // 乐观更新本地状态
+    setStudentData(prev => ({
+      ...prev,
+      [key]: { ...getOrInitStudentData(), checklist: resolvedChecklist }
+    }));
+    // 注意：材料的增删改由各自的 Modal 直接调用 API，这里只做本地状态同步
   };
 
   // Modal states
@@ -596,58 +615,52 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   };
 
   // 删除事件
-  const handleDeleteEvent = (eventId) => {
+  const handleDeleteEvent = async (eventId) => {
     if (window.confirm('确定要删除这个事项吗？')) {
-      setUpcomingEvents(upcomingEvents.filter(e => e.id !== eventId));
-      if (showNotification) showNotification('事项已删除');
+      try {
+        await apiReq(`/events/${eventId}`, { method: 'DELETE' });
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        if (showNotification) showNotification('事项已删除');
+      } catch (err) {
+        console.error('删除事件失败:', err);
+        if (showNotification) showNotification('删除失败：' + err.message, 'error');
+      }
     }
   };
 
   // 删除学校
-  const handleDeleteSchool = (schoolId) => {
+  const handleDeleteSchool = async (schoolId) => {
     if (window.confirm('确定要删除这个学校吗？这将同时删除相关的时间线事件和材料清单。')) {
-      // 找到要删除的学校
-      const schoolToDelete = schools.find(s => s.id === schoolId);
-
-      if (schoolToDelete) {
-        // 删除学校
-        setSchools(schools.filter(s => s.id !== schoolId));
-
-        // 删除相关的时间线事件（学校关联的事件）
-        setUpcomingEvents(upcomingEvents.filter(e => e.schoolId !== schoolId));
-
-        // 删除学校专用材料清单
-        const newChecklist = {...checklist};
-        if (newChecklist.schoolSpecific && newChecklist.schoolSpecific[schoolToDelete.name]) {
-          delete newChecklist.schoolSpecific[schoolToDelete.name];
-          setChecklist(newChecklist);
-        }
-        if (showNotification) showNotification(`已删除学校: ${schoolToDelete.name}`);
+      try {
+        await apiReq(`/schools/${schoolId}`, { method: 'DELETE' });
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        if (showNotification) showNotification('学校已删除');
+      } catch (err) {
+        console.error('删除学校失败:', err);
+        if (showNotification) showNotification('删除失败：' + err.message, 'error');
       }
     }
   };
 
   // 删除材料
-  const handleDeleteMaterial = (type, itemId, schoolName = null) => {
+  const handleDeleteMaterial = async (type, itemId, schoolName = null) => {
     if (window.confirm('确定要删除这个材料项吗？')) {
-      const newChecklist = {...checklist};
-      if (type === 'general') {
-        newChecklist.general = checklist.general.filter(item => item.id !== itemId);
-      } else if (schoolName) {
-        newChecklist.schoolSpecific[schoolName] = newChecklist.schoolSpecific[schoolName].filter(
-          item => item.id !== itemId
-        );
+      try {
+        await apiReq(`/materials/${itemId}`, { method: 'DELETE' });
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        if (showNotification) showNotification('材料项已删除');
+      } catch (err) {
+        console.error('删除材料失败:', err);
+        if (showNotification) showNotification('删除失败：' + err.message, 'error');
       }
-      setChecklist(newChecklist);
-      if (showNotification) showNotification('材料项已删除');
     }
   };
 
   // 处理材料勾选
-  const handleMaterialCheck = (type, itemId, checked, schoolName = null) => {
+  const handleMaterialCheck = async (type, itemId, checked, schoolName = null) => {
+    // 乐观更新本地状态
     const newChecklist = {...checklist};
     const currentTime = new Date().toISOString().split('T')[0];
-
     if (type === 'general') {
       newChecklist.general = checklist.general.map(item =>
         item.id === itemId
@@ -655,14 +668,24 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
           : item
       );
     } else if (schoolName) {
-      newChecklist.schoolSpecific[schoolName] = newChecklist.schoolSpecific[schoolName].map(item =>
+      newChecklist.schoolSpecific[schoolName] = (newChecklist.schoolSpecific[schoolName] || []).map(item =>
         item.id === itemId
           ? {...item, completed: checked, checkedBy: user.role, checkedAt: checked ? currentTime : null}
           : item
       );
     }
-
     setChecklist(newChecklist);
+    // 调用 API
+    try {
+      await apiReq(`/materials/${itemId}/toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify({ checked_by: user.role }),
+      });
+    } catch (err) {
+      console.error('更新材料状态失败:', err);
+      // 失败时重新加载
+      await loadStudentDataFromAPI(currentStudent?.studentId);
+    }
   };
 
   // 事件编辑/新增Modal
@@ -679,25 +702,38 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       }
     );
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
       e.preventDefault();
       const eventData = {
-        ...formData,
-        daysLeft: calculateDaysLeft(formData.date),
-        schoolId: null
+        student_id: currentStudent?.studentId,
+        type: formData.type,
+        title: formData.title,
+        date: formData.date,
+        category: formData.category,
+        urgent: formData.urgent,
+        notes: formData.notes,
+        completed: formData.completed,
       };
-
-      if (editingEvent) {
-        setUpcomingEvents(upcomingEvents.map(event =>
-          event.id === editingEvent.id ? { ...eventData, id: editingEvent.id, schoolId: event.schoolId } : event
-        ));
-      } else {
-      setUpcomingEvents([...upcomingEvents, { ...eventData, id: Date.now() }]);
+      try {
+        if (editingEvent) {
+          await apiReq(`/events/${editingEvent.id}`, {
+            method: 'PUT',
+            body: JSON.stringify(eventData),
+          });
+        } else {
+          await apiReq('/events', {
+            method: 'POST',
+            body: JSON.stringify(eventData),
+          });
+        }
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        setShowEventModal(false);
+        setEditingEvent(null);
+        if (showNotification) showNotification(editingEvent ? '事项已更新' : '事项已添加');
+      } catch (err) {
+        console.error('保存事件失败:', err);
+        if (showNotification) showNotification('保存失败：' + err.message, 'error');
       }
-
-      setShowEventModal(false);
-      setEditingEvent(null);
-      if (showNotification) showNotification(editingEvent ? '事项已更新' : '事项已添加');
     };
 
     return (
@@ -895,54 +931,51 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       setShowSchoolSuggestions(false);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
       e.preventDefault();
 
       const schoolData = {
+        student_id: currentStudent?.studentId,
         name: formData.name,
-        nameJa: formData.nameJa,
+        name_ja: formData.nameJa,
         type: formData.type,
         location: formData.location,
-        acceptanceRate: formData.acceptanceRate,
+        acceptance_rate: formData.acceptanceRate,
         program: formData.program,
         status: formData.status,
-        applicationStartDate: formData.applicationStartDate,
-        applicationEndDate: formData.applicationEndDate,
-        examDate: formData.examDate,
-        resultDate: formData.resultDate,
-        requirementsUrl: formData.requirementsUrl,
+        application_start_date: formData.applicationStartDate,
+        application_end_date: formData.applicationEndDate,
+        exam_date: formData.examDate,
+        result_date: formData.resultDate,
+        requirements_url: formData.requirementsUrl,
         requirements: formData.requirements,
-        teacherNotes: formData.teacherNotes,
-        materials: formData.materials || []
+        teacher_notes: formData.teacherNotes,
+        materials: (formData.materials || []).map(m => ({ name: m.name, deadline: m.deadline, url: m.url }))
       };
 
-      if (editingSchool) {
-        // 更新现有学校
-        const updatedSchool = { ...schoolData, id: editingSchool.id };
-        setSchools(schools.map(school =>
-          school.id === editingSchool.id ? updatedSchool : school
-        ));
-        // 同步更新时间线事件
-        syncSchoolDatesToTimeline(updatedSchool, false);
-        // 同步更新材料清单
-        if (schoolData.materials && schoolData.materials.length > 0) {
-          syncSchoolMaterialsToChecklist(updatedSchool, schoolData.materials);
+      try {
+        if (editingSchool) {
+          // 更新现有学校
+          await apiReq(`/schools/${editingSchool.id}`, {
+            method: 'PUT',
+            body: JSON.stringify(schoolData),
+          });
+        } else {
+          // 添加新学校
+          await apiReq('/schools', {
+            method: 'POST',
+            body: JSON.stringify(schoolData),
+          });
         }
-      } else {
-        // 添加新学校
-        const newSchool = { ...schoolData, id: Date.now() };
-        setSchools([...schools, newSchool]);
-        // 同步新增时间线事件
-        syncSchoolDatesToTimeline(newSchool, true);
-        // 同步新增材料清单
-        if (schoolData.materials && schoolData.materials.length > 0) {
-          syncSchoolMaterialsToChecklist(newSchool, schoolData.materials);
-        }
+        // 重新从 API 加载数据
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        setShowSchoolModal(false);
+        setEditingSchool(null);
+        if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+      } catch (err) {
+        console.error('保存学校失败:', err);
+        if (showNotification) showNotification('保存失败：' + err.message, 'error');
       }
-
-      setShowSchoolModal(false);
-      setEditingSchool(null);
-      if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
     };
 
     const addMaterial = () => {
@@ -4470,7 +4503,7 @@ const JapanStudyAppInner = () => {
   if (user) {
     return <MainApp user={user} onLogout={handleLogout} allUsers={allUsers} setAllUsers={setAllUsers} studentList={studentList} setStudentList={setStudentList} />;
   }
-  return <AuthPage onLogin={handleLogin} allUsers={allUsers} />;
+  return <AuthPage onLogin={handleLogin} />;
 };
 
 export default JapanStudyApp;
