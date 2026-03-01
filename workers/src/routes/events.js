@@ -15,7 +15,7 @@ const calculateDaysLeft = (dateString) => {
 // 通过 student_id 或 user.id 查找学生
 const getStudentByIdentifier = async (db, identifier) => {
   return db.prepare(
-    'SELECT * FROM users WHERE role = \'student\' AND (id = ? OR student_id = ?)'
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
   ).bind(identifier, identifier).first()
 }
 
@@ -23,7 +23,10 @@ const canAccessStudent = (user, student) => {
   if (!user || !student) return false
   if (isAdmin(user)) return true
   if (isTeacher(user)) return student.teacher_id === user.teacherId
-  if (isStudent(user)) return String(student.id) === String(user.id)
+  if (isStudent(user)) {
+    return String(student.student_id) === String(user.studentId) ||
+           String(student.user_id) === String(user.id)
+  }
   return false
 }
 
@@ -39,7 +42,7 @@ events.get('/student/:studentId', async (c) => {
 
   const { results } = await db.prepare(
     'SELECT * FROM events WHERE student_id = ? ORDER BY date ASC'
-  ).bind(student.id).all()
+  ).bind(student.student_id).all()
 
   results.forEach(event => {
     event.days_left = calculateDaysLeft(event.date)
@@ -59,12 +62,12 @@ events.get('/:id', async (c) => {
   if (!event) return c.json({ success: false, message: '事件不存在' }, 404)
 
   // 权限校验
-  if (isStudent(user) && String(event.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权访问该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(event.student_id).first()
-    if (student?.teacher_id !== user.teacherId) {
+    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId) {
       return c.json({ success: false, message: '无权访问该事件' }, 403)
     }
   }
@@ -91,18 +94,20 @@ events.post('/', async (c) => {
   if (!canAccessStudent(user, student)) return c.json({ success: false, message: '无权为该学生创建事件' }, 403)
 
   const days_left = calculateDaysLeft(date)
-  const eventId = `event_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 
-  await db.prepare(`
-    INSERT INTO events (id, student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  const result = await db.prepare(`
+    INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    eventId, student.id, school_id || null, type, title, date, days_left, category,
+    student.student_id, school_id || null, type, title, date, days_left, category,
     urgent !== undefined ? (urgent ? 1 : 0) : (days_left <= 7 && days_left >= 0 ? 1 : 0),
     notes || null, completed ? 1 : 0
   ).run()
 
-  const event = await db.prepare('SELECT * FROM events WHERE id = ?').bind(eventId).first()
+  const newId = result.meta?.last_row_id
+  const event = newId
+    ? await db.prepare('SELECT * FROM events WHERE id = ?').bind(newId).first()
+    : await db.prepare('SELECT * FROM events WHERE student_id = ? ORDER BY id DESC LIMIT 1').bind(student.student_id).first()
   return c.json({ success: true, message: '事件添加成功', data: event }, 201)
 })
 
@@ -116,12 +121,12 @@ events.put('/:id', async (c) => {
   if (!event) return c.json({ success: false, message: '事件不存在' }, 404)
 
   // 权限校验
-  if (isStudent(user) && String(event.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权修改该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(event.student_id).first()
-    if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权修改该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权修改该事件' }, 403)
   }
 
   const body = await c.req.json()
@@ -158,12 +163,12 @@ events.delete('/:id', async (c) => {
   const event = await db.prepare('SELECT * FROM events WHERE id = ?').bind(id).first()
   if (!event) return c.json({ success: false, message: '事件不存在' }, 404)
 
-  if (isStudent(user) && String(event.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(event.student_id).first()
-    if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权删除该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
 
   if (event.school_id) {
@@ -183,12 +188,12 @@ events.patch('/:id/toggle', async (c) => {
   const event = await db.prepare('SELECT * FROM events WHERE id = ?').bind(id).first()
   if (!event) return c.json({ success: false, message: '事件不存在' }, 404)
 
-  if (isStudent(user) && String(event.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权操作该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(event.student_id).first()
-    if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权操作该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权操作该事件' }, 403)
   }
 
   const newCompleted = event.completed ? 0 : 1

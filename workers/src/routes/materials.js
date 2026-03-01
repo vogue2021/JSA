@@ -8,8 +8,9 @@ const isTeacher = (user) => user?.role === 'teacher'
 const isStudent = (user) => user?.role === 'student'
 
 const getStudentByIdentifier = async (db, identifier) => {
+  // 查询 students 表（支持 student_id 或 user_id 匹配）
   return db.prepare(
-    'SELECT * FROM users WHERE role = \'student\' AND (id = ? OR student_id = ?)'
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
   ).bind(identifier, identifier).first()
 }
 
@@ -17,7 +18,11 @@ const canAccessStudent = (user, student) => {
   if (!user || !student) return false
   if (isAdmin(user)) return true
   if (isTeacher(user)) return student.teacher_id === user.teacherId
-  if (isStudent(user)) return String(student.id) === String(user.id)
+  // 学生只能访问自己的数据（通过 student_id 或 user_id 匹配）
+  if (isStudent(user)) {
+    return String(student.student_id) === String(user.studentId) ||
+           String(student.user_id) === String(user.id)
+  }
   return false
 }
 
@@ -33,7 +38,7 @@ materials.get('/student/:studentId', async (c) => {
   if (!canAccessStudent(user, student)) return c.json({ success: false, message: '无权访问该学生数据' }, 403)
 
   let sql = 'SELECT * FROM materials WHERE student_id = ?'
-  const params = [student.id]
+  const params = [student.student_id]
   if (type) { sql += ' AND type = ?'; params.push(type) }
   if (school_id) { sql += ' AND school_id = ?'; params.push(school_id) }
   sql += ' ORDER BY deadline ASC'
@@ -82,7 +87,7 @@ materials.get('/student/:studentId/stats', async (c) => {
 
   const { results: matList } = await db.prepare(
     'SELECT type, completed FROM materials WHERE student_id = ?'
-  ).bind(student.id).all()
+  ).bind(student.student_id).all()
 
   const stats = {
     total: matList.length,
@@ -112,11 +117,11 @@ materials.get('/:id', async (c) => {
   const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
   if (!material) return c.json({ success: false, message: '材料不存在' }, 404)
 
-  if (isStudent(user) && String(material.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权访问该材料' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(material.student_id).first()
+    const student = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(material.student_id).first()
     if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权访问该材料' }, 403)
   }
 
@@ -141,17 +146,18 @@ materials.post('/', async (c) => {
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
   if (!canAccessStudent(user, student)) return c.json({ success: false, message: '无权为该学生创建材料' }, 403)
 
-  const materialId = `mat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-
-  await db.prepare(`
-    INSERT INTO materials (id, student_id, school_id, item, type, deadline, url, completed, checked_by, checked_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  const result = await db.prepare(`
+    INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed, checked_by, checked_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    materialId, student.id, school_id || null, item, type, deadline,
+    student.student_id, school_id || null, item, type, deadline,
     url || null, completed ? 1 : 0, checked_by || null, checked_at || null
   ).run()
 
-  const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(materialId).first()
+  const newId = result.meta?.last_row_id
+  const material = newId
+    ? await db.prepare('SELECT * FROM materials WHERE id = ?').bind(newId).first()
+    : await db.prepare('SELECT * FROM materials WHERE student_id = ? ORDER BY id DESC LIMIT 1').bind(student.student_id).first()
   return c.json({ success: true, message: '材料添加成功', data: material }, 201)
 })
 
@@ -164,11 +170,11 @@ materials.put('/:id', async (c) => {
   const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
   if (!material) return c.json({ success: false, message: '材料不存在' }, 404)
 
-  if (isStudent(user) && String(material.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权修改该材料' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(material.student_id).first()
+    const student = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(material.student_id).first()
     if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权修改该材料' }, 403)
   }
 
@@ -200,11 +206,11 @@ materials.delete('/:id', async (c) => {
   const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
   if (!material) return c.json({ success: false, message: '材料不存在' }, 404)
 
-  if (isStudent(user) && String(material.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权删除该材料' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(material.student_id).first()
+    const student = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(material.student_id).first()
     if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权删除该材料' }, 403)
   }
 
@@ -221,11 +227,11 @@ materials.patch('/:id/toggle', async (c) => {
   const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
   if (!material) return c.json({ success: false, message: '材料不存在' }, 404)
 
-  if (isStudent(user) && String(material.student_id) !== String(user.id)) {
+  if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权操作该材料' }, 403)
   }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id FROM users WHERE id = ?').bind(material.student_id).first()
+    const student = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(material.student_id).first()
     if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权操作该材料' }, 403)
   }
 

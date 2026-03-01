@@ -97,10 +97,12 @@ schools.get('/student/:studentId', async (c) => {
     'SELECT * FROM schools WHERE student_id = ? ORDER BY created_at DESC'
   ).bind(studentId).all()
 
-  // 解析 materials JSON
+  // 解析 materials JSON（兼容旧数据）
   schoolList.forEach(school => {
     if (school.materials) {
       try { school.materials = JSON.parse(school.materials) } catch { school.materials = [] }
+    } else {
+      school.materials = []
     }
   })
 
@@ -117,6 +119,8 @@ schools.get('/:id', async (c) => {
 
   if (school.materials) {
     try { school.materials = JSON.parse(school.materials) } catch { school.materials = [] }
+  } else {
+    school.materials = []
   }
 
   return c.json({ success: true, data: school })
@@ -126,35 +130,50 @@ schools.get('/:id', async (c) => {
 schools.post('/', async (c) => {
   const body = await c.req.json()
   const {
-    student_id, name, type, program, status,
+    student_id, name, name_ja, type, program, status,
     application_start_date, application_end_date,
-    exam_date, result_date, requirements_url, teacher_notes, materials
+    exam_date, result_date, requirements_url, teacher_notes,
+    difficulty, ranking, location, website, xuexin_cert, overseas_cert,
+    materials
   } = body
 
-  if (!student_id || !name || !type || !program ||
-      !application_start_date || !application_end_date || !exam_date || !result_date) {
-    return c.json({ success: false, message: '缺少必填字段' }, 400)
+  if (!student_id || !name || !type) {
+    return c.json({ success: false, message: '缺少必填字段（student_id、name、type）' }, 400)
   }
 
   const db = c.env.DB
-  const schoolId = `school_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+  // 验证学生是否存在
+  const studentExists = await db.prepare(
+    'SELECT student_id FROM students WHERE student_id = ? LIMIT 1'
+  ).bind(student_id).first()
+  if (!studentExists) {
+    return c.json({ success: false, message: '学生不存在' }, 404)
+  }
 
   await db.prepare(`
-    INSERT INTO schools (id, student_id, name, type, program, status,
+    INSERT INTO schools (student_id, name, name_ja, type, program, status,
       application_start_date, application_end_date, exam_date, result_date,
-      requirements_url, teacher_notes, materials)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      requirements_url, teacher_notes, difficulty, ranking, location, website,
+      xuexin_cert, overseas_cert)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    schoolId, student_id, name, type, program, status || 'preparing',
-    application_start_date, application_end_date, exam_date, result_date,
-    requirements_url || null, teacher_notes || null,
-    materials ? JSON.stringify(materials) : null
+    student_id, name, name_ja || '', type, program || '', status || 'not_started',
+    application_start_date || null, application_end_date || null,
+    exam_date || null, result_date || null,
+    requirements_url || '', teacher_notes || '',
+    difficulty || '', ranking || 0, location || '', website || '',
+    xuexin_cert || '不确定', overseas_cert || '不确定'
   ).run()
 
+  // 获取刚创建的学校记录
+  const newSchool = await db.prepare(
+    'SELECT * FROM schools WHERE student_id = ? ORDER BY id DESC LIMIT 1'
+  ).bind(student_id).first()
+  const schoolId = newSchool?.id
   // 自动创建时间线事件
   const eventInserts = []
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
-    id: `event_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     student_id, school_id: schoolId, type: 'deadline',
     title, date, category, urgent: urgent ? 1 : 0, notes, completed: 0,
     days_left: Math.ceil((new Date(date) - new Date()) / 86400000)
@@ -167,19 +186,18 @@ schools.post('/', async (c) => {
 
   if (eventInserts.length > 0) {
     await db.batch(eventInserts.map(e =>
-      db.prepare(`INSERT INTO events (id, student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(e.id, e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
+      db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
     ))
   }
 
   // 自动创建材料记录
   if (materials && materials.length > 0) {
     await db.batch(materials.map(mat =>
-      db.prepare(`INSERT INTO materials (id, student_id, school_id, item, type, deadline, url, completed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0)`)
+      db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
+        VALUES (?, ?, ?, ?, ?, ?, 0)`)
         .bind(
-          `mat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           student_id, schoolId, mat.name, 'school',
           mat.deadline || application_end_date, mat.url || null
         )
@@ -187,9 +205,6 @@ schools.post('/', async (c) => {
   }
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(schoolId).first()
-  if (school?.materials) {
-    try { school.materials = JSON.parse(school.materials) } catch { school.materials = [] }
-  }
 
   return c.json({ success: true, message: '学校添加成功', data: school }, 201)
 })
@@ -205,28 +220,38 @@ schools.put('/:id', async (c) => {
   const body = await c.req.json()
   const updated = {
     name: body.name || school.name,
+    name_ja: body.name_ja !== undefined ? body.name_ja : (school.name_ja || ''),
     type: body.type || school.type,
-    program: body.program || school.program,
+    program: body.program !== undefined ? body.program : (school.program || ''),
     status: body.status || school.status,
-    application_start_date: body.application_start_date || school.application_start_date,
-    application_end_date: body.application_end_date || school.application_end_date,
-    exam_date: body.exam_date || school.exam_date,
-    result_date: body.result_date || school.result_date,
-    requirements_url: body.requirements_url !== undefined ? body.requirements_url : school.requirements_url,
-    teacher_notes: body.teacher_notes !== undefined ? body.teacher_notes : school.teacher_notes,
-    materials: body.materials ? JSON.stringify(body.materials) : school.materials
+    application_start_date: body.application_start_date !== undefined ? body.application_start_date : school.application_start_date,
+    application_end_date: body.application_end_date !== undefined ? body.application_end_date : school.application_end_date,
+    exam_date: body.exam_date !== undefined ? body.exam_date : school.exam_date,
+    result_date: body.result_date !== undefined ? body.result_date : school.result_date,
+    requirements_url: body.requirements_url !== undefined ? body.requirements_url : (school.requirements_url || ''),
+    teacher_notes: body.teacher_notes !== undefined ? body.teacher_notes : (school.teacher_notes || ''),
+    difficulty: body.difficulty !== undefined ? body.difficulty : (school.difficulty || ''),
+    ranking: body.ranking !== undefined ? body.ranking : (school.ranking || 0),
+    location: body.location !== undefined ? body.location : (school.location || ''),
+    website: body.website !== undefined ? body.website : (school.website || ''),
+    xuexin_cert: body.xuexin_cert !== undefined ? body.xuexin_cert : (school.xuexin_cert || '不确定'),
+    overseas_cert: body.overseas_cert !== undefined ? body.overseas_cert : (school.overseas_cert || '不确定'),
   }
 
   await db.prepare(`
-    UPDATE schools SET name=?, type=?, program=?, status=?,
+    UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
       application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
-      requirements_url=?, teacher_notes=?, materials=?
+      requirements_url=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
+      website=?, xuexin_cert=?, overseas_cert=?,
+      updated_at=datetime('now')
     WHERE id=?
   `).bind(
-    updated.name, updated.type, updated.program, updated.status,
+    updated.name, updated.name_ja, updated.type, updated.program, updated.status,
     updated.application_start_date, updated.application_end_date,
     updated.exam_date, updated.result_date,
-    updated.requirements_url, updated.teacher_notes, updated.materials, id
+    updated.requirements_url, updated.teacher_notes,
+    updated.difficulty, updated.ranking, updated.location,
+    updated.website, updated.xuexin_cert, updated.overseas_cert, id
   ).run()
 
   // 重建关联事件
@@ -255,9 +280,6 @@ schools.put('/:id', async (c) => {
   }
 
   const updatedSchool = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
-  if (updatedSchool?.materials) {
-    try { updatedSchool.materials = JSON.parse(updatedSchool.materials) } catch { updatedSchool.materials = [] }
-  }
 
   return c.json({ success: true, message: '学校信息更新成功', data: updatedSchool })
 })
