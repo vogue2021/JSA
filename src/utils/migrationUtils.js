@@ -10,7 +10,7 @@
  * 注意：迁移前请确保已登录（需要有效 JWT Token）
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // ─── 获取当前 JWT Token ───────────────────────────────────────────────────────
 const getToken = () => {

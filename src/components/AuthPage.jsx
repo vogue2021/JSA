@@ -49,7 +49,8 @@ const AuthPage = ({ onLogin, allUsers }) => {
         // 尝试从后端获取真实 JWT token（用于后端 API 鉴权）
         // 后端不可用时降级为纯本地登录，不影响现有功能
         try {
-          const resp = await fetch('http://localhost:3001/api/auth/login', {
+          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+          const resp = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: formData.email, password: formData.password }),
