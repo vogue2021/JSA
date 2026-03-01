@@ -33,7 +33,9 @@ export const useApiState = () => {
 };
 
 // API 基础地址
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787/api';
+// 生产环境：Cloudflare Pages 通过 public/_redirects 将 /api/* 代理到 Workers
+// 本地开发：通过 vite proxy 代理到 localhost:8787
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // 通用 API 请求（带 token）
 async function apiRequest(endpoint, options = {}) {

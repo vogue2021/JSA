@@ -7,7 +7,14 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    host: true
+    host: true,
+    proxy: {
+      // 本地开发时将 /api 代理到 Workers（wrangler dev 或远程）
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',
