@@ -98,6 +98,12 @@ export const eventsAPI = {
       method: 'DELETE',
     });
   },
+  // 切换事件完成状态（幂等版）
+  toggleComplete: async (eventId) => {
+    return await apiRequest(`/events/${eventId}/toggle`, {
+      method: 'PATCH',
+    });
+  },
 };
 
 // 材料 API

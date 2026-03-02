@@ -19,6 +19,10 @@ const TeacherManagement = () => {
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [filterDepartment, setFilterDepartment] = useState('all');
 
+  // 从 API 加载的老师账号列表（主数据源，取代 allUsers）
+  const [teacherAccounts, setTeacherAccounts] = useState([]);
+  const [teacherAccountsLoading, setTeacherAccountsLoading] = useState(true);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -36,46 +40,61 @@ const TeacherManagement = () => {
     localStorage.setItem('teacherDetails', JSON.stringify(details));
   };
 
-  // 从 API 加载老师详细信息并合并到 teacherDetails
-  useEffect(() => {
-    const loadTeacherDetailsFromAPI = async () => {
-      try {
-        const data = await teachersAPI.getAll();
-        if (Array.isArray(data)) {
-          const newDetails = { ...teacherDetails };
-          data.forEach(t => {
-            if (t.teacher_id) {
-              // 将 API 返回的数据合并到 teacherDetails
-              newDetails[t.teacher_id] = {
-                ...newDetails[t.teacher_id],
-                department: t.department || newDetails[t.teacher_id]?.department || '',
-                subject: t.subject || newDetails[t.teacher_id]?.subject || '',
-                permissions: Array.isArray(t.permissions) ? t.permissions : (newDetails[t.teacher_id]?.permissions || []),
-                gender: t.gender || newDetails[t.teacher_id]?.gender || '',
-                birthday: t.birthday || newDetails[t.teacher_id]?.birthday || '',
-                phone: t.phone || newDetails[t.teacher_id]?.phone || '',
-                address: t.address || newDetails[t.teacher_id]?.address || '',
-                education: t.education || newDetails[t.teacher_id]?.education || '',
-                joinDate: t.hire_date || newDetails[t.teacher_id]?.joinDate || '',
-                employmentType: t.employment_type || newDetails[t.teacher_id]?.employmentType || '',
-                photo: t.photo || newDetails[t.teacher_id]?.photo || '',
-                email_contact: t.email_contact || newDetails[t.teacher_id]?.email_contact || '',
-              };
-            }
-          });
-          saveTeacherDetails(newDetails);
-        }
-      } catch (err) {
-        console.warn('从 API 加载老师详情失败:', err);
-        // 不回退到 localStorage 缓存，保持当前状态并提示
-        if (showNotification) showNotification('老师信息加载失败，显示的可能不是最新数据');
+  // 从 API 加载老师列表（包含 users + teachers 联查的完整信息）
+  const loadTeachersFromAPI = async () => {
+    try {
+      setTeacherAccountsLoading(true);
+      const data = await teachersAPI.getAll();
+      if (Array.isArray(data)) {
+        // 构建 teacherAccounts 列表（替代 allUsers.filter(u => u.role === 'teacher')）
+        const accounts = data.map(t => ({
+          id: t.id,
+          email: t.email,
+          role: 'teacher',
+          teacherId: t.teacher_id,
+          name: t.name,
+          is_active: t.is_active,
+          createdAt: t.created_at,
+        }));
+        setTeacherAccounts(accounts);
+
+        // 同步详细信息到 teacherDetails（用于表单编辑）
+        const newDetails = { ...teacherDetails };
+        data.forEach(t => {
+          if (t.teacher_id) {
+            newDetails[t.teacher_id] = {
+              ...newDetails[t.teacher_id],
+              department: t.department || newDetails[t.teacher_id]?.department || '',
+              subject: t.subject || newDetails[t.teacher_id]?.subject || '',
+              permissions: Array.isArray(t.permissions) ? t.permissions : (newDetails[t.teacher_id]?.permissions || []),
+              gender: t.gender || newDetails[t.teacher_id]?.gender || '',
+              birthday: t.birthday || newDetails[t.teacher_id]?.birthday || '',
+              phone: t.phone || newDetails[t.teacher_id]?.phone || '',
+              address: t.address || newDetails[t.teacher_id]?.address || '',
+              education: t.education || newDetails[t.teacher_id]?.education || '',
+              joinDate: t.hire_date || newDetails[t.teacher_id]?.joinDate || '',
+              employmentType: t.employment_type || newDetails[t.teacher_id]?.employmentType || '',
+              photo: t.photo || newDetails[t.teacher_id]?.photo || '',
+              email_contact: t.email_contact || newDetails[t.teacher_id]?.email_contact || '',
+            };
+          }
+        });
+        saveTeacherDetails(newDetails);
       }
-    };
-    loadTeacherDetailsFromAPI();
+    } catch (err) {
+      console.warn('从 API 加载老师列表失败:', err);
+      if (showNotification) showNotification('老师信息加载失败，显示的可能不是最新数据');
+    } finally {
+      setTeacherAccountsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeachersFromAPI();
   }, []);
 
-  // 获取所有老师账号
-  const teachers = allUsers.filter(u => u.role === 'teacher');
+  // 获取所有老师账号（从 API 加载的 teacherAccounts）
+  const teachers = teacherAccounts;
 
   const getTeacherDetail = (teacherId) => {
     return teacherDetails[teacherId] || {};
@@ -158,6 +177,11 @@ const TeacherManagement = () => {
     }
 
     // API 成功后才更新本地状态
+    setTeacherAccounts(prev => prev.map(u =>
+      u.teacherId === selectedTeacher.teacherId
+        ? { ...u, name: editForm.name, email: editForm.email }
+        : u
+    ));
     setAllUsers(prev => prev.map(u =>
       u.teacherId === selectedTeacher.teacherId
         ? { ...u, name: editForm.name, email: editForm.email }
@@ -200,6 +224,7 @@ const TeacherManagement = () => {
       setShowDeleteConfirm(null);
       return;
     }
+    setTeacherAccounts(prev => prev.filter(u => u.id !== teacher.id));
     setAllUsers(prev => prev.filter(u => u.id !== teacher.id));
     const newDetails = { ...teacherDetails };
     delete newDetails[teacher.teacherId];
@@ -276,6 +301,7 @@ const TeacherManagement = () => {
         name: addForm.name,
         createdAt: new Date().toISOString()
       };
+      setTeacherAccounts(prev => [...prev, newTeacher]);
       setAllUsers(prev => [...prev, newTeacher]);
 
       if (addForm.department || addForm.subject) {

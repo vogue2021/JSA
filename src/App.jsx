@@ -2888,12 +2888,18 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-2">
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        const newEvents = upcomingEvents.map(ev =>
-                          ev.id === event.id ? {...ev, completed: !ev.completed} : ev
-                        );
-                        setUpcomingEvents(newEvents);
+                        try {
+                          await eventsAPI.toggleComplete(event.id);
+                          const newEvents = upcomingEvents.map(ev =>
+                            ev.id === event.id ? {...ev, completed: !ev.completed} : ev
+                          );
+                          setUpcomingEvents(newEvents);
+                        } catch (err) {
+                          console.error('更新事件状态失败:', err);
+                          if (showNotification) showNotification('状态更新失败，请重试');
+                        }
                       }}
                       className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
                       style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
@@ -2944,11 +2950,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         <TimelineLinear
           events={filteredEvents}
           user={user}
-          onToggleComplete={(eventId) => {
-            const newEvents = upcomingEvents.map(ev =>
-              ev.id === eventId ? {...ev, completed: !ev.completed} : ev
-            );
-            setUpcomingEvents(newEvents);
+          onToggleComplete={async (eventId) => {
+            try {
+              await eventsAPI.toggleComplete(eventId);
+              const newEvents = upcomingEvents.map(ev =>
+                ev.id === eventId ? {...ev, completed: !ev.completed} : ev
+              );
+              setUpcomingEvents(newEvents);
+            } catch (err) {
+              console.error('更新事件状态失败:', err);
+              if (showNotification) showNotification('状态更新失败，请重试');
+            }
           }}
           onEdit={(event) => {
             setEditingEvent(event);
@@ -2962,11 +2974,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       {timelineViewMode === 'calendar' && (
         <CalendarView
           events={filteredEvents}
-          onUpdateEvent={(eventId, updates) => {
-            const newEvents = upcomingEvents.map(ev =>
-              ev.id === eventId ? {...ev, ...updates} : ev
-            );
-            setUpcomingEvents(newEvents);
+          onUpdateEvent={async (eventId, updates) => {
+            try {
+              await eventsAPI.update(eventId, updates);
+              const newEvents = upcomingEvents.map(ev =>
+                ev.id === eventId ? {...ev, ...updates} : ev
+              );
+              setUpcomingEvents(newEvents);
+            } catch (err) {
+              console.error('更新事件失败:', err);
+              if (showNotification) showNotification('事件更新失败，请重试');
+            }
           }}
           onAddEvent={(newEvent) => {
             setUpcomingEvents(prev => [...prev, { ...newEvent, id: Date.now() }]);
