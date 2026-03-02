@@ -235,10 +235,12 @@ students.put('/:id', async (c) => {
     params.push(typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes))
   }
 
-  // 管理员专属字段
-  if (isAdmin(user)) {
+  // 管理员专属字段 + 老师也可修改老师分配
+  if (isAdmin(user) || isTeacher(user)) {
     if (body.teacher_id !== undefined) { fields.push('teacher_id = ?'); params.push(body.teacher_id) }
     if (body.academic_advisor_id !== undefined) { fields.push('academic_advisor_id = ?'); params.push(body.academic_advisor_id) }
+  }
+  if (isAdmin(user)) {
     if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0) }
   }
 

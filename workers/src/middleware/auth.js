@@ -18,6 +18,6 @@ export async function authMiddleware(c, next) {
     c.set('user', payload)
     await next()
   } catch (e) {
-    return c.json({ success: false, message: '令牌无效或已过期' }, 403)
+    return c.json({ success: false, message: '令牌无效或已过期' }, 401)
   }
 }

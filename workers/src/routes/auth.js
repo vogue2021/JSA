@@ -348,7 +348,7 @@ auth.post('/init-seed', async (c) => {
       return c.json({ success: false, message: `数据库已有 ${count.cnt} 条用户记录，传入 { "force": true } 可强制重置` }, 403)
     }
 
-    // force 模式：先清空所有相关表
+    // force 模式：先清空所有相关表（包括 school_database）
     if (force) {
       await db.batch([
         db.prepare('DELETE FROM materials'),
@@ -358,6 +358,7 @@ auth.post('/init-seed', async (c) => {
         db.prepare('DELETE FROM verification_codes'),
         db.prepare('DELETE FROM students'),
         db.prepare('DELETE FROM users'),
+        db.prepare('DELETE FROM school_database'),
       ])
     }
 
@@ -374,6 +375,15 @@ auth.post('/init-seed', async (c) => {
       { id: 'student1', email: 'zhangsan@student.jsa.com', password: 'stu2024001', role: 'student', name: '张三', teacherId: null, studentId: '2024001' },
       { id: 'student2', email: 'lisi@student.jsa.com', password: 'stu2024002', role: 'student', name: '李四', teacherId: null, studentId: '2024002' },
       { id: 'student3', email: 'wangwu@student.jsa.com', password: 'stu2024003', role: 'student', name: '王五', teacherId: null, studentId: '2024003' },
+      { id: 'student4', email: 'zhaoliu@student.jsa.com', password: 'stu2024004', role: 'student', name: '赵六', teacherId: null, studentId: '2024004' },
+      { id: 'student5', email: 'liuqi@student.jsa.com', password: 'stu2024005', role: 'student', name: '刘七', teacherId: null, studentId: '2024005' },
+      { id: 'student6', email: 'sunba@student.jsa.com', password: 'stu2024006', role: 'student', name: '孙八', teacherId: null, studentId: '2024006' },
+      { id: 'student7', email: 'zhoujiu@student.jsa.com', password: 'stu2024007', role: 'student', name: '周九', teacherId: null, studentId: '2024007' },
+      { id: 'student8', email: 'wushi@student.jsa.com', password: 'stu2024008', role: 'student', name: '吴十', teacherId: null, studentId: '2024008' },
+      { id: 'student9', email: 'zheng11@student.jsa.com', password: 'stu2024009', role: 'student', name: '郑十一', teacherId: null, studentId: '2024009' },
+      { id: 'student10', email: 'feng12@student.jsa.com', password: 'stu2024010', role: 'student', name: '冯十二', teacherId: null, studentId: '2024010' },
+      { id: 'student11', email: 'chen13@student.jsa.com', password: 'stu2024011', role: 'student', name: '陈十三', teacherId: null, studentId: '2024011' },
+      { id: 'student12', email: 'lin14@student.jsa.com', password: 'stu2024012', role: 'student', name: '林十四', teacherId: null, studentId: '2024012' },
     ]
 
     // 测试学生列表
@@ -381,15 +391,15 @@ auth.post('/init-seed', async (c) => {
       { studentId: '2024001', userId: 'student1', name: '张三', email: 'zhangsan@student.jsa.com', teacherId: 'teacher_1', advisorId: 'teacher_6', birthday: '2001-05-12', highSchool: '北京十一中学', langSchool: '东京日本语学院', jlpt: 'N1-142', eju: '[{"date":"2025-06","japanese":310,"math":170,"science":145,"total":625}]', english: 'TOEFL 85', pkg: '私塾', pkgEnd: '2026-06-30', tags: '["理科","重点关注"]', subject: '理科', hasAccount: 1 },
       { studentId: '2024002', userId: 'student2', name: '李四', email: 'lisi@student.jsa.com', teacherId: 'teacher_1', advisorId: 'teacher_6', birthday: '2002-01-20', highSchool: '上海外国语学校', langSchool: '大阪日本语学校', jlpt: 'N2-120', eju: '[]', english: '', pkg: '校内考专家 1+2', pkgEnd: '2026-03-31', tags: '["文科"]', subject: '文科', hasAccount: 1 },
       { studentId: '2024003', userId: 'student3', name: '王五', email: 'wangwu@student.jsa.com', teacherId: 'teacher_2', advisorId: 'teacher_7', birthday: '2000-11-03', highSchool: '广州执信中学', langSchool: '京都国际学院', jlpt: 'N1-158', eju: '[{"date":"2025-06","japanese":340,"math":190,"science":160,"total":690}]', english: 'TOEIC 780', pkg: '丁老师规划 1+2+3', pkgEnd: '2027-03-31', tags: '["理科","优秀学生"]', subject: '理科', hasAccount: 1 },
-      { studentId: '2024004', userId: null, name: '赵六', email: '', teacherId: 'teacher_2', advisorId: 'teacher_7', birthday: '2001-08-15', highSchool: '成都七中', langSchool: '名古屋日本语学院', jlpt: 'N2-105', eju: '[{"date":"2025-06","japanese":280,"math":120,"science":0,"total":400}]', english: '', pkg: '校内考专家 1+2+3', pkgEnd: '2026-09-30', tags: '["文科","需加强"]', subject: '文科', hasAccount: 0 },
-      { studentId: '2024005', userId: null, name: '刘七', email: '', teacherId: 'teacher_3', advisorId: 'teacher_6', birthday: '2000-03-28', highSchool: '杭州学军中学', langSchool: '早稻田日本语学校', jlpt: 'N1-170', eju: '[{"date":"2025-06","japanese":355,"math":195,"science":170,"total":720}]', english: 'TOEFL 95', pkg: '丁老师规划 1+2', pkgEnd: '2026-08-31', tags: '["理科","优秀学生","即将毕业"]', subject: '理科', hasAccount: 0 },
-      { studentId: '2024006', userId: null, name: '孙八', email: '', teacherId: 'teacher_1', advisorId: '', birthday: '2003-06-10', highSchool: '武汉外国语学校', langSchool: '横滨国际学院', jlpt: 'N3', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["文科","新生"]', subject: '文科', hasAccount: 0 },
-      { studentId: '2024007', userId: null, name: '周九', email: '', teacherId: 'teacher_4', advisorId: 'teacher_7', birthday: '2001-12-25', highSchool: '深圳实验学校', langSchool: '东京外语学院', jlpt: 'N1-135', eju: '[{"date":"2025-06","japanese":320,"math":165,"science":140,"total":625}]', english: 'IELTS 6.5', pkg: '私塾', pkgEnd: '2026-05-31', tags: '["理科"]', subject: '理科', hasAccount: 0 },
-      { studentId: '2024008', userId: null, name: '吴十', email: '', teacherId: 'teacher_4', advisorId: '', birthday: '2003-09-01', highSchool: '南京外国语学校', langSchool: '神户日本语学校', jlpt: '', eju: '[]', english: '', pkg: '校内考专家 1+2', pkgEnd: '2026-12-31', tags: '["文科","新生","需加强"]', subject: '文科', hasAccount: 0 },
-      { studentId: '2024009', userId: null, name: '郑十一', email: '', teacherId: 'teacher_2', advisorId: 'teacher_6', birthday: '1999-07-14', highSchool: '重庆南开中学', langSchool: '大阪国际学院', jlpt: 'N1-165', eju: '[{"date":"2025-06","japanese":350,"math":185,"science":165,"total":700}]', english: 'TOEFL 100', pkg: '丁老师规划 1+2+3', pkgEnd: '2025-12-31', tags: '["理科","已合格"]', subject: '理科', hasAccount: 0 },
-      { studentId: '2024010', userId: null, name: '冯十二', email: '', teacherId: 'teacher_5', advisorId: 'teacher_7', birthday: '2002-04-22', highSchool: '天津南开中学', langSchool: '东京中央日本语学校', jlpt: 'N2-115', eju: '[{"date":"2025-06","japanese":290,"math":0,"science":0,"total":290}]', english: 'TOEIC 650', pkg: '私塾', pkgEnd: '2026-04-30', tags: '["文科"]', subject: '文科', hasAccount: 0 },
-      { studentId: '2024011', userId: null, name: '陈十三', email: '', teacherId: 'teacher_3', advisorId: '', birthday: '2002-10-08', highSchool: '西安高新一中', langSchool: '京都文化日本语学校', jlpt: 'N2-98', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["理科","新生"]', subject: '理科', hasAccount: 0 },
-      { studentId: '2024012', userId: null, name: '林十四', email: '', teacherId: '', advisorId: '', birthday: '2003-02-14', highSchool: '厦门外国语学校', langSchool: '', jlpt: '', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '[]', subject: '', hasAccount: 0 },
+      { studentId: '2024004', userId: 'student4', name: '赵六', email: 'zhaoliu@student.jsa.com', teacherId: 'teacher_2', advisorId: 'teacher_7', birthday: '2001-08-15', highSchool: '成都七中', langSchool: '名古屋日本语学院', jlpt: 'N2-105', eju: '[{"date":"2025-06","japanese":280,"math":120,"science":0,"total":400}]', english: '', pkg: '校内考专家 1+2+3', pkgEnd: '2026-09-30', tags: '["文科","需加强"]', subject: '文科', hasAccount: 1 },
+      { studentId: '2024005', userId: 'student5', name: '刘七', email: 'liuqi@student.jsa.com', teacherId: 'teacher_3', advisorId: 'teacher_6', birthday: '2000-03-28', highSchool: '杭州学军中学', langSchool: '早稻田日本语学校', jlpt: 'N1-170', eju: '[{"date":"2025-06","japanese":355,"math":195,"science":170,"total":720}]', english: 'TOEFL 95', pkg: '丁老师规划 1+2', pkgEnd: '2026-08-31', tags: '["理科","优秀学生","即将毕业"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024006', userId: 'student6', name: '孙八', email: 'sunba@student.jsa.com', teacherId: 'teacher_1', advisorId: 'teacher_6', birthday: '2003-06-10', highSchool: '武汉外国语学校', langSchool: '横滨国际学院', jlpt: 'N3', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["文科","新生"]', subject: '文科', hasAccount: 1 },
+      { studentId: '2024007', userId: 'student7', name: '周九', email: 'zhoujiu@student.jsa.com', teacherId: 'teacher_4', advisorId: 'teacher_7', birthday: '2001-12-25', highSchool: '深圳实验学校', langSchool: '东京外语学院', jlpt: 'N1-135', eju: '[{"date":"2025-06","japanese":320,"math":165,"science":140,"total":625}]', english: 'IELTS 6.5', pkg: '私塾', pkgEnd: '2026-05-31', tags: '["理科"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024008', userId: 'student8', name: '吴十', email: 'wushi@student.jsa.com', teacherId: 'teacher_4', advisorId: 'teacher_7', birthday: '2003-09-01', highSchool: '南京外国语学校', langSchool: '神户日本语学校', jlpt: '', eju: '[]', english: '', pkg: '校内考专家 1+2', pkgEnd: '2026-12-31', tags: '["文科","新生","需加强"]', subject: '文科', hasAccount: 1 },
+      { studentId: '2024009', userId: 'student9', name: '郑十一', email: 'zheng11@student.jsa.com', teacherId: 'teacher_2', advisorId: 'teacher_6', birthday: '1999-07-14', highSchool: '重庆南开中学', langSchool: '大阪国际学院', jlpt: 'N1-165', eju: '[{"date":"2025-06","japanese":350,"math":185,"science":165,"total":700}]', english: 'TOEFL 100', pkg: '丁老师规划 1+2+3', pkgEnd: '2025-12-31', tags: '["理科","已合格"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024010', userId: 'student10', name: '冯十二', email: 'feng12@student.jsa.com', teacherId: 'teacher_5', advisorId: 'teacher_7', birthday: '2002-04-22', highSchool: '天津南开中学', langSchool: '东京中央日本语学校', jlpt: 'N2-115', eju: '[{"date":"2025-06","japanese":290,"math":0,"science":0,"total":290}]', english: 'TOEIC 650', pkg: '私塾', pkgEnd: '2026-04-30', tags: '["文科"]', subject: '文科', hasAccount: 1 },
+      { studentId: '2024011', userId: 'student11', name: '陈十三', email: 'chen13@student.jsa.com', teacherId: 'teacher_3', advisorId: 'teacher_6', birthday: '2002-10-08', highSchool: '西安高新一中', langSchool: '京都文化日本语学校', jlpt: 'N2-98', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '["理科","新生"]', subject: '理科', hasAccount: 1 },
+      { studentId: '2024012', userId: 'student12', name: '林十四', email: 'lin14@student.jsa.com', teacherId: 'teacher_5', advisorId: '', birthday: '2003-02-14', highSchool: '厦门外国语学校', langSchool: '', jlpt: '', eju: '[]', english: '', pkg: '', pkgEnd: '', tags: '[]', subject: '', hasAccount: 1 },
     ]
 
     // 批量哈希密码并插入用户
@@ -439,13 +449,109 @@ auth.post('/init-seed', async (c) => {
 
     await db.batch([...userInserts, ...studentInserts, ...teacherInserts])
 
+    // ─── 追加 schools 测试数据 ───
+    const schoolsToCreate = [
+      { studentId: '2024001', name: '东京大学', nameJa: '東京大学', type: '国立', location: '东京', program: '工学研究科', status: 'preparing', appStart: '2026-07-01', appEnd: '2026-08-15', examDate: '2026-09-20', resultDate: '2026-10-15' },
+      { studentId: '2024001', name: '京都大学', nameJa: '京都大学', type: '国立', location: '京都', program: '理学研究科', status: 'preparing', appStart: '2026-06-15', appEnd: '2026-07-31', examDate: '2026-09-10', resultDate: '2026-10-01' },
+      { studentId: '2024002', name: '早稻田大学', nameJa: '早稲田大学', type: '私立', location: '东京', program: '政治经济学研究科', status: 'applied', appStart: '2026-05-01', appEnd: '2026-06-30', examDate: '2026-08-20', resultDate: '2026-09-15' },
+      { studentId: '2024003', name: '大阪大学', nameJa: '大阪大学', type: '国立', location: '大阪', program: '工学研究科', status: 'admitted', appStart: '2026-04-01', appEnd: '2026-05-15', examDate: '2026-06-20', resultDate: '2026-07-10' },
+      { studentId: '2024003', name: '东北大学', nameJa: '東北大学', type: '国立', location: '仙台', program: '理学研究科', status: 'preparing', appStart: '2026-07-15', appEnd: '2026-08-31', examDate: '2026-10-05', resultDate: '2026-11-01' },
+      { studentId: '2024005', name: '东京工业大学', nameJa: '東京工業大学', type: '国立', location: '东京', program: '工学院', status: 'submitted', appStart: '2026-05-15', appEnd: '2026-06-30', examDate: '2026-08-15', resultDate: '2026-09-20' },
+      { studentId: '2024005', name: '名古屋大学', nameJa: '名古屋大学', type: '国立', location: '名古屋', program: '工学研究科', status: 'preparing', appStart: '2026-07-01', appEnd: '2026-08-15', examDate: '2026-09-25', resultDate: '2026-10-20' },
+      { studentId: '2024007', name: '九州大学', nameJa: '九州大学', type: '国立', location: '福冈', program: '理学研究科', status: 'preparing', appStart: '2026-08-01', appEnd: '2026-09-15', examDate: '2026-10-20', resultDate: '2026-11-15' },
+      { studentId: '2024009', name: '东京大学', nameJa: '東京大学', type: '国立', location: '东京', program: '理学系研究科', status: 'admitted', appStart: '2025-07-01', appEnd: '2025-08-15', examDate: '2025-09-20', resultDate: '2025-10-15' },
+      { studentId: '2024010', name: '庆应义塾大学', nameJa: '慶應義塾大学', type: '私立', location: '东京', program: '文学研究科', status: 'preparing', appStart: '2026-06-01', appEnd: '2026-07-15', examDate: '2026-08-25', resultDate: '2026-09-20' },
+    ]
+    const schoolInserts = schoolsToCreate.map(s =>
+      db.prepare(
+        `INSERT INTO schools (student_id, name, name_ja, type, location, program, status,
+         application_start_date, application_end_date, exam_date, result_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(s.studentId, s.name, s.nameJa, s.type, s.location, s.program, s.status,
+        s.appStart, s.appEnd, s.examDate, s.resultDate)
+    )
+    await db.batch(schoolInserts)
+
+    // ─── 追加 events 测试数据 ───
+    const eventsToCreate = [
+      { studentId: '2024001', type: 'deadline', title: '东京大学出愿截止', date: '2026-08-15', category: 'application', completed: 0 },
+      { studentId: '2024001', type: 'exam', title: '东京大学入学考试', date: '2026-09-20', category: 'exam', completed: 0 },
+      { studentId: '2024001', type: 'deadline', title: '京都大学出愿截止', date: '2026-07-31', category: 'application', completed: 0 },
+      { studentId: '2024002', type: 'exam', title: '早稻田大学面试', date: '2026-08-20', category: 'interview', completed: 0 },
+      { studentId: '2024003', type: 'deadline', title: '东北大学出愿截止', date: '2026-08-31', category: 'application', completed: 0 },
+      { studentId: '2024005', type: 'exam', title: '东京工业大学校内考', date: '2026-08-15', category: 'exam', completed: 0 },
+      { studentId: '2024005', type: 'deadline', title: '名古屋大学出愿截止', date: '2026-08-15', category: 'application', completed: 0 },
+      { studentId: '2024007', type: 'deadline', title: '九州大学出愿截止', date: '2026-09-15', category: 'application', completed: 0 },
+      { studentId: '2024010', type: 'deadline', title: '庆应大学出愿截止', date: '2026-07-15', category: 'application', completed: 0 },
+      { studentId: '2024001', type: 'other', title: '提交JLPT成绩单', date: '2026-06-30', category: 'material', completed: 1 },
+      { studentId: '2024003', type: 'other', title: '大阪大学合格通知确认', date: '2026-07-10', category: 'result', completed: 1 },
+    ]
+    const eventInserts = eventsToCreate.map(e =>
+      db.prepare(
+        `INSERT INTO events (student_id, type, title, date, category, completed)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(e.studentId, e.type, e.title, e.date, e.category, e.completed)
+    )
+    await db.batch(eventInserts)
+
+    // ─── 追加 materials 测试数据 ───
+    const materialsToCreate = [
+      // 通用材料
+      { studentId: '2024001', item: '护照复印件', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024001', item: '在留资格认定证明书', type: 'general', completed: 0, schoolId: null },
+      { studentId: '2024001', item: 'JLPT成绩证明', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024001', item: 'EJU成绩证明', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024001', item: 'TOEFL成绩单', type: 'general', completed: 0, schoolId: null },
+      { studentId: '2024002', item: '护照复印件', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024002', item: 'JLPT成绩证明', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024003', item: '护照复印件', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024003', item: 'JLPT成绩证明', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024003', item: 'TOEIC成绩单', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024005', item: '护照复印件', type: 'general', completed: 1, schoolId: null },
+      { studentId: '2024005', item: 'TOEFL成绩单', type: 'general', completed: 1, schoolId: null },
+    ]
+    // 查询刚插入的 school ids 以关联 school-specific 材料
+    const schoolRows = await db.prepare('SELECT id, student_id, name FROM schools').all()
+    const schoolMap = {}
+    schoolRows.results.forEach(s => { schoolMap[`${s.student_id}_${s.name}`] = s.id })
+
+    // 学校特定材料
+    const schoolMaterials = [
+      { studentId: '2024001', schoolName: '东京大学', item: '研究计划书', completed: 0 },
+      { studentId: '2024001', schoolName: '东京大学', item: '推荐信（2封）', completed: 0 },
+      { studentId: '2024001', schoolName: '京都大学', item: '研究计划书', completed: 0 },
+      { studentId: '2024001', schoolName: '京都大学', item: '毕业证明翻译件', completed: 0 },
+      { studentId: '2024002', schoolName: '早稻田大学', item: '志望理由书', completed: 1 },
+      { studentId: '2024002', schoolName: '早稻田大学', item: '研究计划概要', completed: 0 },
+      { studentId: '2024003', schoolName: '东北大学', item: '研究计划书', completed: 0 },
+      { studentId: '2024005', schoolName: '东京工业大学', item: '研究计划书', completed: 1 },
+      { studentId: '2024005', schoolName: '东京工业大学', item: '推荐信', completed: 1 },
+      { studentId: '2024005', schoolName: '名古屋大学', item: '研究计划书', completed: 0 },
+    ]
+    const allMaterialInserts = [
+      ...materialsToCreate.map(m =>
+        db.prepare(
+          `INSERT INTO materials (student_id, item, type, completed, school_id)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(m.studentId, m.item, m.type, m.completed ? 1 : 0, m.schoolId)
+      ),
+      ...schoolMaterials.map(m => {
+        const sid = schoolMap[`${m.studentId}_${m.schoolName}`] || null
+        return db.prepare(
+          `INSERT INTO materials (student_id, item, type, completed, school_id)
+           VALUES (?, ?, 'school', ?, ?)`
+        ).bind(m.studentId, m.item, m.completed ? 1 : 0, sid)
+      })
+    ]
+    await db.batch(allMaterialInserts)
+
     return c.json({
       success: true,
-      message: `初始化完成：创建了 ${usersToCreate.length} 个用户，${studentsToCreate.length} 个学生记录`,
+      message: `初始化完成：创建了 ${usersToCreate.length} 个用户，${studentsToCreate.length} 个学生记录，${schoolsToCreate.length} 所学校，${eventsToCreate.length} 个事件，${materialsToCreate.length + schoolMaterials.length} 个材料`,
       accounts: {
         admin: 'admin@jsa.com / admin123',
-        teachers: ['wang@school.com / wang123', 'li@school.com / li123', 'zhang@school.com / zhang123'],
-        students: ['zhangsan@student.jsa.com / stu2024001', 'lisi@student.jsa.com / stu2024002', 'wangwu@student.jsa.com / stu2024003'],
+        teachers: ['wang@school.com / wang123', 'li@school.com / li123', 'zhang@school.com / zhang123', 'chen@school.com / chen123', 'zhao@school.com / zhao123', 'gao@school.com / gao123', 'lin@school.com / lin123'],
+        students: '所有12个学生: {studentId}@student.jsa.com / stu{studentId} (如 zhangsan@student.jsa.com / stu2024001)',
       }
     })
   } catch (error) {

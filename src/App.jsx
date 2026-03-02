@@ -98,6 +98,9 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [schoolDetailModal, setSchoolDetailModal] = useState(null); // 学生点击学校卡片弹窗
   const [showSidebarUserMenu, setShowSidebarUserMenu] = useState(false); // 侧边栏头像菜单
 
+  // AccountManagementModal 的加载标志（提升到 MainApp 级别，防止组件重建时 ref 重置）
+  const accountLoadedRef = React.useRef(false);
+
   // 学生数据存储（按学生ID隔离）- 从 API 加载，不再用 localStorage
   const [studentData, setStudentData] = useState({});
   const [studentDataLoading, setStudentDataLoading] = useState(false);
@@ -441,6 +444,27 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     const hasValidStudent = studentList.some(s => s.studentId === currentStudent.studentId);
     return hasValidStudent;
   }, [user, studentList, currentStudent]);
+
+  // 当 studentList 加载完成后，验证 currentStudent 是否有效
+  // 如果 currentStudent 不在 studentList 中（如切换账号后），自动重置到列表第一个学生
+  useEffect(() => {
+    if (user.role === 'student' || studentList.length === 0) return;
+    const isValid = studentList.some(s => s.studentId === currentStudent.studentId);
+    if (!isValid && studentList.length > 0) {
+      const first = studentList[0];
+      const newStudent = {
+        id: first.id,
+        name: first.name,
+        studentId: first.studentId,
+        email: first.email || '',
+        avatar: first.avatar || '👨‍🎓',
+        teacherId: first.teacherId || '',
+        subject: first.subject || '',
+      };
+      setCurrentStudent(newStudent);
+      localStorage.setItem('currentStudent', JSON.stringify(newStudent));
+    }
+  }, [studentList, user.role]);
 
   // 管理员公共视图组件（不带学生时显示统计和公共信息）
   const AdminPublicView = ({ type, onNavigate, onSelectStudent }) => (
@@ -2430,14 +2454,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     const [accountsLoading, setAccountsLoading] = useState(true);
 
     // 打开弹窗时从 API 加载所有账号（仅管理员可用）
-    const loadedRef = React.useRef(false);
     useEffect(() => {
       // 防止重复加载 + 非管理员不请求
-      if (loadedRef.current || user?.role !== 'admin') {
+      if (accountLoadedRef.current || user?.role !== 'admin') {
         setAccountsLoading(false);
         return;
       }
-      loadedRef.current = true;
+      accountLoadedRef.current = true;
       const loadAccounts = async () => {
         try {
           setAccountsLoading(true);

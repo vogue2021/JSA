@@ -50,6 +50,11 @@ async function apiRequest(endpoint, options = {}) {
   };
   const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
   if (!response.ok) {
+    // 401 = token 失效/过期，自动清除登录状态
+    if (response.status === 401) {
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
+    }
     const err = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(err.message || `HTTP ${response.status}`);
   }
