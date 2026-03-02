@@ -131,13 +131,36 @@ const TeacherManagement = () => {
   };
 
   const handleSave = async () => {
-    // 更新 allUsers 中的名字和邮箱
+    // 先调用 API 写库，成功后再更新本地状态
+    try {
+      await teachersAPI.update(selectedTeacher.id, {
+        name: editForm.name,
+        email: editForm.email,
+        department: editForm.department,
+        subject: editForm.subject,
+        permissions: editForm.permissions,
+        gender: editForm.gender,
+        birthday: editForm.birthday,
+        phone: editForm.phone,
+        email_contact: editForm.email,
+        address: editForm.address,
+        education: editForm.education,
+        hire_date: editForm.joinDate,
+        employment_type: editForm.employmentType,
+        photo: editForm.photo,
+      });
+    } catch (err) {
+      console.error('保存老师信息失败:', err);
+      if (showNotification) showNotification('保存失败，请重试');
+      return; // 不更新本地状态，避免假成功
+    }
+
+    // API 成功后才更新本地状态
     setAllUsers(prev => prev.map(u =>
       u.teacherId === selectedTeacher.teacherId
         ? { ...u, name: editForm.name, email: editForm.email }
         : u
     ));
-    // 保存详细信息到本地
     const newDetails = {
       ...teacherDetails,
       [selectedTeacher.teacherId]: {
@@ -159,36 +182,22 @@ const TeacherManagement = () => {
     };
     saveTeacherDetails(newDetails);
 
-    // 同步到 API
-    try {
-      await teachersAPI.update(selectedTeacher.id, {
-        name: editForm.name,
-        email: editForm.email,
-        department: editForm.department,
-        subject: editForm.subject,
-        permissions: editForm.permissions,
-        gender: editForm.gender,
-        birthday: editForm.birthday,
-        phone: editForm.phone,
-        email_contact: editForm.email,
-        address: editForm.address,
-        education: editForm.education,
-        hire_date: editForm.joinDate,
-        employment_type: editForm.employmentType,
-        photo: editForm.photo,
-      });
-    } catch (err) {
-      console.warn('同步老师信息到 API 失败:', err);
-    }
-
     setIsEditing(false);
     if (showNotification) showNotification('老师信息已保存');
-    // 通知全局权限刷新
     if (refreshPermissions) refreshPermissions();
     setSelectedTeacher(prev => ({ ...prev, name: editForm.name, email: editForm.email }));
   };
 
-  const handleDelete = (teacher) => {
+  const handleDelete = async (teacher) => {
+    // 先调用 API 删除，成功后再更新本地状态
+    try {
+      await teachersAPI.delete(teacher.id);
+    } catch (err) {
+      console.error('删除老师失败:', err);
+      if (showNotification) showNotification(`删除失败: ${err.message || '请重试'}`);
+      setShowDeleteConfirm(null);
+      return;
+    }
     setAllUsers(prev => prev.filter(u => u.id !== teacher.id));
     const newDetails = { ...teacherDetails };
     delete newDetails[teacher.teacherId];
@@ -234,7 +243,7 @@ const TeacherManagement = () => {
   const [addForm, setAddForm] = useState({ name: '', email: '', password: '', confirmPassword: '', department: '', subject: '文科' });
   const [addErrors, setAddErrors] = useState({});
 
-  const handleAddTeacher = () => {
+  const handleAddTeacher = async () => {
     const errors = {};
     if (!addForm.name) errors.name = '请输入姓名';
     if (!addForm.email) errors.email = '请输入邮箱';
@@ -246,32 +255,47 @@ const TeacherManagement = () => {
 
     if (Object.keys(errors).length > 0) { setAddErrors(errors); return; }
 
-    const newTeacherId = `teacher_${Date.now()}`;
-    setAllUsers(prev => [...prev, {
-      id: `teacher${prev.length + 1}`,
-      email: addForm.email,
-      password: addForm.password,
-      role: 'teacher',
-      teacherId: newTeacherId,
-      name: addForm.name,
-      createdAt: new Date().toISOString()
-    }]);
-    // 同步保存部门和学科信息到teacherDetails
-    if (addForm.department || addForm.subject) {
-      const newDetails = {
-        ...teacherDetails,
-        [newTeacherId]: {
-          department: addForm.department,
-          subject: addForm.subject,
-          permissions: ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'],
-        }
+    // 调用 API 创建老师，真正写入数据库
+    try {
+      const created = await teachersAPI.create({
+        name: addForm.name,
+        email: addForm.email,
+        password: addForm.password,
+        department: addForm.department,
+        subject: addForm.subject,
+      });
+
+      // API 成功后更新本地状态
+      const newTeacher = {
+        id: created?.id || `teacher${Date.now()}`,
+        email: addForm.email,
+        role: 'teacher',
+        teacherId: created?.teacher_id || `teacher_${Date.now()}`,
+        name: addForm.name,
+        createdAt: new Date().toISOString()
       };
-      saveTeacherDetails(newDetails);
+      setAllUsers(prev => [...prev, newTeacher]);
+
+      if (addForm.department || addForm.subject) {
+        const newDetails = {
+          ...teacherDetails,
+          [newTeacher.teacherId]: {
+            department: addForm.department,
+            subject: addForm.subject,
+            permissions: created?.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'],
+          }
+        };
+        saveTeacherDetails(newDetails);
+      }
+
+      setShowAddModal(false);
+      setAddForm({ name: '', email: '', password: '', confirmPassword: '', department: '', subject: '文科' });
+      setAddErrors({});
+      if (showNotification) showNotification(`老师账号 ${addForm.name} 已创建`);
+    } catch (err) {
+      console.error('创建老师失败:', err);
+      setAddErrors({ name: err.message || '创建失败，请重试' });
     }
-    setShowAddModal(false);
-    setAddForm({ name: '', email: '', password: '', confirmPassword: '', department: '', subject: '文科' });
-    setAddErrors({});
-    if (showNotification) showNotification(`老师账号 ${addForm.name} 已创建`);
   };
 
   return (

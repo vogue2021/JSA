@@ -183,6 +183,12 @@ export const teachersAPI = {
   getStudents: async (id) => {
     return await apiRequest(`/teachers/${id}/students`);
   },
+  create: async (data) => {
+    return await apiRequest('/teachers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
   update: async (id, data) => {
     return await apiRequest(`/teachers/${id}`, {
       method: 'PUT',

@@ -170,29 +170,45 @@ schoolDatabase.post('/batch', async (c) => {
   }
 
   const db = c.env.DB
-  let imported = 0
+  const results = { success: [], failed: [] }
 
-  await db.batch(schools.map(s =>
-    db.prepare(`
-      INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
-        acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      s.name, s.nameJa || s.name_ja || '',
-      s.type || '私立', s.location || '',
-      JSON.stringify(s.programs || []),
-      s.requirements || '', s.notes || '',
-      s.acceptanceRate || s.acceptance_rate || '',
-      s.difficulty || '', s.ranking || 0,
-      s.xuexinCert || s.xuexin_cert || '不确定',
-      s.overseasCert || s.overseas_cert || '不确定',
-      JSON.stringify(s.importantDates || s.important_dates || []),
-      s.requirementsUrl || s.requirements_url || ''
-    )
-  ))
-  imported = schools.length
+  for (let i = 0; i < schools.length; i++) {
+    const s = schools[i]
+    if (!s.name) {
+      results.failed.push({ index: i, name: s.name || '(空)', error: '学校名称为必填' })
+      continue
+    }
+    try {
+      await db.prepare(`
+        INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
+          acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        s.name, s.nameJa || s.name_ja || '',
+        s.type || '私立', s.location || '',
+        JSON.stringify(s.programs || []),
+        s.requirements || '', s.notes || '',
+        s.acceptanceRate || s.acceptance_rate || '',
+        s.difficulty || '', s.ranking || 0,
+        s.xuexinCert || s.xuexin_cert || '不确定',
+        s.overseasCert || s.overseas_cert || '不确定',
+        JSON.stringify(s.importantDates || s.important_dates || []),
+        s.requirementsUrl || s.requirements_url || ''
+      ).run()
+      results.success.push({ index: i, name: s.name })
+    } catch (err) {
+      results.failed.push({ index: i, name: s.name, error: err.message || '写入失败' })
+    }
+  }
 
-  return c.json({ success: true, message: `成功导入 ${imported} 所学校`, count: imported })
+  const imported = results.success.length
+  return c.json({
+    success: true,
+    message: `成功导入 ${imported} 所学校${results.failed.length > 0 ? `，${results.failed.length} 条失败` : ''}`,
+    count: imported,
+    total: schools.length,
+    failed: results.failed
+  })
 })
 
 export default schoolDatabase

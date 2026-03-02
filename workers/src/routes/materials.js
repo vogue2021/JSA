@@ -218,6 +218,39 @@ materials.delete('/:id', async (c) => {
   return c.json({ success: true, message: '材料删除成功' })
 })
 
+// ─── 更新材料完成状态（前端 updateStatus 调用）─────────────────────────────────
+materials.put('/:id/status', async (c) => {
+  const user = c.get('user')
+  const { id } = c.req.param()
+  const db = c.env.DB
+
+  const material = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
+  if (!material) return c.json({ success: false, message: '材料不存在' }, 404)
+
+  if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
+    return c.json({ success: false, message: '无权操作该材料' }, 403)
+  }
+  if (isTeacher(user)) {
+    const student = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(material.student_id).first()
+    if (student?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权操作该材料' }, 403)
+  }
+
+  const { completed, checked_by } = await c.req.json().catch(() => ({}))
+  const newCompleted = completed ? 1 : 0
+
+  await db.prepare(`
+    UPDATE materials SET completed = ?, checked_by = ?, checked_at = ? WHERE id = ?
+  `).bind(
+    newCompleted,
+    newCompleted ? (checked_by || null) : null,
+    newCompleted ? new Date().toISOString().split('T')[0] : null,
+    id
+  ).run()
+
+  const updatedMaterial = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(id).first()
+  return c.json({ success: true, message: '材料状态更新成功', data: updatedMaterial })
+})
+
 // ─── 切换材料完成状态 ─────────────────────────────────────────────────────────
 materials.patch('/:id/toggle', async (c) => {
   const user = c.get('user')

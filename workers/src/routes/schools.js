@@ -151,6 +151,7 @@ schools.post('/', async (c) => {
     return c.json({ success: false, message: '学生不存在' }, 404)
   }
 
+  // 先插入学校获取 ID
   await db.prepare(`
     INSERT INTO schools (student_id, name, name_ja, type, program, status,
       application_start_date, application_end_date, exam_date, result_date,
@@ -166,42 +167,49 @@ schools.post('/', async (c) => {
     xuexin_cert || '不确定', overseas_cert || '不确定'
   ).run()
 
-  // 获取刚创建的学校记录
   const newSchool = await db.prepare(
     'SELECT * FROM schools WHERE student_id = ? ORDER BY id DESC LIMIT 1'
   ).bind(student_id).first()
   const schoolId = newSchool?.id
-  // 自动创建时间线事件
-  const eventInserts = []
+
+  // 使用 db.batch 事务同时创建关联的事件和材料，保证原子性
+  const batchInserts = []
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
     student_id, school_id: schoolId, type: 'deadline',
     title, date, category, urgent: urgent ? 1 : 0, notes, completed: 0,
     days_left: Math.ceil((new Date(date) - new Date()) / 86400000)
   })
 
+  const eventInserts = []
   if (application_start_date) eventInserts.push(makeEvent(`${name} 出愿开始`, application_start_date, '出愿', false, `${program} 出愿开始，请准备材料`))
   if (application_end_date) eventInserts.push(makeEvent(`${name} 出愿截止`, application_end_date, '出愿', true, `${program} 出愿截止，务必在此之前提交`))
   if (exam_date) eventInserts.push(makeEvent(`${name} 入学考试`, exam_date, '考试', false, `${program} 入学考试`))
   if (result_date) eventInserts.push(makeEvent(`${name} 合格发表`, result_date, '合格发表', false, `${program} 合格发表日`))
 
-  if (eventInserts.length > 0) {
-    await db.batch(eventInserts.map(e =>
+  eventInserts.forEach(e => {
+    batchInserts.push(
       db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
-    ))
+    )
+  })
+
+  if (materials && materials.length > 0) {
+    materials.forEach(mat => {
+      batchInserts.push(
+        db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
+          VALUES (?, ?, ?, ?, ?, ?, 0)`)
+          .bind(
+            student_id, schoolId, mat.name, 'school',
+            mat.deadline || application_end_date, mat.url || null
+          )
+      )
+    })
   }
 
-  // 自动创建材料记录
-  if (materials && materials.length > 0) {
-    await db.batch(materials.map(mat =>
-      db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
-        VALUES (?, ?, ?, ?, ?, ?, 0)`)
-        .bind(
-          student_id, schoolId, mat.name, 'school',
-          mat.deadline || application_end_date, mat.url || null
-        )
-    ))
+  // 一次性原子写入所有关联记录
+  if (batchInserts.length > 0) {
+    await db.batch(batchInserts)
   }
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(schoolId).first()
@@ -254,9 +262,7 @@ schools.put('/:id', async (c) => {
     updated.website, updated.xuexin_cert, updated.overseas_cert, id
   ).run()
 
-  // 重建关联事件
-  await db.prepare('DELETE FROM events WHERE school_id = ?').bind(id).run()
-
+  // 使用 db.batch 事务原子性地：删除旧事件 + 重建新事件（避免先删后建中途失败丢数据）
   const student_id = school.student_id
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
     student_id, school_id: id, type: 'deadline',
@@ -270,13 +276,17 @@ schools.put('/:id', async (c) => {
   if (updated.exam_date) eventInserts.push(makeEvent(`${updated.name} 入学考试`, updated.exam_date, '考试', false, `${updated.program} 入学考试`))
   if (updated.result_date) eventInserts.push(makeEvent(`${updated.name} 合格发表`, updated.result_date, '合格发表', false, `${updated.program} 合格发表日`))
 
-  if (eventInserts.length > 0) {
-    await db.batch(eventInserts.map(e =>
+  const batchStatements = [
+    db.prepare('DELETE FROM events WHERE school_id = ?').bind(id)
+  ]
+  eventInserts.forEach(e => {
+    batchStatements.push(
       db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
-    ))
-  }
+    )
+  })
+  await db.batch(batchStatements)
 
   const updatedSchool = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
 

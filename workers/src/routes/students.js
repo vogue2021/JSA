@@ -187,7 +187,8 @@ students.post('/', async (c) => {
     body.birthday || '', body.high_school || '', body.language_school || '',
     body.jlpt_score || '', body.english_score || '',
     JSON.stringify(body.eju_scores || []),
-    body.follow_up_notes || '', body.package_name || '', body.package_end_date || '',
+    typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes || []),
+    body.package_name || '', body.package_end_date || '',
     JSON.stringify(body.tags || []), body.subject || ''
   ).run()
 

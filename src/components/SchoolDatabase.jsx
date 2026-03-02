@@ -136,13 +136,8 @@ const SchoolDatabase = () => {
       }
     } catch (err) {
       console.error('保存学校信息失败:', err);
-      // 降级到本地保存
-      if (editingSchool) {
-        setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? { ...formData, id: editingSchool.id } : s));
-      } else {
-        setSchoolDb(prev => [...prev, { ...formData, id: Date.now() }]);
-      }
-      if (showNotification) showNotification(editingSchool ? '学校信息已更新（本地）' : '学校已添加（本地）');
+      if (showNotification) showNotification(`保存失败: ${err.message || '请重试'}`);
+      return; // 不降级到本地，避免数据源不一致
     }
     setShowAddModal(false);
   };
@@ -151,11 +146,12 @@ const SchoolDatabase = () => {
     if (window.confirm('确定要删除这个学校信息吗？')) {
       try {
         await schoolDatabaseAPI.delete(id);
+        setSchoolDb(prev => prev.filter(s => s.id !== id));
+        if (showNotification) showNotification('学校信息已删除');
       } catch (err) {
-        console.warn('API 删除失败，仅本地删除:', err);
+        console.error('API 删除失败:', err);
+        if (showNotification) showNotification(`删除失败: ${err.message || '请重试'}`);
       }
-      setSchoolDb(prev => prev.filter(s => s.id !== id));
-      if (showNotification) showNotification('学校信息已删除');
     }
   };
 
@@ -203,17 +199,18 @@ const SchoolDatabase = () => {
           if (showNotification) showNotification('CSV文件为空或格式不正确');
           return;
         }
-        // 尝试通过 API 批量导入
+        // 通过 API 批量导入
         try {
-          await schoolDatabaseAPI.batchImport(parsed);
+          const result = await schoolDatabaseAPI.batchImport(parsed);
           // 重新从 API 加载
           const data = await schoolDatabaseAPI.getAll();
           if (Array.isArray(data)) setSchoolDb(data);
-        } catch {
-          // 降级到本地
-          setSchoolDb(prev => [...prev, ...parsed]);
+          const failCount = result?.failed?.length || 0;
+          if (showNotification) showNotification(`成功导入 ${result?.count || parsed.length} 所学校${failCount > 0 ? `，${failCount} 条失败` : ''}`);
+        } catch (apiErr) {
+          console.error('批量导入 API 失败:', apiErr);
+          if (showNotification) showNotification(`批量导入失败: ${apiErr.message || '请重试'}`);
         }
-        if (showNotification) showNotification(`成功导入 ${parsed.length} 所学校`);
       } catch (err) {
         if (showNotification) showNotification('CSV解析失败，请检查文件格式');
       }

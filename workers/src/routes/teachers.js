@@ -113,6 +113,70 @@ teachers.get('/:id', async (c) => {
   })
 })
 
+// ─── 创建老师（仅管理员）─────────────────────────────────────────────────────
+teachers.post('/', async (c) => {
+  const user = c.get('user')
+  if (!isAdmin(user)) return c.json({ success: false, message: '仅管理员可创建老师账号' }, 403)
+
+  const body = await c.req.json()
+  const { name, email, password } = body
+
+  if (!name || !email || !password) {
+    return c.json({ success: false, message: '姓名、邮箱和密码为必填' }, 400)
+  }
+  if (password.length < 6) {
+    return c.json({ success: false, message: '密码至少6位' }, 400)
+  }
+
+  const db = c.env.DB
+
+  // 检查邮箱是否已存在
+  const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first()
+  if (existingUser) return c.json({ success: false, message: '邮箱已被使用' }, 400)
+
+  // 生成 ID
+  const teacherId = `teacher_${Date.now()}`
+  const userId = `teacher${Date.now()}`
+
+  // 哈希密码（使用 Web Crypto PBKDF2）
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const hash = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256)
+  const combined = new Uint8Array(salt.length + hash.byteLength)
+  combined.set(salt)
+  combined.set(new Uint8Array(hash), salt.length)
+  const hashedPassword = btoa(String.fromCharCode(...combined))
+
+  // 使用事务同时写入 users 和 teachers 表
+  await db.batch([
+    db.prepare(
+      'INSERT INTO users (id, email, password, role, name, teacher_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(userId, email, hashedPassword, 'teacher', name, teacherId),
+    db.prepare(
+      `INSERT INTO teachers (teacher_id, user_id, department, subject, permissions, gender, birthday, phone, email_contact, address, education, hire_date, employment_type, photo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      teacherId, userId,
+      body.department || '', body.subject || '', JSON.stringify(body.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials']),
+      '', '', '', '', '', '', '', '', ''
+    )
+  ])
+
+  const created = await db.prepare(
+    `SELECT u.id, u.name, u.email, u.teacher_id, u.is_active, u.created_at,
+            t.department, t.subject, t.permissions
+     FROM users u LEFT JOIN teachers t ON u.teacher_id = t.teacher_id
+     WHERE u.id = ?`
+  ).bind(userId).first()
+
+  if (created) {
+    created.permissions = (() => { try { return JSON.parse(created.permissions || '[]') } catch { return [] } })()
+  }
+
+  return c.json({ success: true, message: '老师账号创建成功', data: created }, 201)
+})
+
 // ─── 更新老师信息 ─────────────────────────────────────────────────────────────
 teachers.put('/:id', async (c) => {
   const user = c.get('user')
@@ -131,7 +195,10 @@ teachers.put('/:id', async (c) => {
 
   const body = await c.req.json()
 
-  // 更新 users 表基本字段
+  // 使用 db.batch 保证 users + teachers 双表写入原子性
+  const batchStatements = []
+
+  // 构建 users 表更新
   const userFields = []
   const userParams = []
   if (body.name !== undefined) { userFields.push('name = ?'); userParams.push(body.name) }
@@ -142,20 +209,20 @@ teachers.put('/:id', async (c) => {
   if (userFields.length > 0) {
     userFields.push("updated_at = datetime('now')")
     userParams.push(id)
-    await db.prepare(`UPDATE users SET ${userFields.join(', ')} WHERE id = ?`).bind(...userParams).run()
+    batchStatements.push(
+      db.prepare(`UPDATE users SET ${userFields.join(', ')} WHERE id = ?`).bind(...userParams)
+    )
   }
 
-  // 更新 teachers 表扩展字段
+  // 构建 teachers 表更新
   const teacherDetailFields = ['department', 'subject', 'gender', 'birthday', 'phone',
     'email_contact', 'address', 'education', 'hire_date', 'employment_type', 'photo']
   const hasTeacherFields = teacherDetailFields.some(f => body[f] !== undefined) || body.permissions !== undefined
 
   if (hasTeacherFields && teacherUser.teacher_id) {
-    // 检查 teachers 表是否有记录
     const existing = await db.prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?').bind(teacherUser.teacher_id).first()
 
     if (existing) {
-      // 更新
       const tFields = []
       const tParams = []
       teacherDetailFields.forEach(f => {
@@ -167,21 +234,29 @@ teachers.put('/:id', async (c) => {
       }
       if (tFields.length > 0) {
         tParams.push(teacherUser.teacher_id)
-        await db.prepare(`UPDATE teachers SET ${tFields.join(', ')} WHERE teacher_id = ?`).bind(...tParams).run()
+        batchStatements.push(
+          db.prepare(`UPDATE teachers SET ${tFields.join(', ')} WHERE teacher_id = ?`).bind(...tParams)
+        )
       }
     } else {
-      // 插入新记录
-      await db.prepare(
-        `INSERT INTO teachers (teacher_id, user_id, department, subject, permissions, gender, birthday, phone, email_contact, address, education, hire_date, employment_type, photo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        teacherUser.teacher_id, id,
-        body.department || '', body.subject || '', JSON.stringify(body.permissions || []),
-        body.gender || '', body.birthday || '', body.phone || '',
-        body.email_contact || '', body.address || '', body.education || '',
-        body.hire_date || '', body.employment_type || '', body.photo || ''
-      ).run()
+      batchStatements.push(
+        db.prepare(
+          `INSERT INTO teachers (teacher_id, user_id, department, subject, permissions, gender, birthday, phone, email_contact, address, education, hire_date, employment_type, photo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          teacherUser.teacher_id, id,
+          body.department || '', body.subject || '', JSON.stringify(body.permissions || []),
+          body.gender || '', body.birthday || '', body.phone || '',
+          body.email_contact || '', body.address || '', body.education || '',
+          body.hire_date || '', body.employment_type || '', body.photo || ''
+        )
+      )
     }
+  }
+
+  // 原子执行所有语句
+  if (batchStatements.length > 0) {
+    await db.batch(batchStatements)
   }
 
   // 返回更新后的完整数据
@@ -226,7 +301,11 @@ teachers.delete('/:id', async (c) => {
     }, 400)
   }
 
-  await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
+  // 使用事务同时清理 users 和 teachers 表，避免孤儿数据
+  await db.batch([
+    db.prepare('DELETE FROM users WHERE id = ?').bind(id),
+    db.prepare('DELETE FROM teachers WHERE teacher_id = ?').bind(teacher.teacher_id)
+  ])
   return c.json({ success: true, message: '老师账号已删除' })
 })
 
