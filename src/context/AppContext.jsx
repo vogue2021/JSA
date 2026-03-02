@@ -68,6 +68,8 @@ export const AppProvider = ({ children }) => {
   const [studentList, setStudentList] = useState([]);
   // allUsers 仅用于兼容旧代码，实际登录走 API
   const [allUsers, setAllUsers] = useState([]);
+  // teacherList 从 API 获取并缓存到 state（同步可用）
+  const [teacherList, setTeacherList] = useState([]);
 
   // 权限版本（用于触发权限重新计算）
   const [permissionVersion, setPermissionVersion] = useState(0);
@@ -106,13 +108,15 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // 登录后加载学生列表
+  // 登录后加载学生列表 + 老师列表
   useEffect(() => {
     if (!user) {
       setStudentList([]);
+      setTeacherList([]);
       return;
     }
     loadStudentList();
+    loadTeacherList();
   }, [user?.id]);
 
   const loadStudentList = useCallback(async () => {
@@ -158,14 +162,20 @@ export const AppProvider = ({ children }) => {
     localStorage.removeItem('currentStudent');
   }, []);
 
-  const getTeacherList = useCallback(async () => {
+  // 加载老师列表到 state（异步调用，state 同步可读）
+  const loadTeacherList = useCallback(async () => {
     try {
       const data = await apiRequest('/teachers');
-      return Array.isArray(data) ? data : [];
+      setTeacherList(Array.isArray(data) ? data : []);
     } catch {
-      return [];
+      setTeacherList([]);
     }
   }, []);
+
+  // getTeacherList 同步返回当前缓存的老师列表（非 async）
+  const getTeacherList = useCallback(() => {
+    return teacherList;
+  }, [teacherList]);
 
   // 提供一个方法让 TeacherManagement 可以通知权限更新
   const refreshPermissions = useCallback(() => {
@@ -199,6 +209,7 @@ export const AppProvider = ({ children }) => {
     allUsers, setAllUsers,          // 保留兼容性，但不再是主要数据源
     studentList, setStudentList,
     loadStudentList,                // 暴露刷新方法
+    loadTeacherList,                // 暴露老师列表刷新方法
     globalLoading, setGlobalLoading,
     globalError, setGlobalError,
     notification, showNotification,
@@ -206,9 +217,9 @@ export const AppProvider = ({ children }) => {
     getTeacherList,
     hasPermission, refreshPermissions,
     apiRequest,                     // 暴露通用请求方法
-  }), [user, allUsers, studentList, globalLoading, globalError, notification,
+  }), [user, allUsers, studentList, teacherList, globalLoading, globalError, notification,
        showNotification, handleLogin, handleLogout, getTeacherList,
-       hasPermission, refreshPermissions, loadStudentList]);
+       hasPermission, refreshPermissions, loadStudentList, loadTeacherList]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

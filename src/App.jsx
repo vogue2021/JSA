@@ -336,8 +336,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   }, []); // 只在MainApp首次挂载时触发一次
 
 
-  // 老师列表 (动态从allUsers中获取)
+  // 老师列表: 优先使用 AppContext 中从 API 加载的 teacherList，兼容 allUsers
+  const { getTeacherList: getTeacherListFromCtx, loadTeacherList: refreshTeacherList } = useApp();
   const getTeacherList = () => {
+    const apiTeachers = getTeacherListFromCtx();
+    if (apiTeachers && apiTeachers.length > 0) {
+      return apiTeachers.map(t => ({
+        id: t.teacher_id || t.teacherId || t.id,
+        teacherId: t.teacher_id || t.teacherId || t.id,
+        name: t.name,
+        email: t.email || t.email_contact || '',
+      }));
+    }
+    // 回退到 allUsers（兼容）
     return allUsers
       .filter(u => u.role === 'teacher')
       .map(u => ({
@@ -874,8 +885,23 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
   // 学校编辑/新增Modal
   const SchoolModal = () => {
-    const [formData, setFormData] = useState(
-      editingSchool || {
+    // 编辑模式下，将 checklist 中该学校的材料合并到 formData.materials
+    const getInitialFormData = () => {
+      if (editingSchool) {
+        // 从 checklist.schoolSpecific 获取该学校的已有材料（API 数据源）
+        const existingMaterials = checklist?.schoolSpecific?.[editingSchool.name] || [];
+        const materialsForForm = existingMaterials.map(m => ({
+          name: m.item || m.name || '',
+          deadline: m.deadline || '',
+          url: m.url || '',
+          id: m.id, // 保留 id 以便后端区分
+        }));
+        return {
+          ...editingSchool,
+          materials: materialsForForm.length > 0 ? materialsForForm : (editingSchool.materials || []),
+        };
+      }
+      return {
         name: '',
         nameJa: '',
         type: '国立',
@@ -891,8 +917,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         acceptanceRate: '',
         teacherNotes: '',
         materials: []
-      }
-    );
+      };
+    };
+    const [formData, setFormData] = useState(getInitialFormData());
 
     const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
     const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
@@ -3886,6 +3913,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         {activeTab === 'upcoming' && (
           <UpcomingSchools
             studentList={studentList}
+            studentData={studentData}
             currentStudent={currentStudent}
             user={user}
           />
