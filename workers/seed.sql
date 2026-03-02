@@ -19,6 +19,16 @@ INSERT OR IGNORE INTO users (id, email, password, role, name, student_id) VALUES
   ('student2', 'lisi@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEBJSoK1NEcAAldKhsDuKDeKBYujMrIk18FHPQQc/3zbO', 'student', '李四', '2024002'),
   ('student3', 'wangwu@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEDqVBnFLs3CnkI2RiPLlHHci9/3b97aogzzZF5kMl5xG', 'student', '王五', '2024003');
 
+-- ─── 老师扩展信息表 ─────────────────────────────────────────────────────────
+INSERT OR IGNORE INTO teachers (teacher_id, user_id, department, subject) VALUES
+  ('teacher_1', 'teacher1', '学部升学组', '理科'),
+  ('teacher_2', 'teacher2', '学部升学组', '文科'),
+  ('teacher_3', 'teacher3', '学部升学组', '理科'),
+  ('teacher_4', 'teacher4', '教务', ''),
+  ('teacher_5', 'teacher5', '学部升学组', '文科'),
+  ('teacher_6', 'teacher6', '学管', ''),
+  ('teacher_7', 'teacher7', '学管', '');
+
 -- ─── 学生扩展信息表 ────────────────────────────────────────────────────────────
 INSERT OR IGNORE INTO students (student_id, user_id, name, email, teacher_id, academic_advisor_id, birthday, high_school, language_school, jlpt_score, eju_scores, english_score, package_name, package_end_date, tags, subject, has_account) VALUES
   ('2024001', 'student1', '张三', 'zhangsan@student.jsa.com', 'teacher_1', 'teacher_6', '2001-05-12', '北京十一中学', '东京日本语学院', 'N1-142', '[{"date":"2025-06","japanese":310,"math":170,"science":145,"total":625}]', 'TOEFL 85', '私塾', '2026-06-30', '["理科","重点关注"]', '理科', 1),
