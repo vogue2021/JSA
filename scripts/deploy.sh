@@ -2,29 +2,47 @@
 # ═══════════════════════════════════════════════════════════════════════
 # JSA 部署脚本
 # 用法：
-#   ./scripts/deploy.sh staging   — 部署到测试环境
-#   ./scripts/deploy.sh prod      — 部署到生产环境
+#   ./scripts/deploy.sh staging          — 完整部署到测试环境（Worker + 构建前端 + Pages）
+#   ./scripts/deploy.sh prod             — 完整部署到生产环境
+#   ./scripts/deploy.sh staging --worker — 仅部署 staging Worker（前端由 Git 自动构建）
+#   ./scripts/deploy.sh prod --worker    — 仅部署生产 Worker
+#   ./scripts/deploy.sh staging --sync   — 同步 develop 分支到 main 最新代码
 #
 # 环境架构：
 #   staging:  jsa-staging.pages.dev → jsa-api-staging.workers.dev → jsa-db-staging
 #   prod:     jsa-ac8.pages.dev     → jsa-api.jiangpeng527.workers.dev → jsa-db
 #
-# API 代理机制：
-#   前端通过 functions/api/[[path]].js 代理 /api/* 请求到后端 Worker。
-#   后端地址由 Pages 环境变量 API_BACKEND_URL 控制：
-#     - jsa 项目（生产）：未配置或默认 → https://jsa-api.jiangpeng527.workers.dev
-#     - jsa-staging 项目（测试）：已配置 → https://jsa-api-staging.jiangpeng527.workers.dev
-#   如需修改，请到 Cloudflare Dashboard → Pages → 项目设置 → 环境变量 中配置。
+# Git 集成说明：
+#   如果 jsa-staging 已在 Cloudflare Dashboard 关联 Git（develop 分支），
+#   则 push 到 develop 会自动触发前端构建，此时只需用 --worker 部署后端即可。
+#   详见 docs/staging-setup-guide.md
 # ═══════════════════════════════════════════════════════════════════════
 
 set -e
 
 ENV=${1:-staging}
+MODE=${2:-""}  # --worker 或 --sync
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "═══════════════════════════════════════════"
-echo "  JSA 部署工具  —  目标环境: $ENV"
+echo "  JSA 部署工具  —  目标环境: $ENV ${MODE}"
 echo "═══════════════════════════════════════════"
+
+# ─── 分支同步模式 ─────────────────────────────────────────────────────
+if [ "$MODE" = "--sync" ]; then
+  echo ""
+  echo "🔄 同步 develop 分支到 main 最新代码..."
+  CURRENT_BRANCH=$(git -C "$ROOT_DIR" branch --show-current)
+
+  git -C "$ROOT_DIR" checkout develop
+  git -C "$ROOT_DIR" merge main --no-edit
+  git -C "$ROOT_DIR" push origin develop
+  echo "✅ develop 已同步到 main 最新代码并推送"
+
+  # 切回原来的分支
+  git -C "$ROOT_DIR" checkout "$CURRENT_BRANCH"
+  exit 0
+fi
 
 # ─── 0. Git 分支检查 ─────────────────────────────────────────────────
 CURRENT_BRANCH=$(git -C "$ROOT_DIR" branch --show-current)
@@ -57,6 +75,16 @@ if [ "$ENV" = "prod" ] || [ "$ENV" = "production" ]; then
 else
   npx wrangler deploy --env staging
   echo "✅ Worker 已部署到测试环境: https://jsa-api-staging.jiangpeng527.workers.dev"
+fi
+
+# 如果是 --worker 模式，只部署 Worker 就结束
+if [ "$MODE" = "--worker" ]; then
+  echo ""
+  echo "═══════════════════════════════════════════"
+  echo "  ✅ Worker 部署完成！（--worker 模式，跳过前端）"
+  echo "  💡 前端将由 Cloudflare Pages Git 集成自动构建"
+  echo "═══════════════════════════════════════════"
+  exit 0
 fi
 
 # ─── 2. 构建前端 ─────────────────────────────────────────────────────
@@ -93,6 +121,5 @@ else
   echo "  🌐 前端: https://jsa-staging.pages.dev"
   echo "  🔧 后端: https://jsa-api-staging.jiangpeng527.workers.dev"
   echo "  🗄️ 数据库: jsa-db-staging (测试)"
-  echo "  📌 API代理: 由 Pages 环境变量 API_BACKEND_URL 控制"
   echo "═══════════════════════════════════════════"
 fi
