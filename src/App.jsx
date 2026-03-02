@@ -675,11 +675,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       );
     }
     setChecklist(newChecklist);
-    // 调用 API
+    // 调用 API（幂等的 status 更新，传目标值而非 toggle 翻转）
     try {
-      await apiReq(`/materials/${itemId}/toggle`, {
-        method: 'PATCH',
-        body: JSON.stringify({ checked_by: user.role }),
+      await apiReq(`/materials/${itemId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ completed: checked, checked_by: user.role }),
       });
     } catch (err) {
       console.error('更新材料状态失败:', err);
@@ -3868,6 +3868,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             user={user}
             getVisibleStudents={getVisibleStudents}
             getTeacherList={getTeacherList}
+            studentData={studentData}
             onSelectStudent={(student) => {
               setCurrentStudent({
                 ...student,
@@ -4364,39 +4365,32 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 onClick={async () => {
                   if (!feedbackContent.trim()) return;
                   const typeLabels = { suggestion: '功能建议', bug: '错误报告', other: '其他' };
-                  // 优先调用后端 API 入库，失败时降级到 mailto + localStorage
-                  let submitted = false;
+                  // 调用后端 API 入库，失败时明确提示未入库
                   try {
                     await feedbackAPI.submit({
                       type: feedbackType,
                       content: feedbackContent.trim(),
                       contact: feedbackContact.trim() || undefined,
                     });
-                    submitted = true;
+                    // 入库成功，同步记录到 localStorage（标记已入库）
+                    try {
+                      const feedbackHistory = JSON.parse(localStorage.getItem('feedbackHistory') || '[]');
+                      feedbackHistory.unshift({
+                        type: feedbackType,
+                        content: feedbackContent,
+                        contact: feedbackContact,
+                        time: new Date().toISOString(),
+                        user: user?.name || '匿名',
+                        synced: true,
+                      });
+                      localStorage.setItem('feedbackHistory', JSON.stringify(feedbackHistory.slice(0, 50)));
+                    } catch (e) { /* ignore */ }
+                    showNotification('反馈已提交，感谢您的反馈！🙏');
+                    setFeedbackContent(''); setFeedbackContact(''); setFeedbackType('suggestion'); setShowFeedbackPanel(false);
                   } catch (e) {
-                    console.warn('后端反馈提交失败，降级到 mailto:', e);
+                    console.error('反馈提交失败:', e);
+                    showNotification('反馈提交失败，请检查网络后重试');
                   }
-                  if (!submitted) {
-                    // 降级：通过 mailto 发送
-                    const subject = encodeURIComponent(`[JSA反馈] ${typeLabels[feedbackType] || '反馈'}`);
-                    const body = encodeURIComponent(`反馈类型: ${typeLabels[feedbackType]}\n\n内容:\n${feedbackContent}\n\n联系方式: ${feedbackContact || '未提供'}\n\n提交时间: ${new Date().toLocaleString('zh-CN')}`);
-                    window.location.href = `mailto:jiangpeng527@gmail.com?subject=${subject}&body=${body}`;
-                  }
-                  // 同时存储到 localStorage 作为本地备份记录
-                  try {
-                    const feedbackHistory = JSON.parse(localStorage.getItem('feedbackHistory') || '[]');
-                    feedbackHistory.unshift({
-                      type: feedbackType,
-                      content: feedbackContent,
-                      contact: feedbackContact,
-                      time: new Date().toISOString(),
-                      user: user?.name || '匿名',
-                      synced: submitted,
-                    });
-                    localStorage.setItem('feedbackHistory', JSON.stringify(feedbackHistory.slice(0, 50)));
-                  } catch (e) { /* ignore */ }
-                  showNotification(submitted ? '反馈已提交，感谢您的反馈！🙏' : '感谢反馈！我们会尽快处理 🙏');
-                  setFeedbackContent(''); setFeedbackContact(''); setFeedbackType('suggestion'); setShowFeedbackPanel(false);
                 }}
                 disabled={!feedbackContent.trim()}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"

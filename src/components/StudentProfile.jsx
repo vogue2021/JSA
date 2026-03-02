@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { studentsAPI } from '../services/api';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { user, studentList, setStudentList, showNotification, getTeacherList } = useApp();
@@ -120,7 +121,32 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
   const canEdit = user.role === 'teacher' || user.role === 'admin';
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // 先调用 API 持久化到数据库
+    try {
+      await studentsAPI.update(student.studentId, {
+        name: formData.name,
+        email: formData.email,
+        birthday: formData.birthday,
+        high_school: formData.highSchool,
+        language_school: formData.languageSchool,
+        jlpt_score: formData.jlptScore,
+        english_score: formData.englishScore,
+        eju_scores: formData.ejuScores,
+        follow_up_notes: formData.followUpNotes,
+        photo: formData.photo,
+        package_name: formData.packageName,
+        package_end_date: formData.packageEndDate,
+        subject: formData.subject,
+        teacher_id: formData.teacherId,
+        academic_advisor_id: formData.academicAdvisorId,
+      });
+    } catch (err) {
+      console.error('保存学生信息失败:', err);
+      if (showNotification) showNotification('保存失败，请重试');
+      return; // 不更新本地状态，避免假成功
+    }
+    // API 成功后更新本地状态
     setStudentList(prev => prev.map(s =>
       s.studentId === student.studentId ? { ...s, ...formData } : s
     ));
@@ -129,7 +155,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     if (onUpdate) onUpdate({ ...studentInfo, ...formData });
   };
 
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (newNote.trim()) {
       const note = {
         id: Date.now(),
@@ -140,9 +166,19 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         role: user.role,
       };
       const updatedNotes = [note, ...(formData.followUpNotes || [])];
+      // 先调用 API 持久化
+      try {
+        await studentsAPI.update(student.studentId, {
+          follow_up_notes: updatedNotes,
+        });
+      } catch (err) {
+        console.error('保存备注失败:', err);
+        if (showNotification) showNotification('备注保存失败，请重试');
+        return;
+      }
+      // API 成功后更新本地状态
       setFormData({ ...formData, followUpNotes: updatedNotes });
       setNewNote('');
-      // 自动保存备注
       setStudentList(prev => prev.map(s =>
         s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s
       ));
@@ -150,9 +186,20 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     }
   };
 
-  const handleDeleteNote = (noteId) => {
+  const handleDeleteNote = async (noteId) => {
     if (window.confirm('确定要删除这条备注吗？')) {
       const updatedNotes = formData.followUpNotes.filter(n => n.id !== noteId);
+      // 先调用 API 持久化
+      try {
+        await studentsAPI.update(student.studentId, {
+          follow_up_notes: updatedNotes,
+        });
+      } catch (err) {
+        console.error('删除备注失败:', err);
+        if (showNotification) showNotification('删除备注失败，请重试');
+        return;
+      }
+      // API 成功后更新本地状态
       setFormData({ ...formData, followUpNotes: updatedNotes });
       setStudentList(prev => prev.map(s =>
         s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s

@@ -68,24 +68,15 @@ const SchoolDatabase = () => {
       try {
         setDbLoading(true);
         const data = await schoolDatabaseAPI.getAll();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setSchoolDb(data);
+          // 成功时同步到 localStorage 作为缓存
           localStorage.setItem('schoolDatabase', JSON.stringify(data));
-        } else {
-          // API 返回空数据，使用 localStorage 缓存或默认数据
-          const saved = localStorage.getItem('schoolDatabase');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setSchoolDb(parsed);
-            } else {
-              setSchoolDb(getDefaultSchools());
-            }
-          }
         }
       } catch (err) {
-        console.warn('从 API 加载学校信息库失败，使用本地缓存:', err);
-        // 降级到 localStorage
+        console.warn('从 API 加载学校信息库失败:', err);
+        // 加载失败时不回退到 localStorage，保持空状态并提示
+        if (showNotification) showNotification('学校信息库加载失败，请检查网络后刷新重试');
       } finally {
         setDbLoading(false);
       }

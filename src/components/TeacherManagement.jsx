@@ -66,7 +66,9 @@ const TeacherManagement = () => {
           saveTeacherDetails(newDetails);
         }
       } catch (err) {
-        console.warn('从 API 加载老师详情失败，使用本地缓存:', err);
+        console.warn('从 API 加载老师详情失败:', err);
+        // 不回退到 localStorage 缓存，保持当前状态并提示
+        if (showNotification) showNotification('老师信息加载失败，显示的可能不是最新数据');
       }
     };
     loadTeacherDetailsFromAPI();

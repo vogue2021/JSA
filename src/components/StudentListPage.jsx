@@ -10,6 +10,7 @@ const StudentListPage = ({
   user,
   getVisibleStudents,
   getTeacherList,
+  studentData: studentDataProp,
   onSelectStudent,
   onAddStudent,
 }) => {
@@ -32,25 +33,24 @@ const StudentListPage = ({
   const [sortBy, setSortBy] = useState('name'); // name | progress | urgentTasks | studentId
   const [sortOrder, setSortOrder] = useState('asc');
 
-  // 从 localStorage 获取每个学生的学校申请数据
+  // 从 props 获取每个学生的学校申请数据（API 数据源，由 App.jsx 统一管理）
   const studentSchoolData = useMemo(() => {
     const map = {};
-    visibleStudents.forEach(student => {
-      try {
+    if (studentDataProp) {
+      visibleStudents.forEach(student => {
         const key = student.studentId || 'default';
-        const savedData = localStorage.getItem(`studentData_${key}`);
-        if (savedData) {
-          const data = JSON.parse(savedData);
+        const data = studentDataProp[key];
+        if (data) {
           map[student.studentId] = {
             schools: data.schools || [],
             events: data.events || [],
             checklist: data.checklist || {},
           };
         }
-      } catch {}
-    });
+      });
+    }
     return map;
-  }, [visibleStudents]);
+  }, [visibleStudents, studentDataProp]);
 
   // 过滤
   const filteredStudents = useMemo(() => {

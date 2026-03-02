@@ -151,7 +151,7 @@ schools.post('/', async (c) => {
     return c.json({ success: false, message: '学生不存在' }, 404)
   }
 
-  // 先插入学校获取 ID
+  // 先插入学校获取 ID（需要先获取 ID 才能关联事件/材料）
   await db.prepare(`
     INSERT INTO schools (student_id, name, name_ja, type, program, status,
       application_start_date, application_end_date, exam_date, result_date,
@@ -172,7 +172,7 @@ schools.post('/', async (c) => {
   ).bind(student_id).first()
   const schoolId = newSchool?.id
 
-  // 使用 db.batch 事务同时创建关联的事件和材料，保证原子性
+  // 使用 db.batch 原子写入所有关联的事件和材料
   const batchInserts = []
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
     student_id, school_id: schoolId, type: 'deadline',
@@ -246,23 +246,7 @@ schools.put('/:id', async (c) => {
     overseas_cert: body.overseas_cert !== undefined ? body.overseas_cert : (school.overseas_cert || '不确定'),
   }
 
-  await db.prepare(`
-    UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
-      application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
-      requirements_url=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
-      website=?, xuexin_cert=?, overseas_cert=?,
-      updated_at=datetime('now')
-    WHERE id=?
-  `).bind(
-    updated.name, updated.name_ja, updated.type, updated.program, updated.status,
-    updated.application_start_date, updated.application_end_date,
-    updated.exam_date, updated.result_date,
-    updated.requirements_url, updated.teacher_notes,
-    updated.difficulty, updated.ranking, updated.location,
-    updated.website, updated.xuexin_cert, updated.overseas_cert, id
-  ).run()
-
-  // 使用 db.batch 事务原子性地：删除旧事件 + 重建新事件（避免先删后建中途失败丢数据）
+  // 使用 db.batch 原子性执行：更新学校主表 + 删除旧事件 + 重建新事件 + 处理材料
   const student_id = school.student_id
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
     student_id, school_id: id, type: 'deadline',
@@ -277,8 +261,26 @@ schools.put('/:id', async (c) => {
   if (updated.result_date) eventInserts.push(makeEvent(`${updated.name} 合格发表`, updated.result_date, '合格发表', false, `${updated.program} 合格发表日`))
 
   const batchStatements = [
-    db.prepare('DELETE FROM events WHERE school_id = ?').bind(id)
+    // 更新学校主表
+    db.prepare(`
+      UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
+        application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
+        requirements_url=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
+        website=?, xuexin_cert=?, overseas_cert=?,
+        updated_at=datetime('now')
+      WHERE id=?
+    `).bind(
+      updated.name, updated.name_ja, updated.type, updated.program, updated.status,
+      updated.application_start_date, updated.application_end_date,
+      updated.exam_date, updated.result_date,
+      updated.requirements_url, updated.teacher_notes,
+      updated.difficulty, updated.ranking, updated.location,
+      updated.website, updated.xuexin_cert, updated.overseas_cert, id
+    ),
+    // 删除旧事件
+    db.prepare('DELETE FROM events WHERE school_id = ?').bind(id),
   ]
+  // 重建新事件
   eventInserts.forEach(e => {
     batchStatements.push(
       db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
@@ -286,6 +288,27 @@ schools.put('/:id', async (c) => {
         .bind(e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
     )
   })
+
+  // 处理材料：删除旧材料 + 新增材料（如果前端传了 materials 字段）
+  const bodyMaterials = body.materials
+  if (Array.isArray(bodyMaterials)) {
+    // 先删除该学校关联的所有材料
+    batchStatements.push(
+      db.prepare('DELETE FROM materials WHERE school_id = ?').bind(id)
+    )
+    // 再插入新材料
+    bodyMaterials.forEach(mat => {
+      batchStatements.push(
+        db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
+          VALUES (?, ?, ?, ?, ?, ?, 0)`)
+          .bind(
+            student_id, id, mat.name || mat.item, 'school',
+            mat.deadline || updated.application_end_date, mat.url || null
+          )
+      )
+    })
+  }
+
   await db.batch(batchStatements)
 
   const updatedSchool = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
@@ -301,8 +324,13 @@ schools.delete('/:id', async (c) => {
   const school = await db.prepare('SELECT id FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
 
-  await db.prepare('DELETE FROM schools WHERE id = ?').bind(id).run()
-  return c.json({ success: true, message: '学校删除成功' })
+  // 级联删除：学校 + 关联事件 + 关联材料，原子执行
+  await db.batch([
+    db.prepare('DELETE FROM events WHERE school_id = ?').bind(id),
+    db.prepare('DELETE FROM materials WHERE school_id = ?').bind(id),
+    db.prepare('DELETE FROM schools WHERE id = ?').bind(id),
+  ])
+  return c.json({ success: true, message: '学校及关联数据已删除' })
 })
 
 export default schools
