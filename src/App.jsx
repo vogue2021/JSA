@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, School, FileText, CheckSquare, Plus,
   ChevronRight, AlertCircle, Edit, Users, LogOut, Save,
@@ -25,7 +26,7 @@ import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
 import AuthPage from './components/AuthPage';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
-import { generateTestData } from './utils/generateTestData';
+// generateTestData 已移除（不再需要前端生成测试数据按钮）
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
@@ -72,18 +73,47 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     }
   });
 
-  const [activeTab, setActiveTabRaw] = useState(() => {
-    // 从 localStorage 恢复上次所在页面
-    const savedTab = localStorage.getItem('activeTab');
-    if (savedTab) return savedTab;
-    // 老师和管理员默认进入仪表盘，学生进入时间线
+  // URL 路由驱动的页面切换
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 有效的 tab ID 列表（用于 URL 路径校验）
+  const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'upcoming', 'calendar', 'settings'];
+
+  // 从 URL 路径提取当前 tab
+  const getTabFromPath = () => {
+    const path = location.pathname.replace(/^\//, '').split('/')[0];
+    if (path && validTabs.includes(path)) return path;
+    // 如果 URL 无效，返回默认 tab
     return (user.role === 'teacher' || user.role === 'admin') ? 'dashboard' : 'timeline';
-  });
-  // 包装 setActiveTab，自动持久化到 localStorage
+  };
+
+  const [activeTab, setActiveTabRaw] = useState(getTabFromPath);
+
+  // URL 变化时同步 activeTab
+  useEffect(() => {
+    const tab = getTabFromPath();
+    setActiveTabRaw(tab);
+  }, [location.pathname]);
+
+  // 包装 setActiveTab，同时更新 URL 和状态
   const setActiveTab = (tab) => {
     setActiveTabRaw(tab);
-    localStorage.setItem('activeTab', tab);
+    // 只在路径真的变了时才 navigate，避免死循环
+    const currentPath = location.pathname.replace(/^\//, '').split('/')[0];
+    if (currentPath !== tab) {
+      navigate(`/${tab}`, { replace: false });
+    }
   };
+
+  // 首次加载时如果 URL 是根路径 '/'，导航到默认页面
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === '/' || path === '') {
+      const defaultTab = (user.role === 'teacher' || user.role === 'admin') ? 'dashboard' : 'timeline';
+      navigate(`/${defaultTab}`, { replace: true });
+    }
+  }, []);
   const [settingsInitTab, setSettingsInitTab] = useState(null);
   const [showStudentList, setShowStudentList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -3632,25 +3662,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </button>
             )}
 
-            {/* 管理员生成测试数据按钮 */}
-            {user.role === 'admin' && (
-              <button
-                onClick={() => {
-                  if (window.confirm('⚠️ 这将覆盖现有的学生和申请数据，确定生成测试数据？')) {
-                    logAction(LOG_CATEGORIES.DATA, '生成测试数据');
-                    generateTestData();
-                    window.location.reload();
-                  }
-                }}
-                className="p-2 rounded-lg transition-all"
-                style={{ color: tokens.colors.text.muted }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                title="生成测试数据"
-              >
-                <Download size={18} />
-              </button>
-            )}
+
           </div>
         </div>
       </div>

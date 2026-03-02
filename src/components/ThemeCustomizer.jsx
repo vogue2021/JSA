@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sun, Moon, Monitor, Palette, Sparkles, Sliders, Eye, EyeOff } from 'lucide-react';
+import { X, Sun, Moon, Monitor, Palette, Sparkles, Sliders, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 const ThemeCustomizer = ({ onClose }) => {
@@ -9,6 +9,7 @@ const ThemeCustomizer = ({ onClose }) => {
     motionConfig, setMotionConfig,
     glassIntensity, setGlassIntensity,
     glassEnabled, setGlassEnabled,
+    resetToDefaults,
   } = useTheme();
 
   const [activeSection, setActiveSection] = useState('mode');
@@ -54,11 +55,23 @@ const ThemeCustomizer = ({ onClose }) => {
               <p className="text-xs" style={{ color: tokens.colors.text.muted }}>自定义界面主题和效果</p>
             </div>
           </div>
-          <button onClick={onClose}
-            className="p-2 rounded-xl transition-all hover:scale-105"
-            style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => {
+              if (window.confirm('确定恢复所有外观设置为默认值？')) {
+                resetToDefaults();
+              }
+            }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:scale-105"
+              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
+              <RotateCcw size={14} />
+              恢复默认
+            </button>
+            <button onClick={onClose}
+              className="p-2 rounded-xl transition-all hover:scale-105"
+              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* 分类导航 */}

@@ -176,6 +176,17 @@ export const studentsAPI = {
     if (teacherId) params.append('teacher_id', teacherId);
     return await apiRequest(`/students/search/query?${params.toString()}`);
   },
+  addNote: async (id, content) => {
+    return await apiRequest(`/students/${id}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+  deleteNote: async (id, noteId) => {
+    return await apiRequest(`/students/${id}/notes/${noteId}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 // 老师 API

@@ -149,53 +149,39 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
   const handleAddNote = async () => {
     if (newNote.trim()) {
-      const note = {
-        id: Date.now(),
-        content: newNote.trim(),
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        author: user.name,
-        role: user.role,
-      };
-      const updatedNotes = [note, ...(formData.followUpNotes || [])];
-      // 先调用 API 持久化
+      // 使用原子化追加接口，避免不同账号并发操作时互相覆盖
       try {
-        await studentsAPI.update(student.studentId, {
-          follow_up_notes: updatedNotes,
-        });
+        const result = await studentsAPI.addNote(student.studentId, newNote.trim());
+        // 用服务端返回的完整备注列表更新本地状态
+        const updatedNotes = result.data?.followUpNotes || [];
+        setFormData({ ...formData, followUpNotes: updatedNotes });
+        setNewNote('');
+        setStudentList(prev => prev.map(s =>
+          s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s
+        ));
+        if (showNotification) showNotification('备注已添加');
       } catch (err) {
         console.error('保存备注失败:', err);
         if (showNotification) showNotification('备注保存失败，请重试');
-        return;
       }
-      // API 成功后更新本地状态
-      setFormData({ ...formData, followUpNotes: updatedNotes });
-      setNewNote('');
-      setStudentList(prev => prev.map(s =>
-        s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s
-      ));
-      if (showNotification) showNotification('备注已添加');
     }
   };
 
   const handleDeleteNote = async (noteId) => {
     if (window.confirm('确定要删除这条备注吗？')) {
-      const updatedNotes = formData.followUpNotes.filter(n => n.id !== noteId);
-      // 先调用 API 持久化
+      // 使用原子化删除接口
       try {
-        await studentsAPI.update(student.studentId, {
-          follow_up_notes: updatedNotes,
-        });
+        const result = await studentsAPI.deleteNote(student.studentId, noteId);
+        const updatedNotes = result.data?.followUpNotes || [];
+        setFormData({ ...formData, followUpNotes: updatedNotes });
+        setStudentList(prev => prev.map(s =>
+          s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s
+        ));
+        if (showNotification) showNotification('备注已删除');
       } catch (err) {
         console.error('删除备注失败:', err);
         if (showNotification) showNotification('删除备注失败，请重试');
-        return;
       }
-      // API 成功后更新本地状态
-      setFormData({ ...formData, followUpNotes: updatedNotes });
-      setStudentList(prev => prev.map(s =>
-        s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s
-      ));
     }
   };
 

@@ -490,6 +490,16 @@ export const ThemeProvider = ({ children }) => {
     setMode(prev => prev === 'light' ? 'dark' : prev === 'dark' ? 'auto' : 'light');
   }, []);
 
+  // 恢复所有外观设置到默认值
+  const resetToDefaults = useCallback(() => {
+    setMode('light');
+    setBackgroundPreset('minimal_light');
+    setCustomBackground(null);
+    setMotionConfig(defaultMotionConfig);
+    setGlassIntensity(70);
+    setGlassEnabled(true);
+  }, []);
+
   const value = useMemo(() => ({
     // 模式
     mode, setMode, resolvedMode, isDark, toggleMode,
@@ -505,8 +515,10 @@ export const ThemeProvider = ({ children }) => {
     // 玻璃效果
     glassIntensity, setGlassIntensity,
     glassEnabled, setGlassEnabled,
+    // 重置
+    resetToDefaults,
   }), [mode, resolvedMode, isDark, toggleMode, tokens, backgroundPreset,
-       customBackground, backgroundStyle, motionConfig, glassIntensity, glassEnabled]);
+       customBackground, backgroundStyle, motionConfig, glassIntensity, glassEnabled, resetToDefaults]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

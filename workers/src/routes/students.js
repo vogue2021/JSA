@@ -277,6 +277,99 @@ students.delete('/:id', async (c) => {
   return c.json({ success: true, message: '学生已删除' })
 })
 
+// ─── 追加备注（原子操作，避免并发覆盖）───────────────────────────────────────
+students.post('/:id/notes', async (c) => {
+  const user = c.get('user')
+  const { id } = c.req.param()
+  const body = await c.req.json()
+  const db = c.env.DB
+
+  if (!body.content || !body.content.trim()) {
+    return c.json({ success: false, message: '备注内容不能为空' }, 400)
+  }
+
+  const student = await db.prepare(
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
+
+  if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
+
+  // 权限检查
+  if (isStudent(user) && user.studentId !== student.student_id) {
+    return c.json({ success: false, message: '无权操作' }, 403)
+  }
+  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+    return c.json({ success: false, message: '无权操作' }, 403)
+  }
+
+  // 原子化：读取现有备注 → 追加新备注 → 写回
+  let existingNotes = []
+  try {
+    existingNotes = JSON.parse(student.follow_up_notes || '[]')
+    if (!Array.isArray(existingNotes)) existingNotes = []
+  } catch { existingNotes = [] }
+
+  const newNote = {
+    id: Date.now(),
+    content: body.content.trim(),
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }),
+    author: user.name || '未知',
+    role: user.role,
+  }
+
+  // 新备注插入到最前面
+  existingNotes.unshift(newNote)
+
+  await db.prepare(
+    "UPDATE students SET follow_up_notes = ?, updated_at = datetime('now') WHERE student_id = ?"
+  ).bind(JSON.stringify(existingNotes), student.student_id).run()
+
+  const updated = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(student.student_id).first()
+  return c.json({ success: true, data: formatStudent(updated), note: newNote, message: '备注已添加' })
+})
+
+// ─── 删除备注（原子操作）─────────────────────────────────────────────────────
+students.delete('/:id/notes/:noteId', async (c) => {
+  const user = c.get('user')
+  const { id, noteId } = c.req.param()
+  const db = c.env.DB
+
+  const student = await db.prepare(
+    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+  ).bind(id, id).first()
+
+  if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
+
+  // 权限检查
+  if (isStudent(user) && user.studentId !== student.student_id) {
+    return c.json({ success: false, message: '无权操作' }, 403)
+  }
+  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+    return c.json({ success: false, message: '无权操作' }, 403)
+  }
+
+  let existingNotes = []
+  try {
+    existingNotes = JSON.parse(student.follow_up_notes || '[]')
+    if (!Array.isArray(existingNotes)) existingNotes = []
+  } catch { existingNotes = [] }
+
+  const noteIdNum = parseInt(noteId)
+  const filtered = existingNotes.filter(n => n.id !== noteIdNum)
+
+  if (filtered.length === existingNotes.length) {
+    return c.json({ success: false, message: '备注不存在' }, 404)
+  }
+
+  await db.prepare(
+    "UPDATE students SET follow_up_notes = ?, updated_at = datetime('now') WHERE student_id = ?"
+  ).bind(JSON.stringify(filtered), student.student_id).run()
+
+  const updated = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(student.student_id).first()
+  return c.json({ success: true, data: formatStudent(updated), message: '备注已删除' })
+})
+
 // ─── 转移学生（仅管理员）─────────────────────────────────────────────────────
 students.put('/:id/transfer', async (c) => {
   const user = c.get('user')
