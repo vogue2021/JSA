@@ -255,6 +255,25 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     }
   }, [currentStudent?.studentId]);
 
+  // 页面重新获得焦点时自动刷新数据（实现多端数据同步）
+  useEffect(() => {
+    let lastRefresh = Date.now();
+    const handleVisibilityChange = () => {
+      // 页面从后台切回前台时，如果距离上次刷新超过 30 秒，自动刷新
+      if (document.visibilityState === 'visible' && Date.now() - lastRefresh > 30000) {
+        lastRefresh = Date.now();
+        const studentId = currentStudent?.studentId;
+        if (studentId) {
+          loadStudentDataFromAPI(studentId);
+        }
+        // 也刷新学生列表
+        if (loadStudentList) loadStudentList();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentStudent?.studentId]);
+
   // 设置事件更新函数 - 调用 API
   const setUpcomingEvents = async (newEvents) => {
     const key = getStudentDataKey();
@@ -354,6 +373,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         teacherId: t.teacher_id || t.teacherId || t.id,
         name: t.name,
         email: t.email || t.email_contact || '',
+        department: t.department || '',
       }));
     }
     // 回退到 allUsers（兼容）
@@ -2409,8 +2429,15 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     const [accountList, setAccountList] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(true);
 
-    // 打开弹窗时从 API 加载所有账号
+    // 打开弹窗时从 API 加载所有账号（仅管理员可用）
+    const loadedRef = React.useRef(false);
     useEffect(() => {
+      // 防止重复加载 + 非管理员不请求
+      if (loadedRef.current || user?.role !== 'admin') {
+        setAccountsLoading(false);
+        return;
+      }
+      loadedRef.current = true;
       const loadAccounts = async () => {
         try {
           setAccountsLoading(true);
@@ -2501,6 +2528,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               >
                 <div className="text-2xl font-bold">{accountsLoading ? '...' : accountList.filter(u => u.role === 'student').length}</div>
                 <div className="text-sm">学生账号</div>
+                <div className="text-xs opacity-60 mt-1">学生总数: {studentList.length}</div>
               </button>
               <button
                 onClick={() => setFilterType('teacher')}

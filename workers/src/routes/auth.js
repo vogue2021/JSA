@@ -335,14 +335,30 @@ auth.post('/change-password', async (c) => {
   }
 })
 
-// ─── 初始化测试数据（仅在 users 表为空时可用，生产环境请删除此接口）──────────
+// ─── 初始化测试数据（支持 force=true 强制重置）──────────
 auth.post('/init-seed', async (c) => {
   const db = c.env.DB
   try {
-    // 安全检查：只有 users 表为空时才允许初始化
+    const body = await c.req.json().catch(() => ({}))
+    const force = body.force === true
+
+    // 安全检查：只有 users 表为空或 force 模式时才允许初始化
     const count = await db.prepare('SELECT COUNT(*) as cnt FROM users').first()
-    if (count && count.cnt > 0) {
-      return c.json({ success: false, message: `数据库已有 ${count.cnt} 条用户记录，拒绝重复初始化` }, 403)
+    if (count && count.cnt > 0 && !force) {
+      return c.json({ success: false, message: `数据库已有 ${count.cnt} 条用户记录，传入 { "force": true } 可强制重置` }, 403)
+    }
+
+    // force 模式：先清空所有相关表
+    if (force) {
+      await db.batch([
+        db.prepare('DELETE FROM materials'),
+        db.prepare('DELETE FROM events'),
+        db.prepare('DELETE FROM schools'),
+        db.prepare('DELETE FROM teachers'),
+        db.prepare('DELETE FROM verification_codes'),
+        db.prepare('DELETE FROM students'),
+        db.prepare('DELETE FROM users'),
+      ])
     }
 
     // 测试账号列表
@@ -402,7 +418,26 @@ auth.post('/init-seed', async (c) => {
       )
     )
 
-    await db.batch([...userInserts, ...studentInserts])
+    // 老师详情表（含部门信息，用于区分升学老师和学管老师）
+    const teachersToCreate = [
+      { teacherId: 'teacher_1', userId: 'teacher1', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
+      { teacherId: 'teacher_2', userId: 'teacher2', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
+      { teacherId: 'teacher_3', userId: 'teacher3', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
+      { teacherId: 'teacher_4', userId: 'teacher4', department: '教务', subject: '', permissions: '["manage_students","manage_events"]' },
+      { teacherId: 'teacher_5', userId: 'teacher5', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
+      { teacherId: 'teacher_6', userId: 'teacher6', department: '学管', subject: '', permissions: '["manage_students","manage_events"]' },
+      { teacherId: 'teacher_7', userId: 'teacher7', department: '学管', subject: '', permissions: '["manage_students","manage_events"]' },
+    ]
+
+    const teacherInserts = teachersToCreate.map(t =>
+      db.prepare(
+        `INSERT OR IGNORE INTO teachers
+          (teacher_id, user_id, department, subject, permissions, gender, birthday, phone, email_contact, address, education, hire_date, employment_type, photo)
+         VALUES (?, ?, ?, ?, ?, '', '', '', '', '', '', '', '', '')`
+      ).bind(t.teacherId, t.userId, t.department, t.subject, t.permissions)
+    )
+
+    await db.batch([...userInserts, ...studentInserts, ...teacherInserts])
 
     return c.json({
       success: true,

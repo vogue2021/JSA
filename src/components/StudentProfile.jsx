@@ -12,22 +12,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { isDark, tokens, glassEnabled } = useTheme();
   const teachers = getTeacherList ? getTeacherList() : [];
 
-  // 读取老师详情（含部门信息），用于按部门过滤
-  const teacherDetails = (() => {
-    try {
-      const saved = localStorage.getItem('teacherDetails');
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  })();
-
-  // 升学老师 = 学部升学组（无部门信息的老师也显示在升学老师列表）
+  // 升学老师 = 学部升学组/教务/无部门（直接从 API 返回的 teacher.department 判断）
   const upgradeTeachers = teachers.filter(t => {
-    const dept = teacherDetails[t.id || t.teacherId]?.department;
+    const dept = t.department;
     return !dept || dept === '学部升学组' || dept === '教务';
   });
-  // 学管老师 = 学管部门（无部门信息的老师也显示在学管老师列表）
+  // 学管老师 = 学管部门/无部门
   const academicAdvisors = teachers.filter(t => {
-    const dept = teacherDetails[t.id || t.teacherId]?.department;
+    const dept = t.department;
     return !dept || dept === '学管';
   });
 
