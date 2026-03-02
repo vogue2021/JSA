@@ -114,6 +114,13 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
       navigate(`/${defaultTab}`, { replace: true });
     }
   }, []);
+
+  // 切换 tab 时自动刷新当前学生的数据，确保每个页面展示最新信息
+  useEffect(() => {
+    if (activeTab && currentStudent?.studentId) {
+      loadStudentDataFromAPI(currentStudent.studentId);
+    }
+  }, [activeTab]);
   const [settingsInitTab, setSettingsInitTab] = useState(null);
   const [showStudentList, setShowStudentList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);

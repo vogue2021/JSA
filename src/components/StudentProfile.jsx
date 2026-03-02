@@ -152,8 +152,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       // 使用原子化追加接口，避免不同账号并发操作时互相覆盖
       try {
         const result = await studentsAPI.addNote(student.studentId, newNote.trim());
-        // 用服务端返回的完整备注列表更新本地状态
-        const updatedNotes = result.data?.followUpNotes || [];
+        // apiRequest 已自动提取 result.data，所以 result 直接就是 formatStudent 对象
+        const updatedNotes = result?.followUpNotes || [];
         setFormData({ ...formData, followUpNotes: updatedNotes });
         setNewNote('');
         setStudentList(prev => prev.map(s =>
@@ -172,7 +172,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       // 使用原子化删除接口
       try {
         const result = await studentsAPI.deleteNote(student.studentId, noteId);
-        const updatedNotes = result.data?.followUpNotes || [];
+        // apiRequest 已自动提取 result.data，所以 result 直接就是 formatStudent 对象
+        const updatedNotes = result?.followUpNotes || [];
         setFormData({ ...formData, followUpNotes: updatedNotes });
         setStudentList(prev => prev.map(s =>
           s.studentId === student.studentId ? { ...s, followUpNotes: updatedNotes } : s

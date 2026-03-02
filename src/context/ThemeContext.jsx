@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 const ThemeContext = createContext(null);
 
@@ -427,8 +427,13 @@ export const ThemeProvider = ({ children }) => {
     }
   }, []);
 
-  // 当模式切换时，自动匹配适合的背景预设
+  // 当模式切换时，自动匹配适合的背景预设（跳过首次渲染，避免覆盖从 localStorage 恢复的设置）
+  const isFirstRenderRef = useRef(true);
   useEffect(() => {
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
+    }
     const currentBg = backgroundPreset;
     if (resolvedMode === 'dark' && (currentBg === 'minimal_light' || currentBg === 'sakura')) {
       setBackgroundPreset('aurora');
