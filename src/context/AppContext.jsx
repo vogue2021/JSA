@@ -39,7 +39,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // 通用 API 请求（带 token）
 async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem('authToken');
+  const token = sessionStorage.getItem('authToken');
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -52,8 +52,8 @@ async function apiRequest(endpoint, options = {}) {
   if (!response.ok) {
     // 401 = token 失效/过期，自动清除登录状态
     if (response.status === 401) {
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('authToken');
     }
     const err = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(err.message || `HTTP ${response.status}`);
@@ -79,10 +79,11 @@ export const AppProvider = ({ children }) => {
   // 权限版本（用于触发权限重新计算）
   const [permissionVersion, setPermissionVersion] = useState(0);
 
-  // 初始化：从 localStorage 恢复登录状态（token + user info）
+  // 初始化：从 sessionStorage 恢复登录状态（token + user info）
+  // 使用 sessionStorage 确保每个浏览器窗口/标签页独立，互不影响
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const savedToken = localStorage.getItem('authToken');
+    const savedUser = sessionStorage.getItem('user');
+    const savedToken = sessionStorage.getItem('authToken');
     if (savedUser && savedToken) {
       try {
         const userData = JSON.parse(savedUser);
@@ -97,17 +98,17 @@ export const AppProvider = ({ children }) => {
               name: result.user.name || userData.name,
             };
             setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
+            sessionStorage.setItem('user', JSON.stringify(updatedUser));
           }
         }).catch(() => {
           // token 失效，清除登录状态
           setUser(null);
-          localStorage.removeItem('user');
-          localStorage.removeItem('authToken');
+          sessionStorage.removeItem('user');
+          sessionStorage.removeItem('authToken');
         });
       } catch (e) {
-        localStorage.removeItem('user');
-        localStorage.removeItem('authToken');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('authToken');
       }
     }
   }, []);
@@ -152,18 +153,18 @@ export const AppProvider = ({ children }) => {
   // 登录：完全走 API
   const handleLogin = useCallback(async (userData, token) => {
     if (token) {
-      localStorage.setItem('authToken', token);
+      sessionStorage.setItem('authToken', token);
     }
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
+    sessionStorage.setItem('user', JSON.stringify(userData));
   }, []);
 
   const handleLogout = useCallback(() => {
     setUser(null);
     setStudentList([]);
     setTeacherList([]);
-    localStorage.removeItem('user');
-    localStorage.removeItem('authToken');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('authToken');
     localStorage.removeItem('currentStudent');
     localStorage.removeItem('activeTab');
   }, []);

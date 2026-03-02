@@ -406,14 +406,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                     <option value="">待分配</option>
-                    {upgradeTeachers.map(t => <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>)}
+                    {upgradeTeachers.map(t => <option key={t.teacher_id || t.teacherId} value={t.teacher_id || t.teacherId}>{t.name}</option>)}
                   </select>
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师</label>
                   <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
-                    {teachers.find(t => (t.id || t.teacherId) === studentInfo.teacherId)?.name || '待分配'}
+                    {teachers.find(t => (t.teacher_id || t.teacherId) === studentInfo.teacherId)?.name || '待分配'}
                   </div>
                 </div>
               )}
@@ -424,14 +424,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                     <option value="">请选择学管老师</option>
-                    {academicAdvisors.map(t => <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>)}
+                    {academicAdvisors.map(t => <option key={t.teacher_id || t.teacherId} value={t.teacher_id || t.teacherId}>{t.name}</option>)}
                   </select>
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>学管老师</label>
                   <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
-                    {teachers.find(t => (t.id || t.teacherId) === formData.academicAdvisorId)?.name || '待分配'}
+                    {teachers.find(t => (t.teacher_id || t.teacherId) === formData.academicAdvisorId)?.name || '待分配'}
                   </div>
                 </div>
               )}

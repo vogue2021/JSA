@@ -1,6 +1,7 @@
 // 反馈路由 - Cloudflare Workers 版本
 import { Hono } from 'hono'
 import { jwtVerify } from 'jose'
+import { authMiddleware } from '../middleware/auth.js'
 
 const feedback = new Hono()
 
@@ -32,15 +33,14 @@ feedback.post('/', async (c) => {
       } catch { /* token 无效时忽略，允许匿名提交 */ }
     }
 
-    const feedbackId = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     const db = c.env.DB
 
     await db.prepare(`
-      INSERT INTO feedbacks (id, type, content, contact, user_name, user_id, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending')
-    `).bind(feedbackId, feedbackType, content.trim(), contact?.trim() || null, userName, userId).run()
+      INSERT INTO feedbacks (type, content, contact, user_name, user_id, status)
+      VALUES (?, ?, ?, ?, ?, 'pending')
+    `).bind(feedbackType, content.trim(), contact?.trim() || null, userName, userId).run()
 
-    return c.json({ success: true, message: '反馈提交成功，感谢您的反馈！', id: feedbackId }, 201)
+    return c.json({ success: true, message: '反馈提交成功，感谢您的反馈！' }, 201)
   } catch (error) {
     console.error('提交反馈失败:', error)
     return c.json({ success: false, message: '提交失败，请稍后重试' }, 500)
@@ -48,7 +48,7 @@ feedback.post('/', async (c) => {
 })
 
 // ─── 管理员：查询反馈列表（需鉴权）──────────────────────────────────────────
-feedback.get('/', async (c) => {
+feedback.get('/', authMiddleware, async (c) => {
   const user = c.get('user')
   if (!user || user.role !== 'admin') {
     return c.json({ success: false, message: '无权限查看反馈记录' }, 403)
@@ -86,7 +86,7 @@ feedback.get('/', async (c) => {
 })
 
 // ─── 管理员：更新反馈状态（需鉴权）──────────────────────────────────────────
-feedback.patch('/:id', async (c) => {
+feedback.patch('/:id', authMiddleware, async (c) => {
   const user = c.get('user')
   if (!user || user.role !== 'admin') {
     return c.json({ success: false, message: '无权限操作' }, 403)

@@ -4,7 +4,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 // 通用 API 请求函数
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('authToken');
+  const token = sessionStorage.getItem('authToken');
   const config = {
     headers: {
       'Content-Type': 'application/json',

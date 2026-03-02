@@ -79,7 +79,7 @@ export function addLog(level, category, message, details = null) {
  */
 function getCurrentUserInfo() {
   try {
-    const saved = localStorage.getItem('user');
+    const saved = sessionStorage.getItem('user');
     if (saved) {
       const user = JSON.parse(saved);
       return {

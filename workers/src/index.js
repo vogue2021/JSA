@@ -57,14 +57,8 @@ app.use('/api/school-database/*', authMiddleware)
 app.use('/api/school-database', authMiddleware)
 app.use('/api/users/*', authMiddleware)
 app.use('/api/users', authMiddleware)
-app.use('/api/feedback', async (c, next) => {
-  // GET 和 PATCH 需要鉴权，POST 允许匿名
-  if (c.req.method !== 'POST') {
-    return authMiddleware(c, next)
-  }
-  await next()
-})
-app.use('/api/feedback/*', authMiddleware)
+// 注意：feedback 路由在内部自行处理鉴权（POST 允许匿名，GET/PATCH 需要 admin）
+// 不在这里挂载 authMiddleware，避免 Hono 路径匹配问题
 
 app.route('/api/students', studentRoutes)
 app.route('/api/teachers', teacherRoutes)

@@ -110,7 +110,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
   // 通用 API 请求（带 token）
   const apiReq = async (endpoint, options = {}) => {
-    const token = localStorage.getItem('authToken');
+    const token = sessionStorage.getItem('authToken');
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -2310,16 +2310,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     const [errors, setErrors] = useState({});
     const [showSuccess, setShowSuccess] = useState(false);
 
-    const handleChangePassword = () => {
-      const newErrors = {};
+    const [loading, setLoading] = useState(false);
 
-      // 查找当前用户
-      const currentUser = allUsers.find(u => u.email === user.email && u.role === user.role);
+    const handleChangePassword = async () => {
+      const newErrors = {};
 
       if (!passwordData.currentPassword) {
         newErrors.currentPassword = '请输入当前密码';
-      } else if (!currentUser || currentUser.password !== passwordData.currentPassword) {
-        newErrors.currentPassword = '当前密码不正确';
       }
 
       if (!passwordData.newPassword) {
@@ -2337,20 +2334,29 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         return;
       }
 
-      // 更新密码
-      setAllUsers(prev => prev.map(u =>
-        u.email === user.email && u.role === user.role
-          ? { ...u, password: passwordData.newPassword }
-          : u
-      ));
-
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowChangePasswordModal(false);
-        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setErrors({});
-        setShowSuccess(false);
-      }, 1500);
+      // 调用后端 API 修改密码
+      setLoading(true);
+      try {
+        await apiRequest('/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            oldPassword: passwordData.currentPassword,
+            newPassword: passwordData.newPassword,
+          }),
+        });
+        setShowSuccess(true);
+        setTimeout(() => {
+          setShowChangePasswordModal(false);
+          setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+          setErrors({});
+          setShowSuccess(false);
+        }, 1500);
+      } catch (err) {
+        // 后端返回的错误信息（如"原密码错误"）
+        setErrors({ currentPassword: err.message || '密码修改失败，请重试' });
+      } finally {
+        setLoading(false);
+      }
     };
 
     return (
@@ -2420,7 +2426,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             <div className="p-6 border-t flex gap-3">
               <button
                 onClick={handleChangePassword}
-                className="flex-1 py-2 rounded-lg font-semibold transition"
+                disabled={loading}
+                className="flex-1 py-2 rounded-lg font-semibold transition disabled:opacity-50"
                 style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
                 onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)'}
                 onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}

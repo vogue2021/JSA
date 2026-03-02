@@ -11,7 +11,7 @@ import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../u
 import { runMigration, getMigrationStats } from '../utils/migrationUtils';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
-  const { showNotification } = useApp();
+  const { showNotification, apiRequest } = useApp();
   const { isDark, tokens, glassEnabled } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -102,28 +102,38 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
   const [passwordForm, setPasswordForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [pwdErrors, setPwdErrors] = useState({});
   const [pwdSuccess, setPwdSuccess] = useState(false);
+  const [pwdLoading, setPwdLoading] = useState(false);
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     const errors = {};
-    const currentUser = allUsers.find(u => u.email === user.email && u.role === user.role);
     if (!passwordForm.current) errors.current = '请输入当前密码';
-    else if (!currentUser || currentUser.password !== passwordForm.current) errors.current = '当前密码不正确';
     if (!passwordForm.newPwd) errors.newPwd = '请输入新密码';
     else if (passwordForm.newPwd.length < 6) errors.newPwd = '密码至少6位';
     if (passwordForm.newPwd !== passwordForm.confirm) errors.confirm = '两次输入不一致';
 
     if (Object.keys(errors).length > 0) { setPwdErrors(errors); return; }
 
-    setAllUsers(prev => prev.map(u =>
-      u.email === user.email && u.role === user.role ? { ...u, password: passwordForm.newPwd } : u
-    ));
-    setPwdSuccess(true);
-    setTimeout(() => {
-      setPwdSuccess(false);
-      setPasswordForm({ current: '', newPwd: '', confirm: '' });
-      setPwdErrors({});
-    }, 2000);
-    if (showNotification) showNotification('密码修改成功');
+    setPwdLoading(true);
+    try {
+      await apiRequest('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          oldPassword: passwordForm.current,
+          newPassword: passwordForm.newPwd,
+        }),
+      });
+      setPwdSuccess(true);
+      setTimeout(() => {
+        setPwdSuccess(false);
+        setPasswordForm({ current: '', newPwd: '', confirm: '' });
+        setPwdErrors({});
+      }, 2000);
+      if (showNotification) showNotification('密码修改成功');
+    } catch (err) {
+      setPwdErrors({ current: err.message || '密码修改失败，请重试' });
+    } finally {
+      setPwdLoading(false);
+    }
   };
 
   const tabs = [
@@ -616,9 +626,9 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
                   className={`w-full px-3 py-2 border rounded-lg ${pwdErrors.confirm ? 'border-red-500' : ''}`} placeholder="再次输入新密码" />
                 {pwdErrors.confirm && <p className="text-red-500 text-xs mt-1">{pwdErrors.confirm}</p>}
               </div>
-              <button onClick={handleChangePassword}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium">
-                <Lock size={18} /> 确认修改
+              <button onClick={handleChangePassword} disabled={pwdLoading}
+                className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium disabled:opacity-50">
+                <Lock size={18} /> {pwdLoading ? '修改中...' : '确认修改'}
               </button>
             </div>
           )}

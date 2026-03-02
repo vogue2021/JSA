@@ -308,10 +308,23 @@ auth.post('/logout', (c) => {
   return c.json({ success: true, message: '登出成功' })
 })
 
-// ─── 修改密码（需要 JWT 鉴权）────────────────────────────────────────────────
+// ─── 修改密码（需要 JWT 鉴权，在路由内部自行验证）─────────────────────────
 auth.post('/change-password', async (c) => {
-  const user = c.get('user')
-  if (!user) return c.json({ success: false, message: '未授权' }, 401)
+  // auth 路由不经过 authMiddleware，需要手动验证 token
+  const token = c.req.header('Authorization')?.split(' ')[1]
+  if (!token) return c.json({ success: false, message: '未授权' }, 401)
+
+  let user
+  try {
+    const { jwtVerify } = await import('jose')
+    const secret = new TextEncoder().encode(
+      c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
+    )
+    const { payload } = await jwtVerify(token, secret)
+    user = payload
+  } catch {
+    return c.json({ success: false, message: '令牌无效或已过期' }, 401)
+  }
 
   try {
     const { oldPassword, newPassword } = await c.req.json()
