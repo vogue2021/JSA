@@ -74,18 +74,40 @@ export const AppProvider = ({ children }) => {
   // 权限版本（用于触发权限重新计算）
   const [permissionVersion, setPermissionVersion] = useState(0);
 
+  // 设备唯一 ID（多端独立：每个浏览器/标签页有独立的 session token key）
+  const [deviceId] = useState(() => {
+    let id = sessionStorage.getItem('jsa_device_id');
+    if (!id) {
+      id = `device_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      sessionStorage.setItem('jsa_device_id', id);
+    }
+    return id;
+  });
+
+  // 每个设备使用独立的 token key（确保多端状态独立）
+  const tokenKey = `authToken_${deviceId}`;
+  const userKey = `user_${deviceId}`;
+
   // 初始化：从 localStorage 恢复登录状态（token + user info）
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const savedToken = localStorage.getItem('authToken');
+    // 同时检查旧的通用 key 和新的设备 key
+    const savedUser = localStorage.getItem(userKey) || localStorage.getItem('user');
+    const savedToken = localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
     if (savedUser && savedToken) {
       try {
         const userData = JSON.parse(savedUser);
         setUser(userData);
+        // 迁移到设备独立 key
+        localStorage.setItem(tokenKey, savedToken);
+        localStorage.setItem(userKey, savedUser);
+        // 清除旧的通用 key（迁移一次）
+        if (localStorage.getItem('authToken')) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+        }
         // 验证 token 是否仍然有效
         apiRequest('/auth/verify').then(result => {
           if (result && result.user) {
-            // token 有效，更新用户信息
             const updatedUser = {
               ...userData,
               ...result.user,
@@ -93,17 +115,16 @@ export const AppProvider = ({ children }) => {
               name: result.user.name || userData.name,
             };
             setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
+            localStorage.setItem(userKey, JSON.stringify(updatedUser));
           }
         }).catch(() => {
-          // token 失效，清除登录状态
           setUser(null);
-          localStorage.removeItem('user');
-          localStorage.removeItem('authToken');
+          localStorage.removeItem(userKey);
+          localStorage.removeItem(tokenKey);
         });
       } catch (e) {
-        localStorage.removeItem('user');
-        localStorage.removeItem('authToken');
+        localStorage.removeItem(userKey);
+        localStorage.removeItem(tokenKey);
       }
     }
   }, []);
@@ -145,22 +166,29 @@ export const AppProvider = ({ children }) => {
     setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  // 登录：完全走 API，不再查 localStorage 中的 allUsers
+  // 登录：完全走 API，使用设备独立的 token key
   const handleLogin = useCallback(async (userData, token) => {
     if (token) {
+      localStorage.setItem(tokenKey, token);
+      // 兼容：也写入通用 key 供 apiRequest 使用
       localStorage.setItem('authToken', token);
     }
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
-  }, []);
+    localStorage.setItem(userKey, JSON.stringify(userData));
+  }, [tokenKey, userKey]);
 
   const handleLogout = useCallback(() => {
     setUser(null);
     setStudentList([]);
+    // 只清除当前设备的 token（不影响其他设备）
+    localStorage.removeItem(userKey);
+    localStorage.removeItem(tokenKey);
+    // 同时清除通用 key
     localStorage.removeItem('user');
     localStorage.removeItem('authToken');
     localStorage.removeItem('currentStudent');
-  }, []);
+    localStorage.removeItem('activeTab');
+  }, [tokenKey, userKey]);
 
   // 加载老师列表到 state（异步调用，state 同步可读）
   const loadTeacherList = useCallback(async () => {
@@ -187,7 +215,12 @@ export const AppProvider = ({ children }) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
     if (user.role === 'teacher') {
-      // 从 localStorage 读取权限缓存（由 TeacherManagement 写入）
+      // 优先从 teacherList (API 数据) 中读取权限
+      const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
+      if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
+        return teacherInfo.permissions.includes(permissionId);
+      }
+      // 降级：从 localStorage 读取权限缓存
       try {
         const saved = localStorage.getItem('teacherDetails');
         if (saved) {
@@ -202,7 +235,7 @@ export const AppProvider = ({ children }) => {
       return ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'].includes(permissionId);
     }
     return false;
-  }, [user, permissionVersion]);
+  }, [user, teacherList, permissionVersion]);
 
   const value = useMemo(() => ({
     user, setUser,

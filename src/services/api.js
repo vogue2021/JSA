@@ -245,6 +245,18 @@ export const schoolDatabaseAPI = {
   },
 };
 
+// 用户管理 API（仅管理员）
+export const usersAPI = {
+  getAll: async () => {
+    return await apiRequest('/users');
+  },
+  delete: async (id) => {
+    return await apiRequest(`/users/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // 反馈 API
 export const feedbackAPI = {
   // 提交反馈（公开，无需登录）

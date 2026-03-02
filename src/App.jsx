@@ -8,7 +8,7 @@ import {
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon
 } from 'lucide-react';
-import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI } from './services/api';
+import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -72,10 +72,18 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
     }
   });
 
-  const [activeTab, setActiveTab] = useState(
+  const [activeTab, setActiveTabRaw] = useState(() => {
+    // 从 localStorage 恢复上次所在页面
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab) return savedTab;
     // 老师和管理员默认进入仪表盘，学生进入时间线
-    (user.role === 'teacher' || user.role === 'admin') ? 'dashboard' : 'timeline'
-  );
+    return (user.role === 'teacher' || user.role === 'admin') ? 'dashboard' : 'timeline';
+  });
+  // 包装 setActiveTab，自动持久化到 localStorage
+  const setActiveTab = (tab) => {
+    setActiveTabRaw(tab);
+    localStorage.setItem('activeTab', tab);
+  };
   const [settingsInitTab, setSettingsInitTab] = useState(null);
   const [showStudentList, setShowStudentList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -239,10 +247,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const schools = currentStudentData.schools || [];
   const checklist = currentStudentData.checklist || {};
 
-  // 切换学生时从 API 加载数据
+  // 切换学生时从 API 加载数据（每次切换都重新加载以确保数据实时）
   useEffect(() => {
     const studentId = currentStudent?.studentId;
-    if (studentId && !studentData[studentId]) {
+    if (studentId) {
       loadStudentDataFromAPI(studentId);
     }
   }, [currentStudent?.studentId]);
@@ -2397,10 +2405,41 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     const [filterType, setFilterType] = useState('all'); // 'all', 'student', 'teacher', 'admin'
     const [searchQuery, setSearchQuery] = useState('');
     const [showPasswords, setShowPasswords] = useState(false);
+    // 从 API 加载的账号列表
+    const [accountList, setAccountList] = useState([]);
+    const [accountsLoading, setAccountsLoading] = useState(true);
+
+    // 打开弹窗时从 API 加载所有账号
+    useEffect(() => {
+      const loadAccounts = async () => {
+        try {
+          setAccountsLoading(true);
+          const data = await usersAPI.getAll();
+          if (Array.isArray(data)) {
+            setAccountList(data.map(u => ({
+              id: u.id,
+              email: u.email,
+              role: u.role,
+              name: u.name,
+              teacherId: u.teacher_id,
+              studentId: u.student_id,
+              is_active: u.is_active,
+              createdAt: u.created_at,
+            })));
+          }
+        } catch (err) {
+          console.error('加载账号列表失败:', err);
+          if (showNotification) showNotification('账号列表加载失败');
+        } finally {
+          setAccountsLoading(false);
+        }
+      };
+      loadAccounts();
+    }, []);
 
     // 过滤和搜索账号
     const getFilteredAccounts = () => {
-      let filtered = allUsers;
+      let filtered = accountList;
 
       // 按角色过滤
       if (filterType !== 'all') {
@@ -2410,8 +2449,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       // 搜索过滤
       if (searchQuery) {
         filtered = filtered.filter(u =>
-          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
           (u.studentId && u.studentId.includes(searchQuery)) ||
           (u.teacherId && u.teacherId.includes(searchQuery))
         );
@@ -2450,7 +2489,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   ? { background: isDark ? 'rgba(255,255,255,0.12)' : '#4b5563', color: '#fff' }
                   : { background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}
               >
-                <div className="text-2xl font-bold">{allUsers.length}</div>
+                <div className="text-2xl font-bold">{accountsLoading ? '...' : accountList.length}</div>
                 <div className="text-sm">全部账号</div>
               </button>
               <button
@@ -2460,7 +2499,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   ? { background: '#2563eb', color: '#fff' }
                   : { background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : 'transparent'}` }}
               >
-                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'student').length}</div>
+                <div className="text-2xl font-bold">{accountsLoading ? '...' : accountList.filter(u => u.role === 'student').length}</div>
                 <div className="text-sm">学生账号</div>
               </button>
               <button
@@ -2470,7 +2509,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   ? { background: '#9333ea', color: '#fff' }
                   : { background: isDark ? 'rgba(168,85,247,0.08)' : 'rgba(168,85,247,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(168,85,247,0.2)' : 'transparent'}` }}
               >
-                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'teacher').length}</div>
+                <div className="text-2xl font-bold">{accountsLoading ? '...' : accountList.filter(u => u.role === 'teacher').length}</div>
                 <div className="text-sm">老师账号</div>
               </button>
               <button
@@ -2480,7 +2519,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   ? { background: '#dc2626', color: '#fff' }
                   : { background: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.06)', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(239,68,68,0.2)' : 'transparent'}` }}
               >
-                <div className="text-2xl font-bold">{allUsers.filter(u => u.role === 'admin').length}</div>
+                <div className="text-2xl font-bold">{accountsLoading ? '...' : accountList.filter(u => u.role === 'admin').length}</div>
                 <div className="text-sm">管理员账号</div>
               </button>
             </div>
@@ -2560,10 +2599,15 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                         </div>
                         {account.role !== 'admin' && (
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
-                                setAllUsers(prev => prev.filter(u => u.id !== account.id));
-                                if (showNotification) showNotification(`已删除账号: ${account.name}`);
+                                try {
+                                  await usersAPI.delete(account.id);
+                                  setAccountList(prev => prev.filter(u => u.id !== account.id));
+                                  if (showNotification) showNotification(`已删除账号: ${account.name}`);
+                                } catch (err) {
+                                  if (showNotification) showNotification(err.message || '删除失败');
+                                }
                               }
                             }}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
