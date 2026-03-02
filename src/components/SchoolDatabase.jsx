@@ -6,6 +6,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getDefaultSchools } from '../data/defaultSchools';
+import { schoolDatabaseAPI } from '../services/api';
 
 // CSV 格式说明
 const CSV_FORMAT_HELP = `CSV文件格式说明：
@@ -53,16 +54,51 @@ const SchoolDatabase = () => {
   const [showCsvHelp, setShowCsvHelp] = useState(false);
   const fileInputRef = useRef(null);
 
-  // 学校信息库数据
+  // 学校信息库数据 - 优先从 D1 API 加载，localStorage 作为缓存
   const [schoolDb, setSchoolDb] = useState(() => {
     const saved = localStorage.getItem('schoolDatabase');
     if (saved) return JSON.parse(saved);
     return getDefaultSchools();
   });
+  const [dbLoading, setDbLoading] = useState(true);
 
+  // 从 D1 API 加载学校信息库
   useEffect(() => {
-    localStorage.setItem('schoolDatabase', JSON.stringify(schoolDb));
-  }, [schoolDb]);
+    const loadFromAPI = async () => {
+      try {
+        setDbLoading(true);
+        const data = await schoolDatabaseAPI.getAll();
+        if (Array.isArray(data) && data.length > 0) {
+          setSchoolDb(data);
+          localStorage.setItem('schoolDatabase', JSON.stringify(data));
+        } else {
+          // API 返回空数据，使用 localStorage 缓存或默认数据
+          const saved = localStorage.getItem('schoolDatabase');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setSchoolDb(parsed);
+            } else {
+              setSchoolDb(getDefaultSchools());
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('从 API 加载学校信息库失败，使用本地缓存:', err);
+        // 降级到 localStorage
+      } finally {
+        setDbLoading(false);
+      }
+    };
+    loadFromAPI();
+  }, []);
+
+  // 同步到 localStorage（缓存）
+  useEffect(() => {
+    if (!dbLoading) {
+      localStorage.setItem('schoolDatabase', JSON.stringify(schoolDb));
+    }
+  }, [schoolDb, dbLoading]);
 
   const [formData, setFormData] = useState({ ...emptyForm });
   const [newProgram, setNewProgram] = useState('');
@@ -86,20 +122,38 @@ const SchoolDatabase = () => {
     setShowAddModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name) return;
-    if (editingSchool) {
-      setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? { ...formData, id: editingSchool.id } : s));
-      if (showNotification) showNotification('学校信息已更新');
-    } else {
-      setSchoolDb(prev => [...prev, { ...formData, id: Date.now() }]);
-      if (showNotification) showNotification('学校已添加到信息库');
+    try {
+      if (editingSchool) {
+        const updated = await schoolDatabaseAPI.update(editingSchool.id, formData);
+        setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? (updated || { ...formData, id: editingSchool.id }) : s));
+        if (showNotification) showNotification('学校信息已更新');
+      } else {
+        const created = await schoolDatabaseAPI.create(formData);
+        setSchoolDb(prev => [...prev, created || { ...formData, id: Date.now() }]);
+        if (showNotification) showNotification('学校已添加到信息库');
+      }
+    } catch (err) {
+      console.error('保存学校信息失败:', err);
+      // 降级到本地保存
+      if (editingSchool) {
+        setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? { ...formData, id: editingSchool.id } : s));
+      } else {
+        setSchoolDb(prev => [...prev, { ...formData, id: Date.now() }]);
+      }
+      if (showNotification) showNotification(editingSchool ? '学校信息已更新（本地）' : '学校已添加（本地）');
     }
     setShowAddModal(false);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('确定要删除这个学校信息吗？')) {
+      try {
+        await schoolDatabaseAPI.delete(id);
+      } catch (err) {
+        console.warn('API 删除失败，仅本地删除:', err);
+      }
       setSchoolDb(prev => prev.filter(s => s.id !== id));
       if (showNotification) showNotification('学校信息已删除');
     }
@@ -142,14 +196,23 @@ const SchoolDatabase = () => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const parsed = parseCSV(evt.target.result);
         if (parsed.length === 0) {
           if (showNotification) showNotification('CSV文件为空或格式不正确');
           return;
         }
-        setSchoolDb(prev => [...prev, ...parsed]);
+        // 尝试通过 API 批量导入
+        try {
+          await schoolDatabaseAPI.batchImport(parsed);
+          // 重新从 API 加载
+          const data = await schoolDatabaseAPI.getAll();
+          if (Array.isArray(data)) setSchoolDb(data);
+        } catch {
+          // 降级到本地
+          setSchoolDb(prev => [...prev, ...parsed]);
+        }
         if (showNotification) showNotification(`成功导入 ${parsed.length} 所学校`);
       } catch (err) {
         if (showNotification) showNotification('CSV解析失败，请检查文件格式');

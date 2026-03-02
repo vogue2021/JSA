@@ -15,10 +15,21 @@ teachers.get('/', async (c) => {
 
   const db = c.env.DB
   const { results } = await db.prepare(
-    'SELECT id, name, email, teacher_id, is_active, created_at FROM users WHERE role = \'teacher\''
+    `SELECT u.id, u.name, u.email, u.teacher_id, u.is_active, u.created_at,
+            t.department, t.subject, t.permissions, t.gender, t.birthday, t.phone,
+            t.email_contact, t.address, t.education, t.hire_date, t.employment_type, t.photo
+     FROM users u
+     LEFT JOIN teachers t ON u.teacher_id = t.teacher_id
+     WHERE u.role = 'teacher'`
   ).all()
 
-  return c.json({ success: true, data: results })
+  // 解析 JSON 字段
+  const data = results.map(r => ({
+    ...r,
+    permissions: (() => { try { return JSON.parse(r.permissions || '[]') } catch { return [] } })(),
+  }))
+
+  return c.json({ success: true, data })
 })
 
 // ─── 获取老师的学生列表（含统计）─────────────────────────────────────────────
@@ -32,13 +43,13 @@ teachers.get('/:id/students', async (c) => {
 
   const db = c.env.DB
   const teacher = await db.prepare(
-    'SELECT * FROM users WHERE id = ? AND role = \'teacher\''
+    "SELECT * FROM users WHERE id = ? AND role = 'teacher'"
   ).bind(id).first()
 
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
   const { results: studentList } = await db.prepare(
-    'SELECT * FROM users WHERE role = \'student\' AND teacher_id = ?'
+    'SELECT * FROM students WHERE teacher_id = ? AND is_active = 1'
   ).bind(teacher.teacher_id).all()
 
   // 为每个学生附加统计信息
@@ -79,13 +90,21 @@ teachers.get('/:id', async (c) => {
 
   const db = c.env.DB
   const teacher = await db.prepare(
-    'SELECT id, name, email, teacher_id, is_active, created_at FROM users WHERE id = ? AND role = \'teacher\''
+    `SELECT u.id, u.name, u.email, u.teacher_id, u.is_active, u.created_at,
+            t.department, t.subject, t.permissions, t.gender, t.birthday, t.phone,
+            t.email_contact, t.address, t.education, t.hire_date, t.employment_type, t.photo
+     FROM users u
+     LEFT JOIN teachers t ON u.teacher_id = t.teacher_id
+     WHERE u.id = ? AND u.role = 'teacher'`
   ).bind(id).first()
 
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
+  // 解析 JSON 字段
+  teacher.permissions = (() => { try { return JSON.parse(teacher.permissions || '[]') } catch { return [] } })()
+
   const studentCount = await db.prepare(
-    'SELECT COUNT(*) as count FROM users WHERE role = \'student\' AND teacher_id = ?'
+    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ?'
   ).bind(teacher.teacher_id).first()
 
   return c.json({
@@ -104,31 +123,80 @@ teachers.put('/:id', async (c) => {
   }
 
   const db = c.env.DB
-  const teacher = await db.prepare(
-    'SELECT id FROM users WHERE id = ? AND role = \'teacher\''
+  const teacherUser = await db.prepare(
+    "SELECT id, teacher_id FROM users WHERE id = ? AND role = 'teacher'"
   ).bind(id).first()
 
-  if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
+  if (!teacherUser) return c.json({ success: false, message: '老师不存在' }, 404)
 
   const body = await c.req.json()
-  const fields = []
-  const params = []
 
-  if (body.name !== undefined) { fields.push('name = ?'); params.push(body.name) }
-  if (body.email !== undefined) { fields.push('email = ?'); params.push(body.email) }
+  // 更新 users 表基本字段
+  const userFields = []
+  const userParams = []
+  if (body.name !== undefined) { userFields.push('name = ?'); userParams.push(body.name) }
+  if (body.email !== undefined) { userFields.push('email = ?'); userParams.push(body.email) }
   if (body.is_active !== undefined && isAdmin(user)) {
-    fields.push('is_active = ?'); params.push(body.is_active)
+    userFields.push('is_active = ?'); userParams.push(body.is_active)
+  }
+  if (userFields.length > 0) {
+    userFields.push("updated_at = datetime('now')")
+    userParams.push(id)
+    await db.prepare(`UPDATE users SET ${userFields.join(', ')} WHERE id = ?`).bind(...userParams).run()
   }
 
-  if (fields.length === 0) return c.json({ success: false, message: '没有可更新的字段' }, 400)
+  // 更新 teachers 表扩展字段
+  const teacherDetailFields = ['department', 'subject', 'gender', 'birthday', 'phone',
+    'email_contact', 'address', 'education', 'hire_date', 'employment_type', 'photo']
+  const hasTeacherFields = teacherDetailFields.some(f => body[f] !== undefined) || body.permissions !== undefined
 
-  fields.push('updated_at = datetime(\'now\')')
-  params.push(id)
+  if (hasTeacherFields && teacherUser.teacher_id) {
+    // 检查 teachers 表是否有记录
+    const existing = await db.prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?').bind(teacherUser.teacher_id).first()
 
-  await db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).bind(...params).run()
+    if (existing) {
+      // 更新
+      const tFields = []
+      const tParams = []
+      teacherDetailFields.forEach(f => {
+        if (body[f] !== undefined) { tFields.push(`${f} = ?`); tParams.push(body[f]) }
+      })
+      if (body.permissions !== undefined) {
+        tFields.push('permissions = ?')
+        tParams.push(JSON.stringify(body.permissions))
+      }
+      if (tFields.length > 0) {
+        tParams.push(teacherUser.teacher_id)
+        await db.prepare(`UPDATE teachers SET ${tFields.join(', ')} WHERE teacher_id = ?`).bind(...tParams).run()
+      }
+    } else {
+      // 插入新记录
+      await db.prepare(
+        `INSERT INTO teachers (teacher_id, user_id, department, subject, permissions, gender, birthday, phone, email_contact, address, education, hire_date, employment_type, photo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        teacherUser.teacher_id, id,
+        body.department || '', body.subject || '', JSON.stringify(body.permissions || []),
+        body.gender || '', body.birthday || '', body.phone || '',
+        body.email_contact || '', body.address || '', body.education || '',
+        body.hire_date || '', body.employment_type || '', body.photo || ''
+      ).run()
+    }
+  }
+
+  // 返回更新后的完整数据
   const updated = await db.prepare(
-    'SELECT id, name, email, teacher_id, is_active, created_at FROM users WHERE id = ?'
+    `SELECT u.id, u.name, u.email, u.teacher_id, u.is_active, u.created_at,
+            t.department, t.subject, t.permissions, t.gender, t.birthday, t.phone,
+            t.email_contact, t.address, t.education, t.hire_date, t.employment_type, t.photo
+     FROM users u
+     LEFT JOIN teachers t ON u.teacher_id = t.teacher_id
+     WHERE u.id = ?`
   ).bind(id).first()
+
+  if (updated) {
+    updated.permissions = (() => { try { return JSON.parse(updated.permissions || '[]') } catch { return [] } })()
+  }
 
   return c.json({ success: true, data: updated, message: '老师信息更新成功' })
 })
@@ -148,7 +216,7 @@ teachers.delete('/:id', async (c) => {
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
   const studentCount = await db.prepare(
-    'SELECT COUNT(*) as count FROM users WHERE role = \'student\' AND teacher_id = ?'
+    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ?'
   ).bind(teacher.teacher_id).first()
 
   if (studentCount?.count > 0) {

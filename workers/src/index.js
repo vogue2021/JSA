@@ -10,6 +10,7 @@ import schoolRoutes from './routes/schools.js'
 import eventRoutes from './routes/events.js'
 import materialRoutes from './routes/materials.js'
 import feedbackRoutes from './routes/feedback.js'
+import schoolDatabaseRoutes from './routes/school_database.js'
 
 const app = new Hono()
 
@@ -51,6 +52,8 @@ app.use('/api/teachers/*', authMiddleware)
 app.use('/api/schools/*', authMiddleware)
 app.use('/api/events/*', authMiddleware)
 app.use('/api/materials/*', authMiddleware)
+app.use('/api/school-database/*', authMiddleware)
+app.use('/api/school-database', authMiddleware)
 app.use('/api/feedback', async (c, next) => {
   // GET 和 PATCH 需要鉴权，POST 允许匿名
   if (c.req.method !== 'POST') {
@@ -66,6 +69,7 @@ app.route('/api/schools', schoolRoutes)
 app.route('/api/events', eventRoutes)
 app.route('/api/materials', materialRoutes)
 app.route('/api/feedback', feedbackRoutes)
+app.route('/api/school-database', schoolDatabaseRoutes)
 
 // ─── 404 处理 ─────────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ success: false, message: '接口不存在' }, 404))

@@ -259,7 +259,6 @@ schools.put('/:id', async (c) => {
 
   const student_id = school.student_id
   const makeEvent = (title, date, category, urgent = false, notes = '') => ({
-    id: `event_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     student_id, school_id: id, type: 'deadline',
     title, date, category, urgent: urgent ? 1 : 0, notes, completed: 0,
     days_left: Math.ceil((new Date(date) - new Date()) / 86400000)
@@ -273,9 +272,9 @@ schools.put('/:id', async (c) => {
 
   if (eventInserts.length > 0) {
     await db.batch(eventInserts.map(e =>
-      db.prepare(`INSERT INTO events (id, student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(e.id, e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
+      db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(e.student_id, e.school_id, e.type, e.title, e.date, e.days_left, e.category, e.urgent, e.notes, e.completed)
     ))
   }
 

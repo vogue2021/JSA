@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { teachersAPI } from '../services/api';
 
 const TeacherManagement = () => {
   const { allUsers, setAllUsers, showNotification, user, refreshPermissions } = useApp();
@@ -24,7 +25,7 @@ const TeacherManagement = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 从 localStorage 读取老师详细信息
+  // 从 localStorage 读取老师详细信息（作为缓存）
   const [teacherDetails, setTeacherDetails] = useState(() => {
     const saved = localStorage.getItem('teacherDetails');
     return saved ? JSON.parse(saved) : {};
@@ -34,6 +35,42 @@ const TeacherManagement = () => {
     setTeacherDetails(details);
     localStorage.setItem('teacherDetails', JSON.stringify(details));
   };
+
+  // 从 API 加载老师详细信息并合并到 teacherDetails
+  useEffect(() => {
+    const loadTeacherDetailsFromAPI = async () => {
+      try {
+        const data = await teachersAPI.getAll();
+        if (Array.isArray(data)) {
+          const newDetails = { ...teacherDetails };
+          data.forEach(t => {
+            if (t.teacher_id) {
+              // 将 API 返回的数据合并到 teacherDetails
+              newDetails[t.teacher_id] = {
+                ...newDetails[t.teacher_id],
+                department: t.department || newDetails[t.teacher_id]?.department || '',
+                subject: t.subject || newDetails[t.teacher_id]?.subject || '',
+                permissions: Array.isArray(t.permissions) ? t.permissions : (newDetails[t.teacher_id]?.permissions || []),
+                gender: t.gender || newDetails[t.teacher_id]?.gender || '',
+                birthday: t.birthday || newDetails[t.teacher_id]?.birthday || '',
+                phone: t.phone || newDetails[t.teacher_id]?.phone || '',
+                address: t.address || newDetails[t.teacher_id]?.address || '',
+                education: t.education || newDetails[t.teacher_id]?.education || '',
+                joinDate: t.hire_date || newDetails[t.teacher_id]?.joinDate || '',
+                employmentType: t.employment_type || newDetails[t.teacher_id]?.employmentType || '',
+                photo: t.photo || newDetails[t.teacher_id]?.photo || '',
+                email_contact: t.email_contact || newDetails[t.teacher_id]?.email_contact || '',
+              };
+            }
+          });
+          saveTeacherDetails(newDetails);
+        }
+      } catch (err) {
+        console.warn('从 API 加载老师详情失败，使用本地缓存:', err);
+      }
+    };
+    loadTeacherDetailsFromAPI();
+  }, []);
 
   // 获取所有老师账号
   const teachers = allUsers.filter(u => u.role === 'teacher');
@@ -93,14 +130,14 @@ const TeacherManagement = () => {
     if (isMobile) setMobileShowDetail(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // 更新 allUsers 中的名字和邮箱
     setAllUsers(prev => prev.map(u =>
       u.teacherId === selectedTeacher.teacherId
         ? { ...u, name: editForm.name, email: editForm.email }
         : u
     ));
-    // 保存详细信息
+    // 保存详细信息到本地
     const newDetails = {
       ...teacherDetails,
       [selectedTeacher.teacherId]: {
@@ -121,6 +158,29 @@ const TeacherManagement = () => {
       }
     };
     saveTeacherDetails(newDetails);
+
+    // 同步到 API
+    try {
+      await teachersAPI.update(selectedTeacher.id, {
+        name: editForm.name,
+        email: editForm.email,
+        department: editForm.department,
+        subject: editForm.subject,
+        permissions: editForm.permissions,
+        gender: editForm.gender,
+        birthday: editForm.birthday,
+        phone: editForm.phone,
+        email_contact: editForm.email,
+        address: editForm.address,
+        education: editForm.education,
+        hire_date: editForm.joinDate,
+        employment_type: editForm.employmentType,
+        photo: editForm.photo,
+      });
+    } catch (err) {
+      console.warn('同步老师信息到 API 失败:', err);
+    }
+
     setIsEditing(false);
     if (showNotification) showNotification('老师信息已保存');
     // 通知全局权限刷新

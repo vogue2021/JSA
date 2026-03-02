@@ -24,7 +24,7 @@ function formatStudent(row) {
     jlptScore: row.jlpt_score || '',
     ejuScores: (() => { try { return JSON.parse(row.eju_scores || '[]') } catch { return [] } })(),
     englishScore: row.english_score || '',
-    followUpNotes: row.follow_up_notes || '',
+    followUpNotes: (() => { try { const v = JSON.parse(row.follow_up_notes || '[]'); return Array.isArray(v) ? v : [] } catch { return row.follow_up_notes ? [{ id: Date.now(), content: row.follow_up_notes, date: '', author: '系统', role: 'admin' }] : [] } })(),
     photo: row.photo || '',
     packageName: row.package_name || '',
     packageEndDate: row.package_end_date || '',
@@ -219,7 +219,7 @@ students.put('/:id', async (c) => {
   const params = []
 
   const updatable = ['name', 'email', 'birthday', 'high_school', 'language_school',
-    'jlpt_score', 'english_score', 'follow_up_notes', 'photo',
+    'jlpt_score', 'english_score', 'photo',
     'package_name', 'package_end_date', 'subject']
 
   updatable.forEach(f => {
@@ -229,6 +229,10 @@ students.put('/:id', async (c) => {
   // JSON 字段
   if (body.eju_scores !== undefined) { fields.push('eju_scores = ?'); params.push(JSON.stringify(body.eju_scores)) }
   if (body.tags !== undefined) { fields.push('tags = ?'); params.push(JSON.stringify(body.tags)) }
+  if (body.follow_up_notes !== undefined) {
+    fields.push('follow_up_notes = ?')
+    params.push(typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes))
+  }
 
   // 管理员专属字段
   if (isAdmin(user)) {

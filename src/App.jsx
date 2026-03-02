@@ -1325,56 +1325,55 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       }
     }, [schools]);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
       e.preventDefault();
-      const newChecklist = {...checklist};
-
-      if (formData.type === 'general') {
+      try {
         if (editingMaterial) {
-          newChecklist.general = checklist.general.map(item =>
-            item.id === editingMaterial.id
-              ? { ...item, item: formData.item, deadline: formData.deadline, url: formData.url, completed: formData.completed }
-              : item
-          );
+          // 更新已有材料
+          await apiReq(`/materials/${editingMaterial.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              item: formData.item,
+              deadline: formData.deadline,
+              url: formData.url,
+              completed: formData.completed,
+              checked_by: formData.completed ? user.role : null,
+              checked_at: formData.completed ? new Date().toISOString().split('T')[0] : null,
+            }),
+          });
         } else {
-          newChecklist.general.push({
-            id: Date.now(),
+          // 创建新材料
+          const materialData = {
+            student_id: currentStudent?.studentId,
             item: formData.item,
+            type: formData.type,
             deadline: formData.deadline,
             url: formData.url,
             completed: formData.completed,
-            checkedBy: formData.completed ? user.role : null,
-            checkedAt: formData.completed ? new Date().toISOString().split('T')[0] : null
+            checked_by: formData.completed ? user.role : null,
+            checked_at: formData.completed ? new Date().toISOString().split('T')[0] : null,
+          };
+          // 如果是学校专用材料，需要找到对应的 school_id
+          if (formData.type === 'school' && formData.school) {
+            const matchedSchool = schools.find(s => s.name === formData.school);
+            if (matchedSchool) {
+              materialData.school_id = matchedSchool.id;
+            }
+          }
+          await apiReq('/materials', {
+            method: 'POST',
+            body: JSON.stringify(materialData),
           });
         }
-      } else {
-        if (!newChecklist.schoolSpecific[formData.school]) {
-          newChecklist.schoolSpecific[formData.school] = [];
-        }
-
-        if (editingMaterial) {
-          newChecklist.schoolSpecific[formData.school] =
-            newChecklist.schoolSpecific[formData.school].map(item =>
-              item.id === editingMaterial.id
-                ? { ...item, item: formData.item, deadline: formData.deadline, url: formData.url, completed: formData.completed }
-                : item
-            );
-        } else {
-          newChecklist.schoolSpecific[formData.school].push({
-            id: Date.now(),
-            item: formData.item,
-            deadline: formData.deadline,
-            url: formData.url,
-            completed: formData.completed,
-            checkedBy: formData.completed ? user.role : null,
-            checkedAt: formData.completed ? new Date().toISOString().split('T')[0] : null
-          });
-        }
+        // 重新从 API 加载数据
+        await loadStudentDataFromAPI(currentStudent?.studentId);
+        setShowMaterialModal(false);
+        setEditingMaterial(null);
+        if (showNotification) showNotification(editingMaterial ? '材料已更新' : '材料已添加');
+      } catch (err) {
+        console.error('保存材料失败:', err);
+        if (showNotification) showNotification('保存失败：' + err.message, 'error');
       }
-
-      setChecklist(newChecklist);
-      setShowMaterialModal(false);
-      setEditingMaterial(null);
     };
 
     return (

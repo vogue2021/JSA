@@ -128,6 +128,12 @@ export const materialsAPI = {
       body: JSON.stringify({ completed, checked_by: checkedBy }),
     });
   },
+  toggle: async (materialId, checkedBy) => {
+    return await apiRequest(`/materials/${materialId}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ checked_by: checkedBy }),
+    });
+  },
 };
 
 // 学生 API
@@ -186,6 +192,43 @@ export const teachersAPI = {
   delete: async (id) => {
     return await apiRequest(`/teachers/${id}`, {
       method: 'DELETE',
+    });
+  },
+};
+
+// 学校信息库 API（D1 数据库同步）
+export const schoolDatabaseAPI = {
+  getAll: async (params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.type) qs.append('type', params.type);
+    if (params.search) qs.append('search', params.search);
+    const queryStr = qs.toString();
+    return await apiRequest(`/school-database${queryStr ? '?' + queryStr : ''}`);
+  },
+  getById: async (id) => {
+    return await apiRequest(`/school-database/${id}`);
+  },
+  create: async (data) => {
+    return await apiRequest('/school-database', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  update: async (id, data) => {
+    return await apiRequest(`/school-database/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  delete: async (id) => {
+    return await apiRequest(`/school-database/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  batchImport: async (schools) => {
+    return await apiRequest('/school-database/batch', {
+      method: 'POST',
+      body: JSON.stringify({ schools }),
     });
   },
 };
