@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "tail": "wrangler tail"
+    "deploy:staging": "wrangler deploy --env staging",
+    "tail": "wrangler tail",
+    "tail:staging": "wrangler tail --env staging",
+    "db:seed-staging": "wrangler d1 execute jsa-db-staging --remote --file=./seed.sql",
+    "db:schema-staging": "wrangler d1 execute jsa-db-staging --remote --file=./schema.sql"
   },
   "dependencies": {
     "hono": "^4.6.0",

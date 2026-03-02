@@ -21,6 +21,7 @@ app.use('*', cors({
     // 允许 Pages 域名、本地开发和自定义域名
     const allowed = [
       'https://jsa-ac8.pages.dev',
+      'https://jsa-staging.pages.dev',
       'http://localhost:3000',
       'http://localhost:5173',
       'http://localhost:4173',

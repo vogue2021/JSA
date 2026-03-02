@@ -15,6 +15,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import Notification from './components/common/Notification';
+import EnvBanner from './components/common/EnvBanner';
 import StudentProfile from './components/StudentProfile';
 import TimelineLinear from './components/TimelineLinear';
 import TeacherManagement from './components/TeacherManagement';
@@ -4645,6 +4646,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 const JapanStudyApp = () => {
   return (
     <ErrorBoundary>
+      <EnvBanner />
       <ThemeProvider>
       <AppProvider>
         <JapanStudyAppInner />

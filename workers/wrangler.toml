@@ -3,7 +3,19 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# ─── 生产环境（默认）─────────────────────────────────────────────────────────────
+# 部署命令：npx wrangler deploy
 [[d1_databases]]
 binding = "DB"
 database_name = "jsa-db"
 database_id = "9e0f50c0-e85b-4eef-a5e8-f5461965d823"
+
+# ─── 测试环境 ─────────────────────────────────────────────────────────────────
+# 部署命令：npx wrangler deploy --env staging
+[env.staging]
+name = "jsa-api-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "jsa-db-staging"
+database_id = "ec330b28-9f0a-4e8a-9bfc-3550eb311903"
