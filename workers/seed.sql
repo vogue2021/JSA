@@ -1,5 +1,7 @@
 -- JSA D1 数据库测试数据初始化
+-- 最后更新: 2026-03-03（与生产数据库同步）
 -- 密码使用 PBKDF2(SHA-256, 100000次迭代, 固定salt) 哈希
+-- 所有学生均有 users 账号（has_account=1），与生产环境一致
 
 -- ─── 用户表 ───────────────────────────────────────────────────────────────────
 INSERT OR IGNORE INTO users (id, email, password, role, name, teacher_id) VALUES
@@ -17,7 +19,16 @@ INSERT OR IGNORE INTO users (id, email, password, role, name, teacher_id) VALUES
 INSERT OR IGNORE INTO users (id, email, password, role, name, student_id) VALUES
   ('student1', 'zhangsan@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEFhLpErYAI/UYpm1tGXuIosoe8/aehZMmXZA3toB8Ayk', 'student', '张三', '2024001'),
   ('student2', 'lisi@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEBJSoK1NEcAAldKhsDuKDeKBYujMrIk18FHPQQc/3zbO', 'student', '李四', '2024002'),
-  ('student3', 'wangwu@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEDqVBnFLs3CnkI2RiPLlHHci9/3b97aogzzZF5kMl5xG', 'student', '王五', '2024003');
+  ('student3', 'wangwu@student.jsa.com', 'AQIDBAUGBwgJCgsMDQ4PEDqVBnFLs3CnkI2RiPLlHHci9/3b97aogzzZF5kMl5xG', 'student', '王五', '2024003'),
+  ('student4', 'zhaoliu@student.jsa.com', 'N7w5y0jQWcOe7F0ILTTlVoSIYM9Aa+xK8NbUHrHoFJJUAMO2mY/Ia3yWgXfD8Fk4', 'student', '赵六', '2024004'),
+  ('student5', 'liuqi@student.jsa.com', 'cF2er7iuNq4aTsNlUaHMaVg4N9gwDYhfN1uQSfEyS0o5kknYy2BDcjJfme3ITJUr', 'student', '刘七', '2024005'),
+  ('student6', 'sunba@student.jsa.com', 'F00Kaq2JVsYpyuXW07Njj5veF6hBMX2+DcD2hUViUuDf9Hqvg99Yxc3qkUivvLns', 'student', '孙八', '2024006'),
+  ('student7', 'zhoujiu@student.jsa.com', 'tpbPmyc1HpBPJVnEb1SDt+DXg2S+3iRVsJOmcKULEXnUlVro5j47Y5d9Fcg3I8uu', 'student', '周九', '2024007'),
+  ('student8', 'wushi@student.jsa.com', 'F7ENjUcxOthj/oKfmXRPwf4nvd3PsHnNn35rA/xEgL5sbl5feJNbVXrOy4wKpeRu', 'student', '吴十', '2024008'),
+  ('student9', 'zheng11@student.jsa.com', 'xxuV/g0aqwYFJKIsewp1MELtgR225PwFT3si5XhqP3EqUVsZDI8yeYW9avq0Af/Z', 'student', '郑十一', '2024009'),
+  ('student10', 'feng12@student.jsa.com', 'Y3JrGZnsbgltjda1g6kpp7dNJd6mrQT06FLhEgGlnNT54uwNMZIRDM4pxoSlXiiJ', 'student', '冯十二', '2024010'),
+  ('student11', 'chen13@student.jsa.com', 'yJ+qlt52oP6Nut87wkj4xC0+iVsMIoWQeAJpWrjCSqd2tR+Nby0JQBFKFiel2kH6', 'student', '陈十三', '2024011'),
+  ('student12', 'lin14@student.jsa.com', 'jky1XiejslZTCzwqRiZirY/r7Px+Sz8PL0fN8bMcsCpJe3u4VFPfFbHG3VuMbWrn', 'student', '林十四', '2024012');
 
 -- ─── 老师扩展信息表 ─────────────────────────────────────────────────────────
 INSERT OR IGNORE INTO teachers (teacher_id, user_id, department, subject) VALUES
@@ -34,12 +45,12 @@ INSERT OR IGNORE INTO students (student_id, user_id, name, email, teacher_id, ac
   ('2024001', 'student1', '张三', 'zhangsan@student.jsa.com', 'teacher_1', 'teacher_6', '2001-05-12', '北京十一中学', '东京日本语学院', 'N1-142', '[{"date":"2025-06","japanese":310,"math":170,"science":145,"total":625}]', 'TOEFL 85', '私塾', '2026-06-30', '["理科","重点关注"]', '理科', 1),
   ('2024002', 'student2', '李四', 'lisi@student.jsa.com', 'teacher_1', 'teacher_6', '2002-01-20', '上海外国语学校', '大阪日本语学校', 'N2-120', '[]', '', '校内考专家 1+2', '2026-03-31', '["文科"]', '文科', 1),
   ('2024003', 'student3', '王五', 'wangwu@student.jsa.com', 'teacher_2', 'teacher_7', '2000-11-03', '广州执信中学', '京都国际学院', 'N1-158', '[{"date":"2025-06","japanese":340,"math":190,"science":160,"total":690}]', 'TOEIC 780', '丁老师规划 1+2+3', '2027-03-31', '["理科","优秀学生"]', '理科', 1),
-  ('2024004', NULL, '赵六', '', 'teacher_2', 'teacher_7', '2001-08-15', '成都七中', '名古屋日本语学院', 'N2-105', '[{"date":"2025-06","japanese":280,"math":120,"science":0,"total":400}]', '', '校内考专家 1+2+3', '2026-09-30', '["文科","需加强"]', '文科', 0),
-  ('2024005', NULL, '刘七', '', 'teacher_3', 'teacher_6', '2000-03-28', '杭州学军中学', '早稻田日本语学校', 'N1-170', '[{"date":"2025-06","japanese":355,"math":195,"science":170,"total":720}]', 'TOEFL 95', '丁老师规划 1+2', '2026-08-31', '["理科","优秀学生","即将毕业"]', '理科', 0),
-  ('2024006', NULL, '孙八', '', 'teacher_1', '', '2003-06-10', '武汉外国语学校', '横滨国际学院', 'N3', '[]', '', '', '', '["文科","新生"]', '文科', 0),
-  ('2024007', NULL, '周九', '', 'teacher_4', 'teacher_7', '2001-12-25', '深圳实验学校', '东京外语学院', 'N1-135', '[{"date":"2025-06","japanese":320,"math":165,"science":140,"total":625}]', 'IELTS 6.5', '私塾', '2026-05-31', '["理科"]', '理科', 0),
-  ('2024008', NULL, '吴十', '', 'teacher_4', '', '2003-09-01', '南京外国语学校', '神户日本语学校', '', '[]', '', '校内考专家 1+2', '2026-12-31', '["文科","新生","需加强"]', '文科', 0),
-  ('2024009', NULL, '郑十一', '', 'teacher_2', 'teacher_6', '1999-07-14', '重庆南开中学', '大阪国际学院', 'N1-165', '[{"date":"2025-06","japanese":350,"math":185,"science":165,"total":700}]', 'TOEFL 100', '丁老师规划 1+2+3', '2025-12-31', '["理科","已合格"]', '理科', 0),
-  ('2024010', NULL, '冯十二', '', 'teacher_5', 'teacher_7', '2002-04-22', '天津南开中学', '东京中央日本语学校', 'N2-115', '[{"date":"2025-06","japanese":290,"math":0,"science":0,"total":290}]', 'TOEIC 650', '私塾', '2026-04-30', '["文科"]', '文科', 0),
-  ('2024011', NULL, '陈十三', '', 'teacher_3', '', '2002-10-08', '西安高新一中', '京都文化日本语学校', 'N2-98', '[]', '', '', '', '["理科","新生"]', '理科', 0),
-  ('2024012', NULL, '林十四', '', '', '', '2003-02-14', '厦门外国语学校', '', '', '[]', '', '', '', '[]', '', 0);
+  ('2024004', 'student4', '赵六', 'zhaoliu@student.jsa.com', 'teacher_2', 'teacher_7', '2001-08-15', '成都七中', '名古屋日本语学院', 'N2-105', '[{"date":"2025-06","japanese":280,"math":120,"science":0,"total":400}]', '', '校内考专家 1+2+3', '2026-09-30', '["文科","需加强"]', '文科', 1),
+  ('2024005', 'student5', '刘七', 'liuqi@student.jsa.com', 'teacher_3', 'teacher_6', '2000-03-28', '杭州学军中学', '早稻田日本语学校', 'N1-170', '[{"date":"2025-06","japanese":355,"math":195,"science":170,"total":720}]', 'TOEFL 95', '丁老师规划 1+2', '2026-08-31', '["理科","优秀学生","即将毕业"]', '理科', 1),
+  ('2024006', 'student6', '孙八', 'sunba@student.jsa.com', 'teacher_1', '', '2003-06-10', '武汉外国语学校', '横滨国际学院', 'N3', '[]', '', '', '', '["文科","新生"]', '文科', 1),
+  ('2024007', 'student7', '周九', 'zhoujiu@student.jsa.com', 'teacher_4', 'teacher_7', '2001-12-25', '深圳实验学校', '东京外语学院', 'N1-135', '[{"date":"2025-06","japanese":320,"math":165,"science":140,"total":625}]', 'IELTS 6.5', '私塾', '2026-05-31', '["理科"]', '理科', 1),
+  ('2024008', 'student8', '吴十', 'wushi@student.jsa.com', 'teacher_4', '', '2003-09-01', '南京外国语学校', '神户日本语学校', '', '[]', '', '校内考专家 1+2', '2026-12-31', '["文科","新生","需加强"]', '文科', 1),
+  ('2024009', 'student9', '郑十一', 'zheng11@student.jsa.com', 'teacher_2', 'teacher_6', '1999-07-14', '重庆南开中学', '大阪国际学院', 'N1-165', '[{"date":"2025-06","japanese":350,"math":185,"science":165,"total":700}]', 'TOEFL 100', '丁老师规划 1+2+3', '2025-12-31', '["理科","已合格"]', '理科', 1),
+  ('2024010', 'student10', '冯十二', 'feng12@student.jsa.com', 'teacher_5', 'teacher_7', '2002-04-22', '天津南开中学', '东京中央日本语学校', 'N2-115', '[{"date":"2025-06","japanese":290,"math":0,"science":0,"total":290}]', 'TOEIC 650', '私塾', '2026-04-30', '["文科"]', '文科', 1),
+  ('2024011', 'student11', '陈十三', 'chen13@student.jsa.com', 'teacher_3', '', '2002-10-08', '西安高新一中', '京都文化日本语学校', 'N2-98', '[]', '', '', '', '["理科","新生"]', '理科', 1),
+  ('2024012', 'student12', '林十四', 'lin14@student.jsa.com', 'teacher_5', '', '2003-02-14', '厦门外国语学校', '', '', '[]', '', '', '', '[]', '', 1);
