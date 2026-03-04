@@ -2839,7 +2839,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       {/* 学生选择器 */}
       {user.role !== 'student' && <StudentSelector />}
       {/* 搜索和筛选栏 */}
-      <div className="glass-panel p-4 space-y-4">
+      <div className="glass-panel p-4 space-y-4" style={{ position: 'relative', zIndex: 10 }}>
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
@@ -3824,28 +3824,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </button>
           </div>
-          {/* 用户信息区域 */}
-          {!sidebarCollapsed && (
-            <div className="px-3 py-2" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                  style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
-                  {user.name?.charAt(0) || '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
-                  <div className="text-[10px] truncate" style={{ color: tokens.colors.text.muted }}>
-                    {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
-                    {user.role === 'student' && user.studentId ? ` · ${user.studentId}` : ''}
-                  </div>
-                </div>
+          {/* 用户信息区域已移除 */}
+          {/* 当前查看学生 - 非学生角色时显示（独立显示在侧边栏顶部） */}
+          {!sidebarCollapsed && (user.role === 'teacher' || user.role === 'admin') && currentStudent && currentStudent.name !== user.name && (
+            <div className="px-3 py-1.5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="flex items-center gap-1 text-[10px] px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', color: isDark ? '#93c5fd' : '#3b82f6' }}>
+                <Eye size={10} /> 查看: {currentStudent.name}
               </div>
-              {/* 当前查看学生 - 非学生角色时显示 */}
-              {(user.role === 'teacher' || user.role === 'admin') && currentStudent && currentStudent.name !== user.name && (
-                <div className="mt-1.5 flex items-center gap-1 text-[10px] px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', color: isDark ? '#93c5fd' : '#3b82f6' }}>
-                  <Eye size={10} /> 查看: {currentStudent.name}
-                </div>
-              )}
             </div>
           )}
           {/* 导航菜单 - 按功能分组 */}
@@ -4636,7 +4621,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <Bell size={32} className="text-red-500 animate-pulse" />
               </div>
               <h2 className="text-xl font-bold" style={{ color: isDark ? '#fca5a5' : '#dc2626' }}>⚠️ 截止日提醒</h2>
-              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>以下事项今天截止，请确认已知晓</p>
+              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>以下事项即将截止，请逐一确认已知晓</p>
             </div>
             <div className="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
               {deadlineReminders.map(r => (
@@ -4648,7 +4633,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{r.title}</div>
                     {r.schoolName && <div className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>{r.schoolName}</div>}
                     {r.notes && <div className="text-xs mt-1" style={{ color: tokens.colors.text.secondary }}>{r.notes}</div>}
-                    <div className="text-xs mt-1 font-medium" style={{ color: '#ef4444' }}>截止日期: {r.date}</div>
+                    <div className="text-xs mt-1 font-medium" style={{ color: r.daysLeft === 0 ? '#ef4444' : r.daysLeft === 1 ? '#f97316' : '#eab308' }}>
+                      {r.daysLeft === 0 ? '⚠️ 今天截止' : r.daysLeft === 1 ? '⏰ 明天截止' : `📅 还有 ${r.daysLeft} 天 (${r.date})`}
+                    </div>
                   </div>
                   <button onClick={() => handleAcknowledgeReminder(r)}
                     className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition"

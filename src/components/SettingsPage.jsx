@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   User, Save, Camera, Mail, Phone, MapPin, Lock, Check,
   GraduationCap, Calendar, Briefcase, Shield, BarChart3,
-  Users, School, TrendingUp, CheckCircle, Clock, AlertCircle, PieChart,
+  Users, School, TrendingUp, CheckCircle, Clock, AlertCircle, PieChart, Plus,
   FileText, Search, Trash2, Download, Filter, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../utils/logService';
 import { runMigration, getMigrationStats } from '../utils/migrationUtils';
-import { studentsAPI, teachersAPI } from '../services/api';
+import { studentsAPI, teachersAPI, usersAPI } from '../services/api';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
   const { showNotification, apiRequest } = useApp();
@@ -107,10 +107,18 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           photo: profileForm.photo,
           birthday: profileForm.birthday,
         });
+      } else if (user.role === 'admin' && user.id) {
+        // 管理员通过 users API 更新（使用 apiRequest 直接调用）
+        await apiRequest(`/users/${user.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: profileForm.name,
+          }),
+        });
       }
     } catch (err) {
       console.error('同步个人信息到后端失败:', err);
-      // 即使后端失败，localStorage 已经保存，不阻塞用户体验
+      if (showNotification) showNotification('后端同步失败，但本地已保存', 'warn');
     }
 
     // 更新 allUsers 中的名字
@@ -172,6 +180,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
   const tabs = [
     { id: 'profile', label: '个人信息', icon: User },
     { id: 'security', label: '安全设置', icon: Lock },
+    ...(user.role === 'admin' ? [{ id: 'accounts', label: '账号管理', icon: Users }] : []),
     ...(user.role === 'admin' ? [{ id: 'analytics', label: '数据统计', icon: BarChart3 }] : []),
     ...(user.role === 'admin' ? [{ id: 'migration', label: '数据迁移', icon: Download }] : []),
     ...(user.role === 'admin' ? [{ id: 'logs', label: '系统日志', icon: FileText }] : []),
@@ -418,6 +427,11 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
             </button>
           </div>
         </div>
+      )}
+
+      {/* 账号管理（仅管理员） */}
+      {activeTab === 'accounts' && user.role === 'admin' && (
+        <AccountManagementPanel user={user} />
       )}
 
       {/* 数据统计（仅管理员） */}
@@ -667,6 +681,247 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+// === 账号管理面板组件（管理员专用）===
+const AccountManagementPanel = ({ allUsers, setAllUsers, user }) => {
+  const { isDark, tokens } = useTheme();
+  const { showNotification } = useApp();
+  const [accountList, setAccountList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterRole, setFilterRole] = useState('all');
+  const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '' });
+  const [creating, setCreating] = useState(false);
+
+  // 加载用户列表
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  const loadAccounts = async () => {
+    try {
+      setLoading(true);
+      const data = await usersAPI.getAll();
+      setAccountList(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('加载用户列表失败:', err);
+      if (showNotification) showNotification('加载用户列表失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleActive = async (userId, currentName) => {
+    const target = accountList.find(u => u.id === userId);
+    const action = target?.is_active ? '禁用' : '启用';
+    if (!window.confirm(`确定要${action}用户「${currentName}」的账号吗？`)) return;
+
+    try {
+      await usersAPI.toggleActive(userId);
+      setAccountList(prev => prev.map(u =>
+        u.id === userId ? { ...u, is_active: u.is_active ? 0 : 1 } : u
+      ));
+      if (showNotification) showNotification(`已${action}「${currentName}」的账号`);
+    } catch (err) {
+      console.error('操作失败:', err);
+      if (showNotification) showNotification(`${action}失败: ${err.message}`, 'error');
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    if (!createForm.name || !createForm.email || !createForm.password) {
+      if (showNotification) showNotification('请填写所有字段', 'error');
+      return;
+    }
+    if (createForm.password.length < 6) {
+      if (showNotification) showNotification('密码至少6位', 'error');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const result = await usersAPI.createAdmin(createForm);
+      if (showNotification) showNotification('管理员账号已创建');
+      setCreateForm({ name: '', email: '', password: '' });
+      setShowCreateAdmin(false);
+      loadAccounts();
+    } catch (err) {
+      console.error('创建管理员失败:', err);
+      if (showNotification) showNotification(`创建失败: ${err.message}`, 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const filteredAccounts = accountList.filter(u => {
+    const matchSearch = !searchQuery ||
+      u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchRole = filterRole === 'all' || u.role === filterRole;
+    return matchSearch && matchRole;
+  });
+
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'admin': return '管理员';
+      case 'teacher': return '老师';
+      case 'student': return '学生';
+      default: return role;
+    }
+  };
+
+  const getRoleColor = (role) => {
+    switch (role) {
+      case 'admin': return '#ef4444';
+      case 'teacher': return '#a855f7';
+      case 'student': return '#3b82f6';
+      default: return '#6b7280';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 工具栏 */}
+      <div className="glass-panel p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <h4 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+            <Users size={20} className="text-blue-500" /> 账号管理
+            <span className="text-sm font-normal" style={{ color: tokens.colors.text.muted }}>({accountList.length} 个账号)</span>
+          </h4>
+          <button
+            onClick={() => setShowCreateAdmin(!showCreateAdmin)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition"
+            style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+          >
+            <Plus size={16} /> 创建管理员账号
+          </button>
+        </div>
+
+        {/* 搜索和筛选 */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-3">
+          <div className="flex-1 relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: tokens.colors.text.muted }} />
+            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              placeholder="搜索姓名或邮箱..."
+              className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
+              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+          </div>
+          <div className="flex gap-2">
+            {['all', 'student', 'teacher', 'admin'].map(role => (
+              <button key={role} onClick={() => setFilterRole(role)}
+                className="px-3 py-2 rounded-lg text-xs font-medium transition"
+                style={{
+                  background: filterRole === role ? (isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.1)') : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                  color: filterRole === role ? '#3b82f6' : tokens.colors.text.secondary,
+                }}>
+                {role === 'all' ? '全部' : getRoleLabel(role)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 创建管理员表单 */}
+      {showCreateAdmin && (
+        <div className="glass-panel p-6">
+          <h5 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+            <Shield size={18} className="text-red-500" /> 创建新管理员账号
+          </h5>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>姓名</label>
+              <input type="text" value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="管理员姓名"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
+              <input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="admin@example.com"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码（至少6位）</label>
+              <input type="password" value={createForm.password} onChange={e => setCreateForm({...createForm, password: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="初始密码"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <button onClick={handleCreateAdmin} disabled={creating}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50">
+              {creating ? '创建中...' : '确认创建'}
+            </button>
+            <button onClick={() => setShowCreateAdmin(false)}
+              className="px-4 py-2 rounded-lg text-sm transition"
+              style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 用户列表 */}
+      <div className="glass-panel overflow-hidden">
+        {loading ? (
+          <div className="text-center py-12" style={{ color: tokens.colors.text.muted }}>加载中...</div>
+        ) : filteredAccounts.length > 0 ? (
+          <div className="divide-y" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
+            {filteredAccounts.map(account => (
+              <div key={account.id} className="flex items-center gap-4 px-5 py-3 transition"
+                style={{ ':hover': { background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' } }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                  style={{ background: `${getRoleColor(account.role)}20`, color: getRoleColor(account.role) }}>
+                  {account.name?.charAt(0) || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate" style={{ color: tokens.colors.text.primary }}>{account.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: `${getRoleColor(account.role)}15`, color: getRoleColor(account.role) }}>
+                      {getRoleLabel(account.role)}
+                    </span>
+                    {!account.is_active && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                        已禁用
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs truncate" style={{ color: tokens.colors.text.muted }}>{account.email}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {account.id !== user.id && (
+                    <button
+                      onClick={() => handleToggleActive(account.id, account.name)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                      style={{
+                        background: account.is_active
+                          ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)')
+                          : (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)'),
+                        color: account.is_active ? '#ef4444' : '#22c55e',
+                      }}
+                    >
+                      {account.is_active ? '禁用' : '启用'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12" style={{ color: tokens.colors.text.muted }}>
+            <Users size={32} className="mx-auto mb-2" />
+            <p>没有匹配的用户</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

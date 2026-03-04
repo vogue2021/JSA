@@ -4,7 +4,8 @@ import { Hono } from 'hono'
 
 const reminders = new Hono()
 
-// ─── 获取当天需要提醒的截止事项（学生端）───────────────────────────────────────
+// ─── 获取近期需要提醒的截止事项（学生端）───────────────────────────────────────
+// 查询范围：今天 + 未来3天内截止的未完成事件
 reminders.get('/today', async (c) => {
   const user = c.get('user')
   if (user.role !== 'student' || !user.studentId) {
@@ -13,41 +14,51 @@ reminders.get('/today', async (c) => {
 
   const db = c.env.DB
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+  // 未来3天
+  const future = new Date()
+  future.setDate(future.getDate() + 3)
+  const futureDate = future.toISOString().split('T')[0]
 
-  // 查询今天截止的事件（未完成 + 未确认）
+  // 查询今天到未来3天内截止的事件（未完成 + 未确认）
   const { results: events } = await db.prepare(`
     SELECT e.id, e.title, e.date, e.type, e.category, e.notes, e.school_id,
            s.name as school_name
     FROM events e
     LEFT JOIN schools s ON e.school_id = s.id
-    WHERE e.student_id = ? AND e.date = ? AND e.completed = 0
-    ORDER BY e.type ASC
-  `).bind(user.studentId, today).all()
+    WHERE e.student_id = ? AND e.date >= ? AND e.date <= ? AND e.completed = 0
+    ORDER BY e.date ASC, e.type ASC
+  `).bind(user.studentId, today, futureDate).all()
 
   if (events.length === 0) {
     return c.json({ success: true, data: [] })
   }
 
-  // 检查哪些已经确认过了
+  // 检查哪些已经确认过了（按 event_id 查询，不限定日期）
   const eventIds = events.map(e => e.id)
   const placeholders = eventIds.map(() => '?').join(',')
   const { results: acknowledged } = await db.prepare(`
     SELECT event_id FROM deadline_reminders
-    WHERE student_id = ? AND deadline_date = ? AND acknowledged = 1 AND event_id IN (${placeholders})
-  `).bind(user.studentId, today, ...eventIds).all()
+    WHERE student_id = ? AND acknowledged = 1 AND event_id IN (${placeholders})
+  `).bind(user.studentId, ...eventIds).all()
 
   const ackedIds = new Set(acknowledged.map(a => a.event_id))
 
-  // 过滤出未确认的
-  const unacknowledged = events.filter(e => !ackedIds.has(e.id)).map(e => ({
-    id: e.id,
-    title: e.title,
-    date: e.date,
-    type: e.type,
-    category: e.category,
-    notes: e.notes,
-    schoolName: e.school_name || '',
-  }))
+  // 过滤出未确认的，附带剩余天数
+  const todayMs = new Date(today).getTime()
+  const unacknowledged = events.filter(e => !ackedIds.has(e.id)).map(e => {
+    const eventMs = new Date(e.date).getTime()
+    const daysLeft = Math.round((eventMs - todayMs) / (1000 * 60 * 60 * 24))
+    return {
+      id: e.id,
+      title: e.title,
+      date: e.date,
+      type: e.type,
+      category: e.category,
+      notes: e.notes,
+      schoolName: e.school_name || '',
+      daysLeft, // 0=今天, 1=明天, 2=后天, 3=大后天
+    }
+  })
 
   return c.json({ success: true, data: unacknowledged })
 })

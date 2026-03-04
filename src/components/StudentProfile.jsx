@@ -90,7 +90,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       langSchoolShift: info.langSchoolShift || '',
       phone: info.phone || '',
       jlptScore: info.jlptScore || '',
+      jlptScores: Array.isArray(info.jlptScores) ? info.jlptScores : [],
       englishScore: info.englishScore || '',
+      englishScores: Array.isArray(info.englishScores) ? info.englishScores : [],
       ejuScores: Array.isArray(info.ejuScores) ? info.ejuScores : [],
       followUpNotes: Array.isArray(info.followUpNotes) ? info.followUpNotes.map(n => ({
         ...n,

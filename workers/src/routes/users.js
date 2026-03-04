@@ -60,6 +60,40 @@ users.delete('/:id', async (c) => {
   return c.json({ success: true, message: '用户已删除' })
 })
 
+// ─── 更新用户信息（管理员更新自己或管理其他用户）─────────────────────────
+users.put('/:id', async (c) => {
+  const user = c.get('user')
+  const { id } = c.req.param()
+
+  // 只有管理员或本人可以更新
+  if (user?.role !== 'admin' && user?.id !== id) {
+    return c.json({ success: false, message: '权限不足' }, 403)
+  }
+
+  const db = c.env.DB
+  const target = await db.prepare('SELECT id, role FROM users WHERE id = ?').bind(id).first()
+  if (!target) return c.json({ success: false, message: '用户不存在' }, 404)
+
+  const body = await c.req.json()
+  const fields = []
+  const params = []
+
+  if (body.name !== undefined) { fields.push('name = ?'); params.push(body.name) }
+  if (body.email !== undefined && user?.role === 'admin') { fields.push('email = ?'); params.push(body.email) }
+  if (body.is_active !== undefined && user?.role === 'admin') { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0) }
+
+  if (fields.length === 0) {
+    return c.json({ success: false, message: '没有可更新的字段' }, 400)
+  }
+
+  fields.push("updated_at = datetime('now')")
+  params.push(id)
+
+  await db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).bind(...params).run()
+
+  return c.json({ success: true, message: '用户信息已更新' })
+})
+
 // ─── 禁用/启用用户（仅管理员）─────────────────────────────────────────────
 users.put('/:id/toggle-active', async (c) => {
   const user = c.get('user')
