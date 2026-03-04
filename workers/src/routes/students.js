@@ -24,8 +24,10 @@ function formatStudent(row) {
     langSchoolShift: row.lang_school_shift || '',
     phone: row.phone || '',
     jlptScore: row.jlpt_score || '',
+    jlptScores: (() => { try { return JSON.parse(row.jlpt_scores || '[]') } catch { return [] } })(),
     ejuScores: (() => { try { return JSON.parse(row.eju_scores || '[]') } catch { return [] } })(),
     englishScore: row.english_score || '',
+    englishScores: (() => { try { return JSON.parse(row.english_scores || '[]') } catch { return [] } })(),
     followUpNotes: (() => { try { const v = JSON.parse(row.follow_up_notes || '[]'); return Array.isArray(v) ? v : [] } catch { return row.follow_up_notes ? [{ id: Date.now(), content: row.follow_up_notes, date: '', author: '系统', role: 'admin' }] : [] } })(),
     photo: row.photo || '',
     packageName: row.package_name || '',
@@ -232,6 +234,8 @@ students.put('/:id', async (c) => {
 
   // JSON 字段
   if (body.eju_scores !== undefined) { fields.push('eju_scores = ?'); params.push(JSON.stringify(body.eju_scores)) }
+  if (body.jlpt_scores !== undefined) { fields.push('jlpt_scores = ?'); params.push(JSON.stringify(body.jlpt_scores)) }
+  if (body.english_scores !== undefined) { fields.push('english_scores = ?'); params.push(JSON.stringify(body.english_scores)) }
   if (body.tags !== undefined) { fields.push('tags = ?'); params.push(JSON.stringify(body.tags)) }
   if (body.follow_up_notes !== undefined) {
     fields.push('follow_up_notes = ?')
@@ -253,6 +257,20 @@ students.put('/:id', async (c) => {
   params.push(student.student_id)
 
   await db.prepare(`UPDATE students SET ${fields.join(', ')} WHERE student_id = ?`).bind(...params).run()
+
+  // 同步更新 users 表的 name 和 email（确保登录信息一致）
+  if (student.user_id && (body.name || body.email)) {
+    const userFields = []
+    const userParams = []
+    if (body.name) { userFields.push('name = ?'); userParams.push(body.name) }
+    if (body.email) { userFields.push('email = ?'); userParams.push(body.email) }
+    if (userFields.length > 0) {
+      userFields.push("updated_at = datetime('now')")
+      userParams.push(student.user_id)
+      await db.prepare(`UPDATE users SET ${userFields.join(', ')} WHERE id = ?`).bind(...userParams).run()
+    }
+  }
+
   const updated = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(student.student_id).first()
 
   return c.json({ success: true, data: formatStudent(updated), message: '学生信息更新成功' })

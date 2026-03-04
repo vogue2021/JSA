@@ -32,6 +32,7 @@ schoolDatabase.get('/', async (c) => {
     ...r,
     programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
     importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
+    requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),
   }))
 
   return c.json({ success: true, data })
@@ -47,6 +48,7 @@ schoolDatabase.get('/:id', async (c) => {
 
   school.programs = (() => { try { return JSON.parse(school.programs || '[]') } catch { return [] } })()
   school.importantDates = (() => { try { return JSON.parse(school.important_dates || '[]') } catch { return [] } })()
+  school.requiredMaterials = (() => { try { return JSON.parse(school.required_materials || '[]') } catch { return [] } })()
 
   return c.json({ success: true, data: school })
 })
@@ -66,8 +68,8 @@ schoolDatabase.post('/', async (c) => {
   const db = c.env.DB
   await db.prepare(`
     INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
-      acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     body.name, body.nameJa || body.name_ja || '',
     body.type, body.location || '',
@@ -78,7 +80,8 @@ schoolDatabase.post('/', async (c) => {
     body.xuexinCert || body.xuexin_cert || '不确定',
     body.overseasCert || body.overseas_cert || '不确定',
     JSON.stringify(body.importantDates || body.important_dates || []),
-    body.requirementsUrl || body.requirements_url || ''
+    body.requirementsUrl || body.requirements_url || '',
+    JSON.stringify(body.requiredMaterials || body.required_materials || [])
   ).run()
 
   const newSchool = await db.prepare(
@@ -88,6 +91,7 @@ schoolDatabase.post('/', async (c) => {
   if (newSchool) {
     newSchool.programs = (() => { try { return JSON.parse(newSchool.programs || '[]') } catch { return [] } })()
     newSchool.importantDates = (() => { try { return JSON.parse(newSchool.important_dates || '[]') } catch { return [] } })()
+    newSchool.requiredMaterials = (() => { try { return JSON.parse(newSchool.required_materials || '[]') } catch { return [] } })()
   }
 
   return c.json({ success: true, message: '学校信息已添加', data: newSchool }, 201)
@@ -111,7 +115,7 @@ schoolDatabase.put('/:id', async (c) => {
     UPDATE school_database SET
       name = ?, name_ja = ?, type = ?, location = ?, programs = ?, requirements = ?, notes = ?,
       acceptance_rate = ?, difficulty = ?, ranking = ?, xuexin_cert = ?, overseas_cert = ?,
-      important_dates = ?, requirements_url = ?, updated_at = datetime('now')
+      important_dates = ?, requirements_url = ?, required_materials = ?, updated_at = datetime('now')
     WHERE id = ?
   `).bind(
     body.name || existing.name,
@@ -128,6 +132,7 @@ schoolDatabase.put('/:id', async (c) => {
     body.overseasCert || body.overseas_cert || existing.overseas_cert || '不确定',
     JSON.stringify(body.importantDates || body.important_dates || (() => { try { return JSON.parse(existing.important_dates || '[]') } catch { return [] } })()),
     body.requirementsUrl || body.requirements_url || existing.requirements_url || '',
+    JSON.stringify(body.requiredMaterials || body.required_materials || (() => { try { return JSON.parse(existing.required_materials || '[]') } catch { return [] } })()),
     id
   ).run()
 
@@ -135,6 +140,7 @@ schoolDatabase.put('/:id', async (c) => {
   if (updated) {
     updated.programs = (() => { try { return JSON.parse(updated.programs || '[]') } catch { return [] } })()
     updated.importantDates = (() => { try { return JSON.parse(updated.important_dates || '[]') } catch { return [] } })()
+    updated.requiredMaterials = (() => { try { return JSON.parse(updated.required_materials || '[]') } catch { return [] } })()
   }
 
   return c.json({ success: true, message: '学校信息已更新', data: updated })
@@ -181,8 +187,8 @@ schoolDatabase.post('/batch', async (c) => {
     try {
       await db.prepare(`
         INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
-          acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         s.name, s.nameJa || s.name_ja || '',
         s.type || '私立', s.location || '',
@@ -193,7 +199,8 @@ schoolDatabase.post('/batch', async (c) => {
         s.xuexinCert || s.xuexin_cert || '不确定',
         s.overseasCert || s.overseas_cert || '不确定',
         JSON.stringify(s.importantDates || s.important_dates || []),
-        s.requirementsUrl || s.requirements_url || ''
+        s.requirementsUrl || s.requirements_url || '',
+        JSON.stringify(s.requiredMaterials || s.required_materials || [])
       ).run()
       results.success.push({ index: i, name: s.name })
     } catch (err) {

@@ -52,7 +52,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     langSchoolShift: studentInfo.langSchoolShift || '',
     phone: studentInfo.phone || '',
     jlptScore: studentInfo.jlptScore || '',
+    jlptScores: Array.isArray(studentInfo.jlptScores) ? studentInfo.jlptScores : [],
     englishScore: studentInfo.englishScore || '',
+    englishScores: Array.isArray(studentInfo.englishScores) ? studentInfo.englishScores : [],
     ejuScores: Array.isArray(studentInfo.ejuScores) ? studentInfo.ejuScores : [],
     followUpNotes: Array.isArray(studentInfo.followUpNotes) ? studentInfo.followUpNotes : [],
     photo: studentInfo.photo || '',
@@ -129,7 +131,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         lang_school_shift: formData.langSchoolShift,
         phone: formData.phone,
         jlpt_score: formData.jlptScore,
+        jlpt_scores: formData.jlptScores,
         english_score: formData.englishScore,
+        english_scores: formData.englishScores,
         eju_scores: formData.ejuScores,
         follow_up_notes: formData.followUpNotes,
         photo: formData.photo,
@@ -442,16 +446,136 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       {/* Scores Section */}
       {activeSection === 'scores' && (
         <div className="space-y-6">
+          {/* 日语成绩 (JLPT) - 可追加 */}
           <div className="glass-panel p-4 sm:p-6">
-            <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 语言成绩</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InfoField label="日语成绩 (JLPT)" value={formData.jlptScore} editing={isEditing}
-                placeholder="例: N1 145分"
-                onChange={v => setFormData({...formData, jlptScore: v})} />
-              <InfoField label="英语成绩" value={formData.englishScore} editing={isEditing}
-                placeholder="例: TOEFL 90 / IELTS 6.5"
-                onChange={v => setFormData({...formData, englishScore: v})} />
-            </div>
+            <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 日语成绩 (JLPT)</h4>
+            {formData.jlptScores.length > 0 && (
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">级别</th>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">分数</th>
+                      {isEditing && <th className="px-3 py-2"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formData.jlptScores.map((s, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-3 py-2">{s.date || '-'}</td>
+                        <td className="px-3 py-2 font-semibold" style={{ color: '#3b82f6' }}>{s.level || '-'}</td>
+                        <td className="px-3 py-2">{s.score || '-'}</td>
+                        {isEditing && (
+                          <td className="px-3 py-2">
+                            <button onClick={() => setFormData({...formData, jlptScores: formData.jlptScores.filter((_, idx) => idx !== i)})} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {formData.jlptScores.length === 0 && !isEditing && (
+              <p className="text-themed-muted text-center py-4">暂无 JLPT 成绩记录</p>
+            )}
+            {isEditing && (
+              <div className="bg-themed-elevated rounded-lg p-4">
+                <p className="text-sm font-medium text-themed-secondary mb-3">添加 JLPT 成绩</p>
+                <div className="flex gap-3 flex-wrap">
+                  <input type="date" className="px-3 py-2 border rounded-lg text-sm" placeholder="考试日期"
+                    id="newJlptDate" />
+                  <select className="px-3 py-2 border rounded-lg text-sm" id="newJlptLevel" defaultValue="N1">
+                    <option value="N1">N1</option>
+                    <option value="N2">N2</option>
+                    <option value="N3">N3</option>
+                    <option value="N4">N4</option>
+                    <option value="N5">N5</option>
+                  </select>
+                  <input type="number" className="px-3 py-2 border rounded-lg text-sm w-24" placeholder="分数" id="newJlptScore" />
+                  <button onClick={() => {
+                    const date = document.getElementById('newJlptDate').value;
+                    const level = document.getElementById('newJlptLevel').value;
+                    const score = document.getElementById('newJlptScore').value;
+                    if (level && score) {
+                      setFormData({...formData, jlptScores: [...formData.jlptScores, { date, level, score }], jlptScore: `${level}-${score}`});
+                      document.getElementById('newJlptDate').value = '';
+                      document.getElementById('newJlptScore').value = '';
+                    }
+                  }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1">
+                    <Plus size={14} /> 添加
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 英语成绩 - 可追加 */}
+          <div className="glass-panel p-4 sm:p-6">
+            <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 英语成绩</h4>
+            {formData.englishScores.length > 0 && (
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">类型</th>
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">分数</th>
+                      {isEditing && <th className="px-3 py-2"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formData.englishScores.map((s, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-3 py-2">{s.date || '-'}</td>
+                        <td className="px-3 py-2 font-semibold" style={{ color: '#22c55e' }}>{s.type || '-'}</td>
+                        <td className="px-3 py-2">{s.score || '-'}</td>
+                        {isEditing && (
+                          <td className="px-3 py-2">
+                            <button onClick={() => setFormData({...formData, englishScores: formData.englishScores.filter((_, idx) => idx !== i)})} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {formData.englishScores.length === 0 && !isEditing && (
+              <p className="text-themed-muted text-center py-4">暂无英语成绩记录</p>
+            )}
+            {isEditing && (
+              <div className="bg-themed-elevated rounded-lg p-4">
+                <p className="text-sm font-medium text-themed-secondary mb-3">添加英语成绩</p>
+                <div className="flex gap-3 flex-wrap">
+                  <input type="date" className="px-3 py-2 border rounded-lg text-sm" placeholder="考试日期" id="newEngDate" />
+                  <select className="px-3 py-2 border rounded-lg text-sm" id="newEngType" defaultValue="TOEFL">
+                    <option value="TOEFL">TOEFL</option>
+                    <option value="IELTS">IELTS</option>
+                    <option value="TOEIC">TOEIC</option>
+                    <option value="其他">其他</option>
+                  </select>
+                  <input type="number" className="px-3 py-2 border rounded-lg text-sm w-24" placeholder="分数" id="newEngScore" />
+                  <button onClick={() => {
+                    const date = document.getElementById('newEngDate').value;
+                    const type = document.getElementById('newEngType').value;
+                    const score = document.getElementById('newEngScore').value;
+                    if (type && score) {
+                      setFormData({...formData, englishScores: [...formData.englishScores, { date, type, score }], englishScore: `${type} ${score}`});
+                      document.getElementById('newEngDate').value = '';
+                      document.getElementById('newEngScore').value = '';
+                    }
+                  }} className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition flex items-center gap-1">
+                    <Plus size={14} /> 添加
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="glass-panel p-4 sm:p-6">

@@ -427,13 +427,28 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                   {detailSchool.requirements && <span>要求: {detailSchool.requirements}</span>}
                 </div>
               )}
-              {/* 招生研究科 */}
+              {/* 招生学部 */}
               {detailSchool.programs && detailSchool.programs.length > 0 && (
                 <div>
-                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>招生研究科</h5>
+                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>招生学部</h5>
                   <div className="flex flex-wrap gap-1">
                     {detailSchool.programs.map((p, i) => (
                       <span key={i} className="text-xs px-2.5 py-1 rounded-full" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* 所需材料 */}
+              {detailSchool.requiredMaterials && detailSchool.requiredMaterials.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>
+                    <FileText size={12} className="inline mr-1" />所需材料
+                  </h5>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailSchool.requiredMaterials.map((m, i) => (
+                      <span key={i} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
+                        <FileText size={10} />{m}
+                      </span>
                     ))}
                   </div>
                 </div>

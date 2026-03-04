@@ -9,7 +9,7 @@ import {
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera
 } from 'lucide-react';
-import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI } from './services/api';
+import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -366,6 +366,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [showChangelogPanel, setShowChangelogPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
+  const [deadlineReminders, setDeadlineReminders] = useState([]); // 截止日提醒列表
+  const [showDeadlineReminder, setShowDeadlineReminder] = useState(false); // 是否显示截止日提醒弹窗
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [feedbackContent, setFeedbackContent] = useState('');
   const [feedbackContact, setFeedbackContact] = useState('');
@@ -503,6 +505,54 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       localStorage.setItem('currentStudent', JSON.stringify(newStudent));
     }
   }, [studentList, user.role]);
+
+  // 截止日提醒检查（仅学生端）——每次加载和每小时检查一次
+  useEffect(() => {
+    if (user.role !== 'student') return;
+    const checkDeadlineReminders = async () => {
+      try {
+        const data = await remindersAPI.getToday();
+        if (data && data.length > 0) {
+          setDeadlineReminders(data);
+          setShowDeadlineReminder(true);
+        }
+      } catch (err) {
+        console.error('获取截止日提醒失败:', err);
+      }
+    };
+    // 首次加载后延迟2秒检查（等待登录完成）
+    const timer = setTimeout(checkDeadlineReminders, 2000);
+    // 每小时检查一次
+    const interval = setInterval(checkDeadlineReminders, 3600000);
+    return () => { clearTimeout(timer); clearInterval(interval); };
+  }, [user.role]);
+
+  // 确认截止日提醒
+  const handleAcknowledgeReminder = async (reminder) => {
+    try {
+      await remindersAPI.acknowledge(reminder.id, reminder.title);
+      setDeadlineReminders(prev => prev.filter(r => r.id !== reminder.id));
+      if (deadlineReminders.length <= 1) {
+        setShowDeadlineReminder(false);
+      }
+      if (showNotification) showNotification(`已确认: ${reminder.title}`);
+    } catch (err) {
+      console.error('确认提醒失败:', err);
+    }
+  };
+
+  const handleAcknowledgeAllReminders = async () => {
+    try {
+      for (const r of deadlineReminders) {
+        await remindersAPI.acknowledge(r.id, r.title);
+      }
+      setDeadlineReminders([]);
+      setShowDeadlineReminder(false);
+      if (showNotification) showNotification('已确认所有截止日提醒');
+    } catch (err) {
+      console.error('批量确认提醒失败:', err);
+    }
+  };
 
   // 管理员公共视图组件（不带学生时显示统计和公共信息）
   const AdminPublicView = ({ type, onNavigate, onSelectStudent }) => (
@@ -2950,7 +3000,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       </div>
 
       {/* 概览卡片 */}
-      <div className="glass-panel p-6 lg:p-8 rounded-xl">
+      <div className="glass-panel p-6 lg:p-8 rounded-xl" style={{ position: 'relative', zIndex: 0 }}>
         <h2 className="text-2xl lg:text-3xl font-bold mb-2" style={{ color: tokens.colors.text.primary }}>考学进度概览</h2>
         <p className="text-sm lg:text-base" style={{ color: tokens.colors.text.secondary }}>
           {user.role === 'teacher'
@@ -3659,10 +3709,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       </div>
 
       {/* Header - 玻璃拟态固定顶栏 */}
-      <div className={`fixed top-0 left-0 right-0 z-40 h-14 ${glassEnabled ? 'glass-heavy' : ''}`}
-        style={glassEnabled ? {} : {
+      <div className={`fixed top-0 right-0 z-40 h-14 transition-all duration-300 ${glassEnabled ? 'glass-heavy' : ''}`}
+        style={{
+          left: isMobile ? 0 : (sidebarCollapsed ? '4rem' : '14rem'),
+          ...(glassEnabled ? {} : {
           backgroundColor: isDark ? 'rgba(15,15,35,0.95)' : 'rgba(255,255,255,0.95)',
           borderBottom: `1px solid ${tokens.colors.border.subtle}`,
+        }),
         }}>
         <div className="h-full px-4 lg:px-6 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-3">
@@ -3677,13 +3730,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <Menu size={22} />
               </button>
             )}
-            <h1 className="text-base lg:text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
-              留学考学助手
-            </h1>
-            <span className="hidden sm:inline-block text-xs pl-3 ml-1" style={{
-              color: tokens.colors.text.muted,
-              borderLeft: `1px solid ${tokens.colors.border.subtle}`,
-            }}>
+            <span className="text-sm font-medium" style={{ color: tokens.colors.text.secondary }}>
               {tabs.find(t => t.id === activeTab)?.label || (
                 user.role === 'teacher' ? '老师端' :
                 user.role === 'admin' ? '管理端' : '学生端'
@@ -3756,7 +3803,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       <div className="flex pt-14 relative z-10">
       {/* Desktop Sidebar - 玻璃拟态侧边栏 */}
       {!isMobile && (
-        <div className={`fixed top-14 left-0 bottom-0 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-56'}`}
+        <div className={`fixed top-0 left-0 bottom-0 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-56'}`}
           style={{
             background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
             backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
@@ -3777,6 +3824,30 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </button>
           </div>
+          {/* 用户信息区域 */}
+          {!sidebarCollapsed && (
+            <div className="px-3 py-2" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                  {user.name?.charAt(0) || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
+                  <div className="text-[10px] truncate" style={{ color: tokens.colors.text.muted }}>
+                    {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
+                    {user.role === 'student' && user.studentId ? ` · ${user.studentId}` : ''}
+                  </div>
+                </div>
+              </div>
+              {/* 当前查看学生 - 非学生角色时显示 */}
+              {(user.role === 'teacher' || user.role === 'admin') && currentStudent && currentStudent.name !== user.name && (
+                <div className="mt-1.5 flex items-center gap-1 text-[10px] px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', color: isDark ? '#93c5fd' : '#3b82f6' }}>
+                  <Eye size={10} /> 查看: {currentStudent.name}
+                </div>
+              )}
+            </div>
+          )}
           {/* 导航菜单 - 按功能分组 */}
           <div className="flex-1 pt-2 pb-2 overflow-y-auto">
             {(() => {
@@ -3840,37 +3911,34 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             })()}
           </div>
 
-          {/* 侧边栏底部 - 头像菜单 + 折叠按钮 */}
-          <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="relative">
+          {/* 侧边栏底部 - 操作工具栏 */}
+          <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="relative p-2">
             {!sidebarCollapsed ? (
-              <button
-                onClick={() => setShowSidebarUserMenu(!showSidebarUserMenu)}
-                className="w-full p-3 flex items-center gap-2 transition text-left"
-                style={{ color: tokens.colors.text.secondary }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
-                  style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
-                  {user.name?.charAt(0) || '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
-                  <div className="text-[10px] truncate" style={{ color: tokens.colors.text.muted }}>
-                    {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowSidebarUserMenu(!showSidebarUserMenu)}
+                  className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg transition text-left text-xs"
+                  style={{ color: tokens.colors.text.secondary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                    {user.name?.charAt(0) || '?'}
                   </div>
-                </div>
-                <ChevronDown size={12} style={{ color: tokens.colors.text.muted }} className={`transition-transform ${showSidebarUserMenu ? 'rotate-180' : ''}`} />
-              </button>
+                  <span className="truncate font-medium" style={{ color: tokens.colors.text.primary }}>{user.name}</span>
+                  <ChevronDown size={10} style={{ color: tokens.colors.text.muted }} className={`ml-auto flex-shrink-0 transition-transform ${showSidebarUserMenu ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
             ) : (
               <button
                 onClick={() => setShowSidebarUserMenu(!showSidebarUserMenu)}
-                className="w-full flex justify-center py-3 transition"
+                className="w-full flex justify-center py-1.5 transition rounded-lg"
                 title={user.name}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
                   style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
                   {user.name?.charAt(0) || '?'}
                 </div>
@@ -4555,6 +4623,56 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       )}
 
       {/* 反馈建议弹窗 */}
+      {/* 截止日提醒弹窗（仅学生端） */}
+      {showDeadlineReminder && deadlineReminders.length > 0 && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+          <div className="rounded-2xl max-w-md w-full animate-scale-in" style={{
+            background: isDark ? 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(30,30,60,0.98))' : 'linear-gradient(135deg, #fef2f2, #fff)',
+            border: `2px solid ${isDark ? 'rgba(239,68,68,0.4)' : '#fca5a5'}`,
+            boxShadow: '0 25px 80px rgba(239,68,68,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center" style={{ borderBottom: `1px solid ${isDark ? 'rgba(239,68,68,0.2)' : '#fecaca'}` }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: isDark ? 'rgba(239,68,68,0.2)' : '#fee2e2' }}>
+                <Bell size={32} className="text-red-500 animate-pulse" />
+              </div>
+              <h2 className="text-xl font-bold" style={{ color: isDark ? '#fca5a5' : '#dc2626' }}>⚠️ 截止日提醒</h2>
+              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>以下事项今天截止，请确认已知晓</p>
+            </div>
+            <div className="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
+              {deadlineReminders.map(r => (
+                <div key={r.id} className="p-4 rounded-xl flex items-start gap-3" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}>
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ background: isDark ? 'rgba(239,68,68,0.15)' : '#fef2f2' }}>
+                    <AlertCircle size={20} className="text-red-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{r.title}</div>
+                    {r.schoolName && <div className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>{r.schoolName}</div>}
+                    {r.notes && <div className="text-xs mt-1" style={{ color: tokens.colors.text.secondary }}>{r.notes}</div>}
+                    <div className="text-xs mt-1 font-medium" style={{ color: '#ef4444' }}>截止日期: {r.date}</div>
+                  </div>
+                  <button onClick={() => handleAcknowledgeReminder(r)}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                    style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e' }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}>
+                    <Check size={12} className="inline mr-1" />确认
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="p-4" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}` }}>
+              <button onClick={handleAcknowledgeAllReminders}
+                className="w-full py-3 rounded-xl font-bold text-white transition text-sm"
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                全部确认（{deadlineReminders.length} 项）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showFeedbackPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowFeedbackPanel(false)}>
           <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" style={{

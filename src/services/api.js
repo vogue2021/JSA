@@ -266,6 +266,19 @@ export const usersAPI = {
       method: 'DELETE',
     });
   },
+  // 禁用/启用账号
+  toggleActive: async (id) => {
+    return await apiRequest(`/users/${id}/toggle-active`, {
+      method: 'PUT',
+    });
+  },
+  // 创建管理员账号
+  createAdmin: async (data) => {
+    return await apiRequest('/users/create-admin', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // 反馈 API
@@ -292,5 +305,24 @@ export const feedbackAPI = {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  },
+};
+
+// ─── 截止日提醒 API ──────────────────────────────────────────────────────────
+export const remindersAPI = {
+  // 获取今天需要提醒的截止事项
+  getToday: async () => {
+    return await apiRequest('/reminders/today');
+  },
+  // 确认提醒
+  acknowledge: async (eventId, eventTitle) => {
+    return await apiRequest('/reminders/acknowledge', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, eventTitle }),
+    });
+  },
+  // 获取学生的提醒确认历史
+  getHistory: async (studentId) => {
+    return await apiRequest(`/reminders/history/${studentId}`);
   },
 };
