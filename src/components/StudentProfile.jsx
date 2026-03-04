@@ -49,6 +49,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     birthday: studentInfo.birthday || '',
     highSchool: studentInfo.highSchool || '',
     languageSchool: studentInfo.languageSchool || '',
+    langSchoolShift: studentInfo.langSchoolShift || '',
+    phone: studentInfo.phone || '',
     jlptScore: studentInfo.jlptScore || '',
     englishScore: studentInfo.englishScore || '',
     ejuScores: Array.isArray(studentInfo.ejuScores) ? studentInfo.ejuScores : [],
@@ -64,7 +66,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   });
 
   // 套餐列表（与实际数据保持一致）
-  const packageOptions = ['私塾', '校内考专家 1+2', '校内考专家 1+2+3', '丁老师规划 1+2', '丁老师规划 1+2+3'];
+  const packageOptions = ['私塾', '校内考专家 1+2', '校内考专家 1+2+3', '丁老师规划 1+2', '丁老师规划 1+2+3', 'VIP'];
 
   // 套餐状态计算
   const getPackageStatus = () => {
@@ -83,6 +85,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       birthday: info.birthday || '',
       highSchool: info.highSchool || '',
       languageSchool: info.languageSchool || '',
+      langSchoolShift: info.langSchoolShift || '',
+      phone: info.phone || '',
       jlptScore: info.jlptScore || '',
       englishScore: info.englishScore || '',
       ejuScores: Array.isArray(info.ejuScores) ? info.ejuScores : [],
@@ -122,6 +126,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         birthday: formData.birthday,
         high_school: formData.highSchool,
         language_school: formData.languageSchool,
+        lang_school_shift: formData.langSchoolShift,
+        phone: formData.phone,
         jlpt_score: formData.jlptScore,
         english_score: formData.englishScore,
         eju_scores: formData.ejuScores,
@@ -336,6 +342,12 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             <InfoField label="在读语言学校" value={formData.languageSchool} editing={isEditing}
               placeholder="请输入语言学校名称"
               onChange={v => setFormData({...formData, languageSchool: v})} />
+            <InfoField label="语言学校班次" value={formData.langSchoolShift} editing={isEditing} type="select"
+              options={['', '上午班', '下午班']}
+              onChange={v => setFormData({...formData, langSchoolShift: v})} />
+            <InfoField label="电话号码" value={formData.phone} editing={isEditing}
+              placeholder="请输入电话号码"
+              onChange={v => setFormData({...formData, phone: v})} />
             <InfoField label="文理科" value={formData.subject} editing={isEditing} type="select"
               options={['', '文科', '理科']}
               onChange={v => setFormData({...formData, subject: v})} />

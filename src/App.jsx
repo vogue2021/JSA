@@ -7,7 +7,7 @@ import {
   Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
-  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon
+  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
@@ -1030,6 +1030,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
     // 选择学校信息库中的学校后自动填充
     const handleSelectDbSchool = (dbSchool) => {
+      // 从 importantDates 数组中提取第一组日期
+      const firstDateGroup = (dbSchool.importantDates && dbSchool.importantDates.length > 0)
+        ? dbSchool.importantDates[0] : {};
+
+      // 从学校信息库的 requiredMaterials 自动生成材料列表（名称填充，截止时间留空由用户手动设置）
+      const autoMaterials = (dbSchool.requiredMaterials || []).map((materialName, idx) => ({
+        name: materialName,
+        deadline: '', // 截止时间留空，由用户在学校页面手动设置
+        url: '',
+        id: Date.now() + idx,
+      }));
+
       setFormData(prev => ({
         ...prev,
         name: dbSchool.name,
@@ -1039,13 +1051,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         acceptanceRate: dbSchool.acceptanceRate || prev.acceptanceRate,
         requirements: dbSchool.requirements || prev.requirements,
         program: (dbSchool.programs && dbSchool.programs[0]) || prev.program,
-        applicationStartDate: dbSchool.applicationStartDate || prev.applicationStartDate,
-        applicationEndDate: dbSchool.applicationEndDate || prev.applicationEndDate,
-        examDate: dbSchool.examDate || prev.examDate,
-        resultDate: dbSchool.resultDate || prev.resultDate,
+        applicationStartDate: firstDateGroup.applicationStartDate || prev.applicationStartDate,
+        applicationEndDate: firstDateGroup.applicationEndDate || prev.applicationEndDate,
+        examDate: firstDateGroup.examDate || prev.examDate,
+        resultDate: firstDateGroup.resultDate || prev.resultDate,
         requirementsUrl: dbSchool.requirementsUrl || dbSchool.website || prev.requirementsUrl,
+        // 自动填充材料（仅在当前没有材料时才自动填充，避免覆盖用户已编辑的材料）
+        materials: (prev.materials && prev.materials.length > 0) ? prev.materials : autoMaterials,
       }));
       setShowSchoolSuggestions(false);
+      if (autoMaterials.length > 0 && showNotification) {
+        showNotification(`已从信息库自动填充 ${autoMaterials.length} 项材料，请设置各材料的截止时间`);
+      }
     };
 
     const handleSubmit = async (e) => {
@@ -2719,69 +2736,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </div>
           </div>
 
-          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb' }}>
-            <button
-              onClick={() => {
-                // 创建学生账号弹窗
-                const studentId = prompt('请输入学生学号：');
-                if (!studentId) return;
-                // 检查学号是否已存在
-                const existingAccount = allUsers.find(u => u.studentId === studentId);
-                if (existingAccount) {
-                  alert(`学号 ${studentId} 已有账号: ${existingAccount.name}`);
-                  return;
-                }
-                // 查找学生信息
-                const studentInfo = studentList.find(s => s.studentId === studentId);
-                if (!studentInfo) {
-                  alert(`学号 ${studentId} 在学生列表中不存在，请先添加学生信息`);
-                  return;
-                }
-                const email = prompt(`请输入学生 ${studentInfo.name} 的邮箱：`);
-                if (!email) return;
-                const password = prompt('请设置初始密码（至少6位）：', `stu${studentId}`);
-                if (!password || password.length < 6) {
-                  alert('密码至少6位');
-                  return;
-                }
-                const newUser = {
-                  id: `student_${Date.now()}`,
-                  email,
-                  password,
-                  role: 'student',
-                  studentId,
-                  name: studentInfo.name,
-                  teacherId: studentInfo.teacherId,
-                  createdAt: new Date().toISOString(),
-                };
-                setAllUsers(prev => [...prev, newUser]);
-                // 绑定邮箱到学生信息
-                setStudentList(prev => prev.map(s =>
-                  s.studentId === studentId ? { ...s, email } : s
-                ));
-                if (showNotification) showNotification(`已为 ${studentInfo.name}(${studentId}) 创建账号`);
-              }}
-              className="flex-1 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition"
-              style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.12)'}` }}
-            >
-              <UserPlus size={18} />
-              创建学生账号
-            </button>
-            <button
-              onClick={() => setShowAddTeacherModal(true)}
-              className="flex-1 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition"
-              style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#8b5cf6', border: `1px solid ${isDark ? 'rgba(168,85,247,0.2)' : 'rgba(168,85,247,0.12)'}` }}
-            >
-              <Plus size={18} />
-              添加老师账号
-            </button>
-            <button
-              onClick={() => setShowAccountManagementModal(false)}
-              className="flex-1 py-3 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}
-            >
-              关闭
-            </button>
-          </div>
+          {/* 底部按钮区域已移除（创建学生账号、添加老师账号、关闭）*/}
         </div>
       </div>
     );
@@ -2896,7 +2851,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <Download size={16} /> 导出
             </button>
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-20" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
+              <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg z-50" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
                 <button
                   onClick={() => {
                     const studentInfo = studentList.find(s => s.studentId === currentStudent.studentId) || currentStudent;
@@ -2933,6 +2888,59 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Download size={16} /> 导出材料清单 (PDF)
+                </button>
+                <div style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, margin: '2px 0' }} />
+                <button
+                  onClick={() => {
+                    // 导出为图片：使用 html2canvas 截图时间线区域
+                    const timelineEl = document.querySelector('[data-timeline-content]');
+                    if (timelineEl && window.html2canvas) {
+                      window.html2canvas(timelineEl, { backgroundColor: isDark ? '#1a1a2e' : '#ffffff', scale: 2 }).then(canvas => {
+                        const link = document.createElement('a');
+                        link.download = `考学时间线_${currentStudent.name}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                      });
+                    } else {
+                      // 降级方案：使用浏览器原生打印为图片
+                      window.print();
+                    }
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Camera size={16} /> 导出为图片 (PNG)
+                </button>
+                <button
+                  onClick={() => {
+                    // Apple 日历：直接下载 .ics 文件即可，iOS/macOS 会自动关联
+                    exportEventsToICS(upcomingEvents, currentStudent.name);
+                    if (showNotification) showNotification('已下载 .ics 文件，请在 Apple 日历中打开导入');
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  🍎 导入 Apple 日历
+                </button>
+                <button
+                  onClick={() => {
+                    // Google 日历：生成 webcal 导入链接或直接下载 .ics
+                    exportEventsToICS(upcomingEvents, currentStudent.name);
+                    if (showNotification) showNotification('已下载 .ics 文件，请在 Google 日历中导入');
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  📱 导入 Android/Google 日历
                 </button>
               </div>
             )}
@@ -3154,25 +3162,52 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
   // 学校管理页面
   const SchoolsView = () => (
     <div className="space-y-6">
-      {/* 学生选择器 */}
-      {user.role !== 'student' && <StudentSelector />}
-      {(user.role === 'teacher' || user.role === 'admin') && (
-        <div className="flex justify-end">
-          <button
-            onClick={() => {
-              setEditingSchool(null);
-              setShowSchoolModal(true);
+      {/* 工具栏：学生选择器 + 添加学校按钮 */}
+      {user.role !== 'student' ? (
+        <div className="glass-panel p-3 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm" style={{ color: tokens.colors.text.muted }}>
+            <Eye size={16} />
+            <span>当前学生:</span>
+          </div>
+          <select
+            value={currentStudent.studentId || ''}
+            onChange={(e) => {
+              const selected = getVisibleStudents().find(s => s.studentId === e.target.value);
+              if (selected) {
+                setCurrentStudent({
+                  ...selected,
+                  targetCountry: '日本',
+                  targetLevel: selected.targetLevel || '修士',
+                  email: selected.email || `${selected.name.toLowerCase()}@example.com`
+                });
+              }
             }}
-            className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-            style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
-            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
-            onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
+            className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
           >
-            <Plus size={16} />
-            添加学校
-          </button>
+            {getVisibleStudents().map(s => (
+              <option key={s.studentId} value={s.studentId}>
+                {s.name} ({s.studentId}) {s.subject ? `· ${s.subject}` : ''}
+              </option>
+            ))}
+          </select>
+          {(user.role === 'teacher' || user.role === 'admin') && (
+            <button
+              onClick={() => {
+                setEditingSchool(null);
+                setShowSchoolModal(true);
+              }}
+              className="ml-auto px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 flex-shrink-0"
+              style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
+            >
+              <Plus size={16} />
+              添加学校
+            </button>
+          )}
         </div>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {schools.map(school => {
@@ -3257,7 +3292,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   </div>
                 </div>
 
-                {user.role === 'teacher' && school.teacherNotes && (
+                {(user.role === 'teacher' || user.role === 'admin') && school.teacherNotes && (
                   <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(234,179,8,0.08)' : 'rgba(234,179,8,0.06)', border: `1px solid ${isDark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.3)'}` }}>
                     <div className="text-xs mb-1 font-semibold" style={{ color: isDark ? '#fde047' : '#a16207' }}>老师备注:</div>
                     <div className="text-sm" style={{ color: tokens.colors.text.secondary }}>{school.teacherNotes}</div>
@@ -3290,45 +3325,86 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
   // 材料清单页面
   const ChecklistView = () => (
     <div className="space-y-6">
-      {/* 学生选择器 */}
-      {user.role !== 'student' && <StudentSelector />}
-      <div className="flex justify-end">
-        <div className="flex gap-2">
-          <button
-            onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
-            className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-            style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
-            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.15)'}
-            onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
-            <Download size={16} />
-            导出清单
-          </button>
-          {(user.role === 'teacher' || user.role === 'admin') && (
-            <>
-              <button className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-                style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)'}
-                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}>
-                <Upload size={16} />
-                上传材料
-              </button>
-              <button
-                onClick={() => {
-                  setEditingMaterial(null);
-                  setShowMaterialModal(true);
-                }}
-                className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-                style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)'}
-                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
-              >
-                <Plus size={16} />
-                添加材料
-              </button>
-            </>
-          )}
+      {/* 工具栏：学生选择器 + 操作按钮（统合到同一行）*/}
+      {user.role !== 'student' ? (
+        <div className="glass-panel p-3 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm" style={{ color: tokens.colors.text.muted }}>
+            <Eye size={16} />
+            <span>当前学生:</span>
+          </div>
+          <select
+            value={currentStudent.studentId || ''}
+            onChange={(e) => {
+              const selected = getVisibleStudents().find(s => s.studentId === e.target.value);
+              if (selected) {
+                setCurrentStudent({
+                  ...selected,
+                  targetCountry: '日本',
+                  targetLevel: selected.targetLevel || '修士',
+                  email: selected.email || `${selected.name.toLowerCase()}@example.com`
+                });
+              }
+            }}
+            className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db'}`, color: tokens.colors.text.primary }}
+          >
+            {getVisibleStudents().map(s => (
+              <option key={s.studentId} value={s.studentId}>
+                {s.name} ({s.studentId}) {s.subject ? `· ${s.subject}` : ''}
+              </option>
+            ))}
+          </select>
+          <div className="ml-auto flex gap-2 flex-shrink-0">
+            <button
+              onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
+              className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
+              <Download size={14} />
+              导出清单
+            </button>
+            {(user.role === 'teacher' || user.role === 'admin') && (
+              <>
+                <button className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+                  style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)'}
+                  onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}>
+                  <Upload size={14} />
+                  上传材料
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingMaterial(null);
+                    setShowMaterialModal(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+                  style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)'}
+                  onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
+                >
+                  <Plus size={14} />
+                  添加材料
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="glass-panel p-3 flex items-center gap-3 flex-wrap">
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => exportChecklistToPDF(currentStudent, checklist, schools)}
+              className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+              style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
+              <Download size={14} />
+              导出清单
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 进度统计 - 移到顶部 */}
       <div className="glass-panel p-6"
@@ -3414,17 +3490,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   截止: {item.deadline}
                   {item.completed && item.checkedBy && (
                     <span className="ml-2">
-                      · {item.checkedBy === 'teacher' ? '老师勾选' : '学生勾选'} ({item.checkedAt})
+                      · {item.checkedBy === 'student' ? '学生勾选' : '老师勾选'} ({item.checkedAt})
                     </span>
                   )}
                 </div>
               </div>
               {item.completed && (
                 <div className="flex items-center gap-2">
-                  {item.checkedBy === 'teacher' ? (
-                    <GraduationCap className="text-purple-500" size={20} />
-                  ) : (
+                  {item.checkedBy === 'student' ? (
                     <UserCheck className="text-blue-500" size={20} />
+                  ) : (
+                    <GraduationCap className="text-purple-500" size={20} />
                   )}
                   <Check className="text-green-500" size={20} />
                 </div>
@@ -3497,17 +3573,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       截止: {item.deadline}
                       {item.completed && item.checkedBy && (
                         <span className="ml-2">
-                          · {item.checkedBy === 'teacher' ? '老师勾选' : '学生勾选'} ({item.checkedAt})
+                          · {item.checkedBy === 'student' ? '学生勾选' : '老师勾选'} ({item.checkedAt})
                         </span>
                       )}
                     </div>
                   </div>
                   {item.completed && (
                     <div className="flex items-center gap-2">
-                      {item.checkedBy === 'teacher' ? (
-                        <GraduationCap className="text-purple-500" size={20} />
-                      ) : (
+                      {item.checkedBy === 'student' ? (
                         <UserCheck className="text-blue-500" size={20} />
+                      ) : (
+                        <GraduationCap className="text-purple-500" size={20} />
                       )}
                       <Check className="text-green-500" size={20} />
                     </div>
@@ -3608,8 +3684,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               color: tokens.colors.text.muted,
               borderLeft: `1px solid ${tokens.colors.border.subtle}`,
             }}>
-              {user.role === 'teacher' ? '老师端' :
-               user.role === 'admin' ? '管理端' : '学生端'}
+              {tabs.find(t => t.id === activeTab)?.label || (
+                user.role === 'teacher' ? '老师端' :
+                user.role === 'admin' ? '管理端' : '学生端'
+              )}
             </span>
           </div>
 
@@ -3685,6 +3763,20 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
             borderRight: `1px solid ${tokens.colors.border.hairline}`,
           }}>
+          {/* 侧边栏顶部 - 留学考学助手 + 收缩按钮 */}
+          <div className="flex items-center px-3 py-2.5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+            {!sidebarCollapsed && (
+              <h2 className="text-sm font-semibold flex-1 truncate" style={{ color: tokens.colors.text.primary }}>留学考学助手</h2>
+            )}
+            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1.5 rounded-md transition flex-shrink-0"
+              style={{ color: tokens.colors.text.muted }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
+              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </div>
           {/* 导航菜单 - 按功能分组 */}
           <div className="flex-1 pt-2 pb-2 overflow-y-auto">
             {(() => {
@@ -3785,18 +3877,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </button>
             )}
 
-            {/* 折叠/展开按钮 - 放在底部 */}
-            <div className={`flex ${sidebarCollapsed ? 'justify-center' : 'justify-end'} px-2 py-1.5`}
-              style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }}>
-              <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1.5 rounded-md transition"
-                style={{ color: tokens.colors.text.muted }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
-                {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-              </button>
-            </div>
+            {/* 收缩按钮已移至顶部 */}
 
             {/* 头像弹出菜单 */}
             {showSidebarUserMenu && (

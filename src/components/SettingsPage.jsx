@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../utils/logService';
 import { runMigration, getMigrationStats } from '../utils/migrationUtils';
+import { studentsAPI, teachersAPI } from '../services/api';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
   const { showNotification, apiRequest } = useApp();
@@ -57,7 +58,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     });
   }, [user.email, user.role]);
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const key = getProfileKey();
     const newDetails = {
       ...profileDetails,
@@ -79,6 +80,38 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     };
     setProfileDetails(newDetails);
     localStorage.setItem('profileDetails', JSON.stringify(newDetails));
+
+    // 同步到后端数据库
+    try {
+      if (user.role === 'student' && user.studentId) {
+        await studentsAPI.update(user.studentId, {
+          name: profileForm.name,
+          email: profileForm.email,
+          birthday: profileForm.birthday,
+          high_school: profileForm.highSchool,
+          language_school: profileForm.languageSchool,
+          phone: profileForm.phone,
+          photo: profileForm.photo,
+          subject: profileForm.subject,
+        });
+      } else if (user.role === 'teacher' && user.id) {
+        await teachersAPI.update(user.id, {
+          name: profileForm.name,
+          email: profileForm.email,
+          department: profileForm.department,
+          subject: profileForm.subject,
+          phone: profileForm.phone,
+          address: profileForm.address,
+          education: profileForm.education,
+          hire_date: profileForm.joinDate,
+          photo: profileForm.photo,
+          birthday: profileForm.birthday,
+        });
+      }
+    } catch (err) {
+      console.error('同步个人信息到后端失败:', err);
+      // 即使后端失败，localStorage 已经保存，不阻塞用户体验
+    }
 
     // 更新 allUsers 中的名字
     if (profileForm.name !== user.name) {

@@ -352,7 +352,7 @@ const SchoolDatabase = () => {
               <div className="border-t p-4 sm:p-5 space-y-4 animate-fade-in" style={{ background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="text-sm font-medium text-themed-secondary mb-2">开设研究科/学部</h5>
+                    <h5 className="text-sm font-medium text-themed-secondary mb-2">开设学部</h5>
                     <div className="flex flex-wrap gap-2">
                       {(school.programs || []).map((p, i) => (
                         <span key={i} className="px-3 py-1 rounded-full text-xs" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>{p}</span>
@@ -560,7 +560,7 @@ const SchoolDatabase = () => {
 
               {/* 研究科 */}
               <div>
-                <label className="block text-sm font-medium mb-1">开设研究科/学部</label>
+                <label className="block text-sm font-medium mb-1">开设学部</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {(formData.programs || []).map((p, i) => (
                     <span key={i} className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
@@ -570,7 +570,7 @@ const SchoolDatabase = () => {
                 </div>
                 <div className="flex gap-2">
                   <input type="text" value={newProgram} onChange={e => setNewProgram(e.target.value)}
-                    className="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="输入研究科名称" onKeyDown={e => {
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="输入学部名称" onKeyDown={e => {
                       if (e.key === 'Enter' && newProgram.trim()) { e.preventDefault(); setFormData({...formData, programs: [...(formData.programs || []), newProgram.trim()]}); setNewProgram(''); }
                     }} />
                   <button type="button" onClick={() => { if (newProgram.trim()) { setFormData({...formData, programs: [...(formData.programs || []), newProgram.trim()]}); setNewProgram(''); }}}

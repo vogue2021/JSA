@@ -21,6 +21,8 @@ function formatStudent(row) {
     birthday: row.birthday || '',
     highSchool: row.high_school || '',
     languageSchool: row.language_school || '',
+    langSchoolShift: row.lang_school_shift || '',
+    phone: row.phone || '',
     jlptScore: row.jlpt_score || '',
     ejuScores: (() => { try { return JSON.parse(row.eju_scores || '[]') } catch { return [] } })(),
     englishScore: row.english_score || '',
@@ -220,6 +222,7 @@ students.put('/:id', async (c) => {
   const params = []
 
   const updatable = ['name', 'email', 'birthday', 'high_school', 'language_school',
+    'lang_school_shift', 'phone',
     'jlpt_score', 'english_score', 'photo',
     'package_name', 'package_end_date', 'subject']
 
