@@ -43,4 +43,7 @@ backend/.env
 backend/database.sqlite
 
 # codebuddy
-.codebuddy/
+.codebuddy/*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.wrangler/

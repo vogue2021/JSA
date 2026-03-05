@@ -198,8 +198,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         name: s.name,
         nameJa: s.name_ja || '',
         type: s.type,
+        location: s.location || '',
         program: s.program,
         status: s.status,
+        acceptanceRate: s.acceptance_rate || '',
+        requirements: s.requirements || '',
         applicationStartDate: s.application_start_date,
         applicationEndDate: s.application_end_date,
         examDate: s.exam_date,
@@ -1111,17 +1114,42 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
     const [schoolSuggestions, setSchoolSuggestions] = useState([]);
 
-    // 从学校信息库获取匹配的学校
+    // 从学校信息库搜索匹配的学校（通过 API 实时搜索 + localStorage 缓存降级）
     const getSchoolDbSuggestions = (query) => {
+      // 优先从 localStorage 缓存中搜索（即时响应）
       try {
         const saved = localStorage.getItem('schoolDatabase');
-        if (!saved) return [];
-        const dbSchools = JSON.parse(saved);
-        if (!query) return dbSchools.slice(0, 10);
-        return dbSchools.filter(s =>
-          s.name.includes(query) || (s.nameJa && s.nameJa.includes(query))
-        ).slice(0, 10);
-      } catch { return []; }
+        if (saved) {
+          const dbSchools = JSON.parse(saved);
+          if (Array.isArray(dbSchools) && dbSchools.length > 0) {
+            if (!query) return dbSchools.slice(0, 10);
+            return dbSchools.filter(s =>
+              s.name.includes(query) || (s.nameJa && s.nameJa.includes(query))
+            ).slice(0, 10);
+          }
+        }
+      } catch { /* ignore */ }
+      return [];
+    };
+
+    // 当学校搜索框获得焦点时，尝试从 API 加载学校信息库到 localStorage 缓存
+    const ensureSchoolDbCached = async () => {
+      try {
+        const saved = localStorage.getItem('schoolDatabase');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return; // 缓存有效
+        }
+      } catch { /* ignore */ }
+      // 缓存为空或无效，从 API 加载
+      try {
+        const data = await schoolDatabaseAPI.getAll();
+        if (Array.isArray(data) && data.length > 0) {
+          localStorage.setItem('schoolDatabase', JSON.stringify(data));
+        }
+      } catch (err) {
+        console.warn('加载学校信息库缓存失败:', err);
+      }
     };
 
     // 选择学校信息库中的学校后自动填充
@@ -1268,7 +1296,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
                     setSchoolSuggestions(suggestions);
                     setShowSchoolSuggestions(suggestions.length > 0);
                   }}
-                  onFocus={() => {
+                  onFocus={async () => {
+                    await ensureSchoolDbCached(); // 确保学校信息库已缓存
                     const suggestions = getSchoolDbSuggestions(formData.name);
                     setSchoolSuggestions(suggestions);
                     setShowSchoolSuggestions(suggestions.length > 0);
@@ -3072,8 +3101,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <Calendar size={16} /> 日历
             </button>
           </div>
-          {/* 导出按钮 */}
-          {hasPermission('export_data') && (
+          {/* 导出按钮 - 学生也可以导出自己的数据 */}
+          {(user.role === 'student' || hasPermission('export_data')) && (
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
@@ -3464,6 +3493,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     {getStatusText(school.status)}
                   </span>
                   <p className="text-sm mt-2" style={{ color: tokens.colors.text.secondary }}>{school.program}</p>
+                  {school.location && (
+                    <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>📍 {school.location}</p>
+                  )}
                 </div>
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-1">
@@ -3957,7 +3989,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <Palette size={18} />
             </button>
 
-            {/* 通知按钮 - 点击弹出提醒设置 */}
+            {/* 通知按钮 - 仅老师和管理员显示提醒设置；学生只显示提醒数量（不可设置） */}
+            {(user.role === 'teacher' || user.role === 'admin') && (
             <button className="p-2 rounded-lg relative transition-all"
               style={{ color: tokens.colors.text.muted }}
               onClick={() => setShowReminderSettings(true)}
@@ -3969,6 +4002,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{deadlineReminders.length}</span>
               )}
             </button>
+            )}
 
             {(user.role === 'teacher' || user.role === 'admin') && (
               <button
@@ -4478,6 +4512,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <div className="flex items-center gap-2 text-white/80 text-sm">
                   <span className="px-2 py-0.5 bg-white/20 rounded-full">{schoolDetailModal.type}</span>
                   <span>{schoolDetailModal.program}</span>
+                  {schoolDetailModal.location && <span>📍 {schoolDetailModal.location}</span>}
                 </div>
                 <div className="mt-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -4494,6 +4529,40 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </div>
 
               <div className="p-6 space-y-5">
+                {/* 学校基本信息 */}
+                {(schoolDetailModal.location || schoolDetailModal.acceptanceRate || schoolDetailModal.nameJa) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {schoolDetailModal.nameJa && (
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>日文名</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.nameJa}</div>
+                      </div>
+                    )}
+                    {schoolDetailModal.location && (
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>所在地</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>📍 {schoolDetailModal.location}</div>
+                      </div>
+                    )}
+                    {schoolDetailModal.acceptanceRate && (
+                      <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                        <div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格率</div>
+                        <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.acceptanceRate}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 入学要求 */}
+                {schoolDetailModal.requirements && (
+                  <div>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><FileText size={16} /> 入学要求</h4>
+                    <div className="p-3 rounded-lg text-sm" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', color: tokens.colors.text.secondary }}>
+                      {schoolDetailModal.requirements}
+                    </div>
+                  </div>
+                )}
+
                 {/* 重要日期 */}
                 <div>
                 <h4 className="font-semibold mb-3 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><Calendar size={16} /> 重要日期</h4>
