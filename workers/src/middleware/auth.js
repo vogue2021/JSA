@@ -15,6 +15,16 @@ export async function authMiddleware(c, next) {
       c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
     )
     const { payload } = await jwtVerify(token, secret)
+
+    // 检查账号是否已被禁用（每次 API 请求都实时查 DB）
+    const db = c.env.DB
+    if (db && payload.id) {
+      const user = await db.prepare('SELECT is_active FROM users WHERE id = ?').bind(payload.id).first()
+      if (user && user.is_active === 0) {
+        return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
+      }
+    }
+
     c.set('user', payload)
     await next()
   } catch (e) {

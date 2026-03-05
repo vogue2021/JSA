@@ -527,12 +527,25 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         console.error('获取截止日提醒失败:', err);
       }
     };
-    // 加载提醒设置
+    // 加载提醒设置（优先从API加载，降级从localStorage读取）
     const loadReminderSettings = async () => {
       try {
         const data = await remindersAPI.getSettings();
-        if (data) setReminderSettings(data);
-      } catch (err) { console.warn('加载提醒设置失败:', err); }
+        if (data && (data.reminderTime || data.reminderCount || data.reminderInterval)) {
+          setReminderSettings(data);
+          // 同步写入localStorage作为备份
+          localStorage.setItem('reminderSettings', JSON.stringify(data));
+          return;
+        }
+      } catch (err) { console.warn('从API加载提醒设置失败，尝试localStorage:', err); }
+      // 降级从localStorage读取
+      try {
+        const saved = localStorage.getItem('reminderSettings');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed) setReminderSettings(parsed);
+        }
+      } catch { /* ignore */ }
     };
     loadReminderSettings();
     // 首次加载后延迟2秒检查（等待登录完成）
@@ -592,12 +605,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     setSavingReminderSettings(true);
     try {
       const result = await remindersAPI.saveSettings(reminderSettings);
-      if (result) setReminderSettings(result);
+      if (result && (result.reminderTime || result.reminderCount || result.reminderInterval)) {
+        setReminderSettings(result);
+      }
+      // 无论API是否成功，都同时保存到localStorage（确保刷新后不丢失）
+      localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
       if (showNotification) showNotification('提醒设置已保存');
       setShowReminderSettings(false);
     } catch (err) {
       console.error('保存提醒设置失败:', err);
-      if (showNotification) showNotification('保存失败', 'error');
+      // API失败也保存到localStorage
+      localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
+      if (showNotification) showNotification('设置已保存到本地（服务器同步失败）', 'warning');
+      setShowReminderSettings(false);
     } finally {
       setSavingReminderSettings(false);
     }
@@ -2688,7 +2708,6 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         setCreateAdminForm({ name: '', email: '', password: '' });
         setShowCreateAdmin(false);
         // 刷新列表
-        accountLoadedRef.current = false;
         const data = await usersAPI.getAll();
         if (Array.isArray(data)) {
           setAccountList(data.map(u => ({
@@ -2704,13 +2723,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     };
 
     // 打开弹窗时从 API 加载所有账号（仅管理员可用）
+    // 注意：此组件在 MainApp 内部定义，每次重新渲染都会重新挂载，因此每次都需要重新加载
     useEffect(() => {
-      // 防止重复加载 + 非管理员不请求
-      if (accountLoadedRef.current || user?.role !== 'admin') {
+      if (user?.role !== 'admin') {
         setAccountsLoading(false);
         return;
       }
-      accountLoadedRef.current = true;
       const loadAccounts = async () => {
         try {
           setAccountsLoading(true);
@@ -3560,7 +3578,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   </div>
                 </div>
 
-                {(user.role === 'teacher' || user.role === 'admin') && school.teacherNotes && (
+                {school.teacherNotes && (
                   <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(234,179,8,0.08)' : 'rgba(234,179,8,0.06)', border: `1px solid ${isDark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.3)'}` }}>
                     <div className="text-xs mb-1 font-semibold" style={{ color: isDark ? '#fde047' : '#a16207' }}>老师备注:</div>
                     <div className="text-sm" style={{ color: tokens.colors.text.secondary }}>{school.teacherNotes}</div>
@@ -4631,10 +4649,25 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       {schoolDetailModal.materials.map((m, i) => (
                         <div key={i} className="flex items-center justify-between p-2.5 rounded-lg text-sm" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>
                           <span style={{ color: tokens.colors.text.primary }}>{m.name}</span>
-                          <span className="text-xs" style={{ color: tokens.colors.text.muted }}>截止: {m.deadline}</span>
+                          <div className="flex items-center gap-2">
+                            {m.url && (
+                              <a href={m.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600">
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
+                            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>截止: {m.deadline || '待定'}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* 老师备注 */}
+                {schoolDetailModal.teacherNotes && (
+                  <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(234,179,8,0.08)' : 'rgba(234,179,8,0.06)', border: `1px solid ${isDark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.3)'}` }}>
+                    <div className="text-xs mb-1 font-semibold" style={{ color: isDark ? '#fde047' : '#a16207' }}>老师备注:</div>
+                    <div className="text-sm" style={{ color: tokens.colors.text.secondary }}>{schoolDetailModal.teacherNotes}</div>
                   </div>
                 )}
               </div>

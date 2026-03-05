@@ -19,6 +19,17 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: response.statusText }));
+
+      // 账号被禁用：清除 token 并强制退出登录
+      if (response.status === 403 && errorData.code === 'ACCOUNT_DISABLED') {
+        sessionStorage.removeItem('authToken');
+        sessionStorage.removeItem('user');
+        localStorage.removeItem('currentStudent');
+        alert('您的账号已被禁用，请联系管理员。');
+        window.location.reload();
+        return;
+      }
+
       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
 

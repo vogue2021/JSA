@@ -46,11 +46,20 @@ schoolDatabase.get('/:id', async (c) => {
   const school = await db.prepare('SELECT * FROM school_database WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
 
-  school.programs = (() => { try { return JSON.parse(school.programs || '[]') } catch { return [] } })()
-  school.importantDates = (() => { try { return JSON.parse(school.important_dates || '[]') } catch { return [] } })()
-  school.requiredMaterials = (() => { try { return JSON.parse(school.required_materials || '[]') } catch { return [] } })()
+  // 标准化为 camelCase，与 GET / 返回格式一致
+  const data = {
+    ...school,
+    nameJa: school.name_ja || '',
+    acceptanceRate: school.acceptance_rate || '',
+    requirementsUrl: school.requirements_url || '',
+    xuexinCert: school.xuexin_cert || '不确定',
+    overseasCert: school.overseas_cert || '不确定',
+    programs: (() => { try { return JSON.parse(school.programs || '[]') } catch { return [] } })(),
+    importantDates: (() => { try { return JSON.parse(school.important_dates || '[]') } catch { return [] } })(),
+    requiredMaterials: (() => { try { return JSON.parse(school.required_materials || '[]') } catch { return [] } })(),
+  }
 
-  return c.json({ success: true, data: school })
+  return c.json({ success: true, data })
 })
 
 // ─── 添加学校信息 ─────────────────────────────────────────────────────────────
