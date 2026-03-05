@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   School, Calendar, ChevronLeft, ChevronRight, MapPin,
-  ExternalLink, Users, BookOpen, Search, X
+  ExternalLink, Users, BookOpen, Search, X, FileText
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { schoolDatabaseAPI } from '../services/api';

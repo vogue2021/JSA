@@ -325,4 +325,19 @@ export const remindersAPI = {
   getHistory: async (studentId) => {
     return await apiRequest(`/reminders/history/${studentId}`);
   },
+  // 获取事件确认状态（用于时间线卡片显示"学生已确认"）
+  getAcknowledged: async (studentId) => {
+    return await apiRequest(`/reminders/acknowledged/${studentId}`);
+  },
+  // 获取提醒设置
+  getSettings: async () => {
+    return await apiRequest('/reminders/settings');
+  },
+  // 保存提醒设置
+  saveSettings: async (settings) => {
+    return await apiRequest('/reminders/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+  },
 };

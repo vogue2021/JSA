@@ -48,6 +48,10 @@ const AuthPage = ({ onLogin }) => {
       const result = await resp.json();
 
       if (!resp.ok || !result.success) {
+        // 禁用账号特殊提示
+        if (result.code === 'ACCOUNT_DISABLED') {
+          alert('⚠️ 账号已被禁用，请联系管理员');
+        }
         setErrors({ password: result.message || '邮箱或密码错误' });
         return;
       }

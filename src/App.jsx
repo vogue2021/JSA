@@ -9,7 +9,7 @@ import {
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera
 } from 'lucide-react';
-import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI } from './services/api';
+import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -368,6 +368,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const [deadlineReminders, setDeadlineReminders] = useState([]); // 截止日提醒列表
   const [showDeadlineReminder, setShowDeadlineReminder] = useState(false); // 是否显示截止日提醒弹窗
+  const [showReminderSettings, setShowReminderSettings] = useState(false); // 提醒设置弹窗
+  const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00', reminderCount: 1, reminderInterval: 60 });
+  const [savingReminderSettings, setSavingReminderSettings] = useState(false);
+  const [acknowledgedEvents, setAcknowledgedEvents] = useState({}); // { eventId: acknowledgedAt }
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [feedbackContent, setFeedbackContent] = useState('');
   const [feedbackContact, setFeedbackContact] = useState('');
@@ -520,6 +524,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         console.error('获取截止日提醒失败:', err);
       }
     };
+    // 加载提醒设置
+    const loadReminderSettings = async () => {
+      try {
+        const data = await remindersAPI.getSettings();
+        if (data) setReminderSettings(data);
+      } catch (err) { console.warn('加载提醒设置失败:', err); }
+    };
+    loadReminderSettings();
     // 首次加载后延迟2秒检查（等待登录完成）
     const timer = setTimeout(checkDeadlineReminders, 2000);
     // 每小时检查一次
@@ -527,11 +539,26 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     return () => { clearTimeout(timer); clearInterval(interval); };
   }, [user.role]);
 
+  // 加载事件确认状态（用于时间线卡片显示"学生已确认"）
+  useEffect(() => {
+    const studentId = user.role === 'student' ? user.studentId : currentStudent?.studentId;
+    if (!studentId) return;
+    const loadAcknowledged = async () => {
+      try {
+        const data = await remindersAPI.getAcknowledged(studentId);
+        if (data) setAcknowledgedEvents(data);
+      } catch (err) { console.warn('加载确认状态失败:', err); }
+    };
+    loadAcknowledged();
+  }, [user.role, user.studentId, currentStudent?.studentId]);
+
   // 确认截止日提醒
   const handleAcknowledgeReminder = async (reminder) => {
     try {
       await remindersAPI.acknowledge(reminder.id, reminder.title);
       setDeadlineReminders(prev => prev.filter(r => r.id !== reminder.id));
+      // 更新已确认状态
+      setAcknowledgedEvents(prev => ({ ...prev, [reminder.id]: new Date().toISOString() }));
       if (deadlineReminders.length <= 1) {
         setShowDeadlineReminder(false);
       }
@@ -543,14 +570,33 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
   const handleAcknowledgeAllReminders = async () => {
     try {
+      const newAcked = {};
       for (const r of deadlineReminders) {
         await remindersAPI.acknowledge(r.id, r.title);
+        newAcked[r.id] = new Date().toISOString();
       }
       setDeadlineReminders([]);
       setShowDeadlineReminder(false);
+      setAcknowledgedEvents(prev => ({ ...prev, ...newAcked }));
       if (showNotification) showNotification('已确认所有截止日提醒');
     } catch (err) {
       console.error('批量确认提醒失败:', err);
+    }
+  };
+
+  // 保存提醒设置
+  const handleSaveReminderSettings = async () => {
+    setSavingReminderSettings(true);
+    try {
+      const result = await remindersAPI.saveSettings(reminderSettings);
+      if (result) setReminderSettings(result);
+      if (showNotification) showNotification('提醒设置已保存');
+      setShowReminderSettings(false);
+    } catch (err) {
+      console.error('保存提醒设置失败:', err);
+      if (showNotification) showNotification('保存失败', 'error');
+    } finally {
+      setSavingReminderSettings(false);
     }
   };
 
@@ -1079,13 +1125,24 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     };
 
     // 选择学校信息库中的学校后自动填充
-    const handleSelectDbSchool = (dbSchool) => {
+    const handleSelectDbSchool = async (dbSchool) => {
+      // 从 API 实时获取该学校的最新完整数据（确保 requiredMaterials 等字段存在）
+      let fullSchool = dbSchool;
+      if (dbSchool.id) {
+        try {
+          const fresh = await schoolDatabaseAPI.getById(dbSchool.id);
+          if (fresh) fullSchool = fresh;
+        } catch (err) {
+          console.warn('从API获取学校完整数据失败，使用缓存:', err);
+        }
+      }
+
       // 从 importantDates 数组中提取第一组日期
-      const firstDateGroup = (dbSchool.importantDates && dbSchool.importantDates.length > 0)
-        ? dbSchool.importantDates[0] : {};
+      const firstDateGroup = (fullSchool.importantDates && fullSchool.importantDates.length > 0)
+        ? fullSchool.importantDates[0] : {};
 
       // 从学校信息库的 requiredMaterials 自动生成材料列表（名称填充，截止时间留空由用户手动设置）
-      const autoMaterials = (dbSchool.requiredMaterials || []).map((materialName, idx) => ({
+      const autoMaterials = (fullSchool.requiredMaterials || []).map((materialName, idx) => ({
         name: materialName,
         deadline: '', // 截止时间留空，由用户在学校页面手动设置
         url: '',
@@ -1094,18 +1151,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
       setFormData(prev => ({
         ...prev,
-        name: dbSchool.name,
-        nameJa: dbSchool.nameJa || prev.nameJa,
-        type: dbSchool.type || prev.type,
-        location: dbSchool.location || prev.location,
-        acceptanceRate: dbSchool.acceptanceRate || prev.acceptanceRate,
-        requirements: dbSchool.requirements || prev.requirements,
-        program: (dbSchool.programs && dbSchool.programs[0]) || prev.program,
+        name: fullSchool.name,
+        nameJa: fullSchool.nameJa || prev.nameJa,
+        type: fullSchool.type || prev.type,
+        location: fullSchool.location || prev.location,
+        acceptanceRate: fullSchool.acceptanceRate || prev.acceptanceRate,
+        requirements: fullSchool.requirements || prev.requirements,
+        program: (fullSchool.programs && fullSchool.programs[0]) || prev.program,
         applicationStartDate: firstDateGroup.applicationStartDate || prev.applicationStartDate,
         applicationEndDate: firstDateGroup.applicationEndDate || prev.applicationEndDate,
         examDate: firstDateGroup.examDate || prev.examDate,
         resultDate: firstDateGroup.resultDate || prev.resultDate,
-        requirementsUrl: dbSchool.requirementsUrl || dbSchool.website || prev.requirementsUrl,
+        requirementsUrl: fullSchool.requirementsUrl || fullSchool.website || prev.requirementsUrl,
         // 自动填充材料（仅在当前没有材料时才自动填充，避免覆盖用户已编辑的材料）
         materials: (prev.materials && prev.materials.length > 0) ? prev.materials : autoMaterials,
       }));
@@ -2564,6 +2621,58 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     // 从 API 加载的账号列表
     const [accountList, setAccountList] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(true);
+    // 创建管理员表单
+    const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+    const [createAdminForm, setCreateAdminForm] = useState({ name: '', email: '', password: '' });
+    const [creatingAdmin, setCreatingAdmin] = useState(false);
+
+    // 禁用/启用用户
+    const handleToggleActive = async (accountId, accountName) => {
+      const target = accountList.find(u => u.id === accountId);
+      const action = target?.is_active ? '禁用' : '启用';
+      if (!window.confirm(`确定要${action}用户「${accountName}」的账号吗？\n${action === '禁用' ? '禁用后该用户将无法登录系统。' : ''}`)) return;
+      try {
+        await usersAPI.toggleActive(accountId);
+        setAccountList(prev => prev.map(u =>
+          u.id === accountId ? { ...u, is_active: u.is_active ? 0 : 1 } : u
+        ));
+        if (showNotification) showNotification(`已${action}「${accountName}」的账号`);
+      } catch (err) {
+        if (showNotification) showNotification(`${action}失败: ${err.message}`, 'error');
+      }
+    };
+
+    // 创建管理员
+    const handleCreateAdmin = async () => {
+      if (!createAdminForm.name || !createAdminForm.email || !createAdminForm.password) {
+        if (showNotification) showNotification('请填写所有字段', 'error');
+        return;
+      }
+      if (createAdminForm.password.length < 6) {
+        if (showNotification) showNotification('密码至少6位', 'error');
+        return;
+      }
+      setCreatingAdmin(true);
+      try {
+        await usersAPI.createAdmin(createAdminForm);
+        if (showNotification) showNotification('管理员账号已创建');
+        setCreateAdminForm({ name: '', email: '', password: '' });
+        setShowCreateAdmin(false);
+        // 刷新列表
+        accountLoadedRef.current = false;
+        const data = await usersAPI.getAll();
+        if (Array.isArray(data)) {
+          setAccountList(data.map(u => ({
+            id: u.id, email: u.email, role: u.role, name: u.name,
+            teacherId: u.teacher_id, studentId: u.student_id, is_active: u.is_active, createdAt: u.created_at,
+          })));
+        }
+      } catch (err) {
+        if (showNotification) showNotification(`创建失败: ${err.message}`, 'error');
+      } finally {
+        setCreatingAdmin(false);
+      }
+    };
 
     // 打开弹窗时从 API 加载所有账号（仅管理员可用）
     useEffect(() => {
@@ -2742,6 +2851,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                                account.role === 'teacher' ? '老师' : '学生'}
                             </div>
                             <div className="font-medium" style={{ color: tokens.colors.text.primary }}>{account.name}</div>
+                            {!account.is_active && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                                style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                                已禁用
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>{account.email}</div>
                           <div className="text-xs mt-1 space-y-1" style={{ color: tokens.colors.text.muted }}>
@@ -2760,24 +2875,41 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                             )}
                           </div>
                         </div>
-                        {account.role !== 'admin' && (
-                          <button
-                            onClick={async () => {
-                              if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
-                                try {
-                                  await usersAPI.delete(account.id);
-                                  setAccountList(prev => prev.filter(u => u.id !== account.id));
-                                  if (showNotification) showNotification(`已删除账号: ${account.name}`);
-                                } catch (err) {
-                                  if (showNotification) showNotification(err.message || '删除失败');
+                        <div className="flex items-center gap-2">
+                          {/* 禁用/启用按钮（不能禁用自己） */}
+                          {account.id !== user.id && (
+                            <button
+                              onClick={() => handleToggleActive(account.id, account.name)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                              style={{
+                                background: account.is_active
+                                  ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)')
+                                  : (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)'),
+                                color: account.is_active ? '#ef4444' : '#22c55e',
+                              }}
+                            >
+                              {account.is_active ? '禁用' : '启用'}
+                            </button>
+                          )}
+                          {account.role !== 'admin' && (
+                            <button
+                              onClick={async () => {
+                                if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
+                                  try {
+                                    await usersAPI.delete(account.id);
+                                    setAccountList(prev => prev.filter(u => u.id !== account.id));
+                                    if (showNotification) showNotification(`已删除账号: ${account.name}`);
+                                  } catch (err) {
+                                    if (showNotification) showNotification(err.message || '删除失败');
+                                  }
                                 }
-                              }
-                            }}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -2786,7 +2918,56 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </div>
           </div>
 
-          {/* 底部按钮区域已移除（创建学生账号、添加老师账号、关闭）*/}
+          {/* 底部操作区 */}
+          <div className="p-4 border-t" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb' }}>
+            {!showCreateAdmin ? (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCreateAdmin(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition"
+                  style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+                >
+                  <Shield size={16} /> 创建管理员账号
+                </button>
+                <div className="flex-1" />
+                <button
+                  onClick={() => setShowAccountManagementModal(false)}
+                  className="px-4 py-2 rounded-lg text-sm transition"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}
+                >
+                  关闭
+                </button>
+              </div>
+            ) : (
+              <div>
+                <h5 className="font-semibold text-base mb-3 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+                  <Shield size={18} className="text-red-500" /> 创建新管理员账号
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input type="text" value={createAdminForm.name} onChange={e => setCreateAdminForm({...createAdminForm, name: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="管理员姓名"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+                  <input type="email" value={createAdminForm.email} onChange={e => setCreateAdminForm({...createAdminForm, email: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="admin@example.com"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+                  <input type="password" value={createAdminForm.password} onChange={e => setCreateAdminForm({...createAdminForm, password: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="初始密码（至少6位）"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db' }} />
+                </div>
+                <div className="flex gap-3 mt-3">
+                  <button onClick={handleCreateAdmin} disabled={creatingAdmin}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50">
+                    {creatingAdmin ? '创建中...' : '确认创建'}
+                  </button>
+                  <button onClick={() => setShowCreateAdmin(false)}
+                    className="px-4 py-2 rounded-lg text-sm transition"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -3058,6 +3239,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   {event.schoolId && (
                     <span className="text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: isDark ? '#93c5fd' : '#2563eb' }}>
                       学校关联
+                    </span>
+                  )}
+                  {acknowledgedEvents[event.id] && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-1 rounded font-medium" style={{ background: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)', color: '#22c55e' }}>
+                      <Check size={12} /> 学生已确认
                     </span>
                   )}
                 </div>
@@ -3771,14 +3957,16 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <Palette size={18} />
             </button>
 
-            {/* 通知按钮 */}
+            {/* 通知按钮 - 点击弹出提醒设置 */}
             <button className="p-2 rounded-lg relative transition-all"
               style={{ color: tokens.colors.text.muted }}
+              onClick={() => setShowReminderSettings(true)}
               onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title="截止日提醒设置">
               <Bell size={18} />
-              {filteredEvents.filter(e => e.urgent).length > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+              {deadlineReminders.length > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{deadlineReminders.length}</span>
               )}
             </button>
 
@@ -4654,6 +4842,83 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
                 onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
                 全部确认（{deadlineReminders.length} 项）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 提醒设置弹窗 */}
+      {showReminderSettings && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowReminderSettings(false)}>
+          <div className="rounded-2xl max-w-md w-full animate-scale-in" style={{
+            background: isDark ? 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(30,30,60,0.98))' : 'linear-gradient(135deg, #eff6ff, #fff)',
+            border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#93c5fd'}`,
+            boxShadow: '0 25px 80px rgba(59,130,246,0.2)',
+          }} onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center" style={{ borderBottom: `1px solid ${isDark ? 'rgba(59,130,246,0.15)' : '#bfdbfe'}` }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: isDark ? 'rgba(59,130,246,0.2)' : '#dbeafe' }}>
+                <Bell size={32} className="text-blue-500" />
+              </div>
+              <h2 className="text-xl font-bold" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>🔔 截止日提醒设置</h2>
+              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>设置截止日提醒的时间和频率</p>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* 提醒时间 */}
+              <div>
+                <label className="block text-sm font-semibold mb-2" style={{ color: tokens.colors.text.primary }}>📅 每日提醒时间</label>
+                <input type="time" value={reminderSettings.reminderTime}
+                  onChange={e => setReminderSettings(prev => ({ ...prev, reminderTime: e.target.value }))}
+                  className="w-full px-4 py-3 border rounded-xl text-sm"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#d1d5db' }} />
+                <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>系统将在此时间点检查并弹出截止日提醒</p>
+              </div>
+              {/* 提醒次数 */}
+              <div>
+                <label className="block text-sm font-semibold mb-2" style={{ color: tokens.colors.text.primary }}>🔁 每日提醒次数</label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <button key={n} onClick={() => setReminderSettings(prev => ({ ...prev, reminderCount: n }))}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{
+                        background: reminderSettings.reminderCount === n ? (isDark ? 'rgba(59,130,246,0.25)' : '#dbeafe') : (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'),
+                        color: reminderSettings.reminderCount === n ? '#3b82f6' : tokens.colors.text.secondary,
+                        border: `1px solid ${reminderSettings.reminderCount === n ? (isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd') : 'transparent'}`,
+                      }}>
+                      {n}次
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* 提醒间隔 */}
+              <div>
+                <label className="block text-sm font-semibold mb-2" style={{ color: tokens.colors.text.primary }}>⏱ 提醒间隔（分钟）</label>
+                <div className="flex gap-2">
+                  {[15, 30, 60, 120, 240].map(m => (
+                    <button key={m} onClick={() => setReminderSettings(prev => ({ ...prev, reminderInterval: m }))}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{
+                        background: reminderSettings.reminderInterval === m ? (isDark ? 'rgba(59,130,246,0.25)' : '#dbeafe') : (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'),
+                        color: reminderSettings.reminderInterval === m ? '#3b82f6' : tokens.colors.text.secondary,
+                        border: `1px solid ${reminderSettings.reminderInterval === m ? (isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd') : 'transparent'}`,
+                      }}>
+                      {m < 60 ? `${m}分` : `${m / 60}小时`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>多次提醒时，每次提醒之间的间隔时间</p>
+              </div>
+            </div>
+            <div className="p-4 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>
+              <button onClick={handleSaveReminderSettings} disabled={savingReminderSettings}
+                className="flex-1 py-3 rounded-xl font-bold text-white transition text-sm disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
+                {savingReminderSettings ? '保存中...' : '💾 保存设置'}
+              </button>
+              <button onClick={() => setShowReminderSettings(false)}
+                className="px-6 py-3 rounded-xl text-sm font-medium transition"
+                style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
+                取消
               </button>
             </div>
           </div>

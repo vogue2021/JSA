@@ -184,6 +184,11 @@ auth.post('/login', async (c) => {
       return c.json({ success: false, message: '邮箱或密码错误' }, 401)
     }
 
+    // 检查账号是否被禁用
+    if (user.is_active === 0) {
+      return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
+    }
+
     // 获取角色附加信息（直接从 users 表读取，不再查 teachers 表）
     let additionalData = {}
     if (user.role === 'student') {

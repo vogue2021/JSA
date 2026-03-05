@@ -104,4 +104,78 @@ reminders.get('/history/:studentId', async (c) => {
   return c.json({ success: true, data: results })
 })
 
+// ─── 获取事件的确认状态（用于时间线卡片显示"学生已确认"）─────────────────────
+reminders.get('/acknowledged/:studentId', async (c) => {
+  const { studentId } = c.req.param()
+  const db = c.env.DB
+
+  const { results } = await db.prepare(`
+    SELECT event_id, acknowledged_at FROM deadline_reminders
+    WHERE student_id = ? AND acknowledged = 1
+  `).bind(studentId).all()
+
+  // 返回 { eventId: acknowledgedAt } 的映射
+  const map = {}
+  results.forEach(r => { map[r.event_id] = r.acknowledged_at })
+
+  return c.json({ success: true, data: map })
+})
+
+// ─── 获取提醒设置 ──────────────────────────────────────────────────────────
+reminders.get('/settings', async (c) => {
+  const user = c.get('user')
+  const db = c.env.DB
+
+  // 从 localStorage 方案改为用简单的 KV 存储（暂用 users 表的一个 JSON 列或独立表）
+  // 这里我们用 deadline_reminders 表的特殊记录来存储设置
+  const settings = await db.prepare(`
+    SELECT event_title as settings_json FROM deadline_reminders
+    WHERE student_id = ? AND event_id = -1
+  `).bind(user.studentId || user.id).first()
+
+  const defaultSettings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60 }
+
+  if (settings && settings.settings_json) {
+    try {
+      return c.json({ success: true, data: JSON.parse(settings.settings_json) })
+    } catch { /* fall through */ }
+  }
+
+  return c.json({ success: true, data: defaultSettings })
+})
+
+// ─── 保存提醒设置 ──────────────────────────────────────────────────────────
+reminders.post('/settings', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.json()
+  const db = c.env.DB
+
+  const settings = {
+    reminderTime: body.reminderTime || '09:00',
+    reminderCount: Math.min(Math.max(body.reminderCount || 1, 1), 5),
+    reminderInterval: Math.min(Math.max(body.reminderInterval || 60, 15), 240),
+  }
+
+  const studentId = user.studentId || user.id
+  const settingsJson = JSON.stringify(settings)
+
+  // 使用 event_id = -1 作为设置记录的特殊标识
+  const existing = await db.prepare(`
+    SELECT id FROM deadline_reminders WHERE student_id = ? AND event_id = -1
+  `).bind(studentId).first()
+
+  if (existing) {
+    await db.prepare(`
+      UPDATE deadline_reminders SET event_title = ?, acknowledged_at = datetime('now') WHERE id = ?
+    `).bind(settingsJson, existing.id).run()
+  } else {
+    await db.prepare(`
+      INSERT INTO deadline_reminders (student_id, event_id, event_title, deadline_date, acknowledged, acknowledged_at)
+      VALUES (?, -1, ?, '', 0, datetime('now'))
+    `).bind(studentId, settingsJson).run()
+  }
+
+  return c.json({ success: true, message: '提醒设置已保存', data: settings })
+})
+
 export default reminders

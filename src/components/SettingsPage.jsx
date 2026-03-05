@@ -180,7 +180,6 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
   const tabs = [
     { id: 'profile', label: '个人信息', icon: User },
     { id: 'security', label: '安全设置', icon: Lock },
-    ...(user.role === 'admin' ? [{ id: 'accounts', label: '账号管理', icon: Users }] : []),
     ...(user.role === 'admin' ? [{ id: 'analytics', label: '数据统计', icon: BarChart3 }] : []),
     ...(user.role === 'admin' ? [{ id: 'migration', label: '数据迁移', icon: Download }] : []),
     ...(user.role === 'admin' ? [{ id: 'logs', label: '系统日志', icon: FileText }] : []),
@@ -427,11 +426,6 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
             </button>
           </div>
         </div>
-      )}
-
-      {/* 账号管理（仅管理员） */}
-      {activeTab === 'accounts' && user.role === 'admin' && (
-        <AccountManagementPanel user={user} />
       )}
 
       {/* 数据统计（仅管理员） */}
