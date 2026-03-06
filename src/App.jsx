@@ -1221,8 +1221,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         materials: (prev.materials && prev.materials.length > 0) ? prev.materials : autoMaterials,
       }));
       setShowSchoolSuggestions(false);
+      // 使用 requestAnimationFrame 延迟通知，确保表单 DOM 更新完成后再触发全局 state 更新
       if (autoMaterials.length > 0 && showNotification) {
-        showNotification(`已从信息库自动填充 ${autoMaterials.length} 项材料，请设置各材料的截止时间`);
+        requestAnimationFrame(() => {
+          showNotification(`已从信息库自动填充 ${autoMaterials.length} 项材料，请设置各材料的截止时间`);
+        });
       }
     };
 
@@ -4535,7 +4538,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       {/* Modals */}
       {showStudentList && <StudentListModal />}
       {showEventModal && <EventModal />}
-      {showSchoolModal && <SchoolModal />}
+      {showSchoolModal && SchoolModal()}
       {showMaterialModal && <MaterialModal />}
       {showTransferModal && <TransferModal />}
       {showAddStudentModal && <AddStudentModal />}
