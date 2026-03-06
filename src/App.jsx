@@ -1092,47 +1092,57 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     );
   };
 
+  // SchoolModal 的 state 提升到 MainApp 层级，避免 SchoolModal 因 MainApp 重渲染被卸载重挂载导致 state 丢失
+  const getInitialSchoolFormData = () => {
+    if (editingSchool) {
+      const existingMaterials = checklist?.schoolSpecific?.[editingSchool.name] || [];
+      const materialsForForm = existingMaterials.map(m => ({
+        name: m.item || m.name || '',
+        deadline: m.deadline || '',
+        url: m.url || '',
+        id: m.id,
+      }));
+      return {
+        ...editingSchool,
+        materials: materialsForForm.length > 0 ? materialsForForm : (editingSchool.materials || []),
+      };
+    }
+    return {
+      name: '',
+      nameJa: '',
+      type: '国立',
+      location: '',
+      program: '',
+      status: 'preparing',
+      applicationStartDate: '',
+      applicationEndDate: '',
+      examDate: '',
+      resultDate: '',
+      requirementsUrl: '',
+      requirements: '',
+      acceptanceRate: '',
+      teacherNotes: '',
+      materials: []
+    };
+  };
+  const [formData, setFormData] = useState(getInitialSchoolFormData());
+  const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
+  const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
+  const [schoolSuggestions, setSchoolSuggestions] = useState([]);
+
+  // 当 editingSchool 变化时重新初始化表单（打开编辑弹窗或切换学校时）
+  useEffect(() => {
+    if (showSchoolModal) {
+      setFormData(getInitialSchoolFormData());
+      setNewMaterial({ name: '', deadline: '', url: '' });
+      setShowSchoolSuggestions(false);
+      setSchoolSuggestions([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSchoolModal, editingSchool]);
+
   // 学校编辑/新增Modal
   const SchoolModal = () => {
-    // 编辑模式下，将 checklist 中该学校的材料合并到 formData.materials
-    const getInitialFormData = () => {
-      if (editingSchool) {
-        // 从 checklist.schoolSpecific 获取该学校的已有材料（API 数据源）
-        const existingMaterials = checklist?.schoolSpecific?.[editingSchool.name] || [];
-        const materialsForForm = existingMaterials.map(m => ({
-          name: m.item || m.name || '',
-          deadline: m.deadline || '',
-          url: m.url || '',
-          id: m.id, // 保留 id 以便后端区分
-        }));
-        return {
-          ...editingSchool,
-          materials: materialsForForm.length > 0 ? materialsForForm : (editingSchool.materials || []),
-        };
-      }
-      return {
-        name: '',
-        nameJa: '',
-        type: '国立',
-        location: '',
-        program: '',
-        status: 'preparing',
-        applicationStartDate: '',
-        applicationEndDate: '',
-        examDate: '',
-        resultDate: '',
-        requirementsUrl: '',
-        requirements: '',
-        acceptanceRate: '',
-        teacherNotes: '',
-        materials: []
-      };
-    };
-    const [formData, setFormData] = useState(getInitialFormData());
-
-    const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
-    const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
-    const [schoolSuggestions, setSchoolSuggestions] = useState([]);
 
     // 从学校信息库搜索匹配的学校（通过 API 实时搜索 + localStorage 缓存降级）
     const getSchoolDbSuggestions = (query) => {
