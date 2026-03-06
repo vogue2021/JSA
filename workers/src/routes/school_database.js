@@ -27,9 +27,14 @@ schoolDatabase.get('/', async (c) => {
 
   const { results } = await db.prepare(sql).bind(...params).all()
 
-  // 解析 JSON 字段
+  // 解析 JSON 字段并标准化为 camelCase
   const data = results.map(r => ({
     ...r,
+    nameJa: r.name_ja || '',
+    acceptanceRate: r.acceptance_rate || '',
+    requirementsUrl: r.requirements_url || '',
+    xuexinCert: r.xuexin_cert || '不确定',
+    overseasCert: r.overseas_cert || '不确定',
     programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
     importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
     requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),

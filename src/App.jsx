@@ -1167,16 +1167,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
     // 选择学校信息库中的学校后自动填充
     const handleSelectDbSchool = async (dbSchool) => {
+      console.log('[自动补全] 选择学校:', dbSchool.name, 'id:', dbSchool.id);
       // 从 API 实时获取该学校的最新完整数据（确保 requiredMaterials 等字段存在）
       let fullSchool = dbSchool;
       if (dbSchool.id) {
         try {
           const fresh = await schoolDatabaseAPI.getById(dbSchool.id);
+          console.log('[自动补全] API返回数据:', JSON.stringify(fresh).substring(0, 300));
           if (fresh) fullSchool = fresh;
         } catch (err) {
-          console.warn('从API获取学校完整数据失败，使用缓存:', err);
+          console.warn('[自动补全] 从API获取学校完整数据失败，使用缓存:', err);
         }
       }
+      console.log('[自动补全] 最终使用的数据 name:', fullSchool.name, 'nameJa:', fullSchool.nameJa || fullSchool.name_ja, 'type:', fullSchool.type);
 
       // 从 importantDates 数组中提取第一组日期
       const firstDateGroup = (fullSchool.importantDates && fullSchool.importantDates.length > 0)
@@ -1518,30 +1521,61 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
                 {formData.materials?.map((material, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg text-sm"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
                     style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)', border: `1px solid ${isDark ? 'rgba(59,130,246,0.15)' : 'transparent'}` }}
                   >
-                    <span style={{ color: tokens.colors.text.primary }}>{material.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span style={{ color: tokens.colors.text.muted }}>{material.deadline}</span>
-                      {material.url && (
-                        <a
-                          href={material.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:text-blue-600"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeMaterial(index)}
-                        className="text-red-600 hover:bg-red-100 p-1 rounded"
+                    <input
+                      type="text"
+                      value={material.name}
+                      onChange={(e) => {
+                        const updated = [...(formData.materials || [])];
+                        updated[index] = { ...updated[index], name: e.target.value };
+                        setFormData({ ...formData, materials: updated });
+                      }}
+                      className="flex-1 min-w-0 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500"
+                      style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}
+                      placeholder="材料名称"
+                    />
+                    <input
+                      type="date"
+                      value={material.deadline || ''}
+                      onChange={(e) => {
+                        const updated = [...(formData.materials || [])];
+                        updated[index] = { ...updated[index], deadline: e.target.value };
+                        setFormData({ ...formData, materials: updated });
+                      }}
+                      className="w-36 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500"
+                      style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}
+                    />
+                    <input
+                      type="url"
+                      value={material.url || ''}
+                      onChange={(e) => {
+                        const updated = [...(formData.materials || [])];
+                        updated[index] = { ...updated[index], url: e.target.value };
+                        setFormData({ ...formData, materials: updated });
+                      }}
+                      className="w-32 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500"
+                      style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }}
+                      placeholder="链接(可选)"
+                    />
+                    {material.url && (
+                      <a
+                        href={material.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:text-blue-600 flex-shrink-0"
                       >
-                        <X size={14} />
-                      </button>
-                    </div>
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeMaterial(index)}
+                      className="text-red-600 hover:bg-red-100 p-1 rounded flex-shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
