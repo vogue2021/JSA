@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS schools (
   exam_date TEXT,
   result_date TEXT,
   requirements_url TEXT DEFAULT '',
+  requirements TEXT DEFAULT '',
   teacher_notes TEXT DEFAULT '',
   difficulty TEXT DEFAULT '',
   ranking INTEGER DEFAULT 0,

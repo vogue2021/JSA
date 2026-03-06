@@ -1152,16 +1152,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       return [];
     };
 
-    // 当学校搜索框获得焦点时，尝试从 API 加载学校信息库到 localStorage 缓存
+    // 当学校搜索框获得焦点时，从 API 加载最新学校信息库到 localStorage 缓存
     const ensureSchoolDbCached = async () => {
-      try {
-        const saved = localStorage.getItem('schoolDatabase');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return; // 缓存有效
-        }
-      } catch { /* ignore */ }
-      // 缓存为空或无效，从 API 加载
+      // 总是从 API 加载最新数据（确保缓存格式正确、数据最新）
       try {
         const data = await schoolDatabaseAPI.getAll();
         if (Array.isArray(data) && data.length > 0) {
@@ -1200,17 +1193,17 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       setFormData(prev => ({
         ...prev,
         name: fullSchool.name,
-        nameJa: fullSchool.nameJa || prev.nameJa,
+        nameJa: fullSchool.nameJa || fullSchool.name_ja || prev.nameJa,
         type: fullSchool.type || prev.type,
         location: fullSchool.location || prev.location,
-        acceptanceRate: fullSchool.acceptanceRate || prev.acceptanceRate,
+        acceptanceRate: fullSchool.acceptanceRate || fullSchool.acceptance_rate || prev.acceptanceRate,
         requirements: fullSchool.requirements || prev.requirements,
         program: (fullSchool.programs && fullSchool.programs[0]) || prev.program,
-        applicationStartDate: firstDateGroup.applicationStartDate || prev.applicationStartDate,
-        applicationEndDate: firstDateGroup.applicationEndDate || prev.applicationEndDate,
-        examDate: firstDateGroup.examDate || prev.examDate,
-        resultDate: firstDateGroup.resultDate || prev.resultDate,
-        requirementsUrl: fullSchool.requirementsUrl || fullSchool.website || prev.requirementsUrl,
+        applicationStartDate: firstDateGroup.applicationStartDate || firstDateGroup.application_start_date || prev.applicationStartDate,
+        applicationEndDate: firstDateGroup.applicationEndDate || firstDateGroup.application_end_date || prev.applicationEndDate,
+        examDate: firstDateGroup.examDate || firstDateGroup.exam_date || prev.examDate,
+        resultDate: firstDateGroup.resultDate || firstDateGroup.result_date || prev.resultDate,
+        requirementsUrl: fullSchool.requirementsUrl || fullSchool.requirements_url || fullSchool.website || prev.requirementsUrl,
         // 自动填充材料（仅在当前没有材料时才自动填充，避免覆盖用户已编辑的材料）
         materials: (prev.materials && prev.materials.length > 0) ? prev.materials : autoMaterials,
       }));

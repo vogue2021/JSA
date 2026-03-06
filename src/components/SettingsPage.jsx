@@ -8,7 +8,6 @@ import {
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../utils/logService';
-import { runMigration, getMigrationStats } from '../utils/migrationUtils';
 import { studentsAPI, teachersAPI, usersAPI } from '../services/api';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
@@ -181,7 +180,6 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     { id: 'profile', label: '个人信息', icon: User },
     { id: 'security', label: '安全设置', icon: Lock },
     ...(user.role === 'admin' ? [{ id: 'analytics', label: '数据统计', icon: BarChart3 }] : []),
-    ...(user.role === 'admin' ? [{ id: 'migration', label: '数据迁移', icon: Download }] : []),
     ...(user.role === 'admin' ? [{ id: 'logs', label: '系统日志', icon: FileText }] : []),
   ];
 
@@ -629,9 +627,6 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           </div>
         </div>
       )}
-
-      {/* 数据迁移（仅管理员） */}
-      {activeTab === 'migration' && user.role === 'admin' && <MigrationPanel />}
 
       {/* 系统日志（仅管理员） */}
       {activeTab === 'logs' && user.role === 'admin' && <LogsPanel />}

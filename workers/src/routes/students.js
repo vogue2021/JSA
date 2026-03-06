@@ -95,7 +95,29 @@ students.get('/', async (c) => {
 
   sql += ' ORDER BY created_at DESC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: results.map(formatStudent) })
+
+  // 批量查询所有学生的材料进度（一次 SQL，避免 N+1）
+  const studentIds = results.map(s => s.student_id)
+  let materialProgressMap = {}
+  if (studentIds.length > 0) {
+    const placeholders = studentIds.map(() => '?').join(',')
+    const { results: materialStats } = await db.prepare(`
+      SELECT student_id,
+        COUNT(*) as total,
+        SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done
+      FROM materials
+      WHERE student_id IN (${placeholders})
+      GROUP BY student_id
+    `).bind(...studentIds).all()
+    materialStats.forEach(m => {
+      materialProgressMap[m.student_id] = m.total > 0 ? Math.round(m.done / m.total * 100) : 0
+    })
+  }
+
+  return c.json({ success: true, data: results.map(r => ({
+    ...formatStudent(r),
+    progress: materialProgressMap[r.student_id] || 0,
+  })) })
 })
 
 // ─── 按老师获取学生 ───────────────────────────────────────────────────────────
@@ -112,7 +134,28 @@ students.get('/teacher/:teacherId', async (c) => {
     'SELECT * FROM students WHERE teacher_id = ? AND is_active = 1 ORDER BY created_at DESC'
   ).bind(teacherId).all()
 
-  return c.json({ success: true, data: results.map(formatStudent) })
+  // 批量查询材料进度
+  const studentIds = results.map(s => s.student_id)
+  let materialProgressMap = {}
+  if (studentIds.length > 0) {
+    const placeholders = studentIds.map(() => '?').join(',')
+    const { results: materialStats } = await db.prepare(`
+      SELECT student_id,
+        COUNT(*) as total,
+        SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done
+      FROM materials
+      WHERE student_id IN (${placeholders})
+      GROUP BY student_id
+    `).bind(...studentIds).all()
+    materialStats.forEach(m => {
+      materialProgressMap[m.student_id] = m.total > 0 ? Math.round(m.done / m.total * 100) : 0
+    })
+  }
+
+  return c.json({ success: true, data: results.map(r => ({
+    ...formatStudent(r),
+    progress: materialProgressMap[r.student_id] || 0,
+  })) })
 })
 
 // ─── 获取单个学生（含统计）────────────────────────────────────────────────────

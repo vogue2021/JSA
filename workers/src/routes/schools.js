@@ -132,7 +132,7 @@ schools.post('/', async (c) => {
   const {
     student_id, name, name_ja, type, program, status,
     application_start_date, application_end_date,
-    exam_date, result_date, requirements_url, teacher_notes,
+    exam_date, result_date, requirements_url, requirements, teacher_notes,
     difficulty, ranking, location, website, xuexin_cert, overseas_cert,
     materials
   } = body
@@ -155,14 +155,14 @@ schools.post('/', async (c) => {
   await db.prepare(`
     INSERT INTO schools (student_id, name, name_ja, type, program, status,
       application_start_date, application_end_date, exam_date, result_date,
-      requirements_url, teacher_notes, difficulty, ranking, location, website,
+      requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
       xuexin_cert, overseas_cert)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     student_id, name, name_ja || '', type, program || '', status || 'not_started',
     application_start_date || null, application_end_date || null,
     exam_date || null, result_date || null,
-    requirements_url || '', teacher_notes || '',
+    requirements_url || '', requirements || '', teacher_notes || '',
     difficulty || '', ranking || 0, location || '', website || '',
     xuexin_cert || '不确定', overseas_cert || '不确定'
   ).run()
@@ -237,6 +237,7 @@ schools.put('/:id', async (c) => {
     exam_date: body.exam_date !== undefined ? body.exam_date : school.exam_date,
     result_date: body.result_date !== undefined ? body.result_date : school.result_date,
     requirements_url: body.requirements_url !== undefined ? body.requirements_url : (school.requirements_url || ''),
+    requirements: body.requirements !== undefined ? body.requirements : (school.requirements || ''),
     teacher_notes: body.teacher_notes !== undefined ? body.teacher_notes : (school.teacher_notes || ''),
     difficulty: body.difficulty !== undefined ? body.difficulty : (school.difficulty || ''),
     ranking: body.ranking !== undefined ? body.ranking : (school.ranking || 0),
@@ -265,7 +266,7 @@ schools.put('/:id', async (c) => {
     db.prepare(`
       UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
         application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
-        requirements_url=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
+        requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
         website=?, xuexin_cert=?, overseas_cert=?,
         updated_at=datetime('now')
       WHERE id=?
@@ -273,7 +274,7 @@ schools.put('/:id', async (c) => {
       updated.name, updated.name_ja, updated.type, updated.program, updated.status,
       updated.application_start_date, updated.application_end_date,
       updated.exam_date, updated.result_date,
-      updated.requirements_url, updated.teacher_notes,
+      updated.requirements_url, updated.requirements, updated.teacher_notes,
       updated.difficulty, updated.ranking, updated.location,
       updated.website, updated.xuexin_cert, updated.overseas_cert, id
     ),
