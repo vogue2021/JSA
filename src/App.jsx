@@ -4035,7 +4035,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               {resolvedMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* 外观自定义按钮 */}
+            {/* 外观自定义按钮 - 仅桌面端显示，移动端通过抽屉菜单访问 */}
+            {!isMobile && (
             <button
               onClick={() => setShowThemeCustomizer(true)}
               className="p-2 rounded-lg transition-all"
@@ -4046,6 +4047,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             >
               <Palette size={18} />
             </button>
+            )}
 
             {/* 通知按钮 - 仅老师和管理员显示提醒设置；学生只显示提醒数量（不可设置） */}
             {(user.role === 'teacher' || user.role === 'admin') && (
@@ -4072,6 +4074,23 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 title="学生列表"
               >
                 <Users size={18} />
+              </button>
+            )}
+
+            {/* 移动端用户头像快捷入口 */}
+            {isMobile && (
+              <button
+                onClick={() => setShowMobileMenu(true)}
+                className="p-1 rounded-full transition-all ml-1"
+                style={{
+                  background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                }}
+                title={user.name}
+              >
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
+                  style={{ color: tokens.colors.text.secondary }}>
+                  {user.name?.charAt(0) || '?'}
+                </div>
               </button>
             )}
 
@@ -4347,10 +4366,39 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               background: isDark ? 'rgba(20,20,45,0.95)' : 'rgba(255,255,255,0.95)',
               backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
             }}>
-            <div className="p-4" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
-              <h2 className="text-base font-semibold" style={{ color: tokens.colors.text.primary }}>菜单</h2>
+            {/* 移动端菜单顶部 - 用户信息 + 关闭按钮 */}
+            <div className="p-4 flex items-center gap-3" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0"
+                style={{ background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: tokens.colors.text.secondary }}>
+                {user.name?.charAt(0) || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold truncate" style={{ color: tokens.colors.text.primary }}>{user.name}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium`} style={{
+                    background: isDark
+                      ? (user.role === 'admin' ? 'rgba(239,68,68,0.15)' : user.role === 'teacher' ? 'rgba(139,92,246,0.15)' : 'rgba(99,102,241,0.15)')
+                      : (user.role === 'admin' ? '#fef2f2' : user.role === 'teacher' ? '#f5f3ff' : '#eef2ff'),
+                    color: isDark
+                      ? (user.role === 'admin' ? '#f87171' : user.role === 'teacher' ? '#a78bfa' : '#818cf8')
+                      : (user.role === 'admin' ? '#dc2626' : user.role === 'teacher' ? '#7c3aed' : '#4f46e5'),
+                  }}>
+                    {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '老师' : '学生'}
+                  </span>
+                  {user.email && <span className="text-[11px] truncate" style={{ color: tokens.colors.text.muted }}>{user.email}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMobileMenu(false)}
+                className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+                style={{ color: tokens.colors.text.muted }}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div className="flex-1 py-4">
+
+            {/* 移动端菜单导航列表 */}
+            <div className="flex-1 py-3 overflow-y-auto">
               {tabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -4374,6 +4422,51 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   </button>
                 );
               })}
+            </div>
+
+            {/* 移动端菜单底部 - 账户操作区 */}
+            <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setShowMobileMenu(false); setShowSettingsModal(true); setSettingsModalInitTab(null); }}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition"
+                  style={{ color: tokens.colors.text.secondary, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}
+                >
+                  <Settings size={16} style={{ color: tokens.colors.text.muted }} /> 设置
+                </button>
+                <button
+                  onClick={() => { setShowMobileMenu(false); setShowThemeCustomizer(true); }}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition"
+                  style={{ color: tokens.colors.text.secondary, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}
+                >
+                  <Palette size={16} style={{ color: tokens.colors.text.muted }} /> 外观
+                </button>
+                {(user.role === 'teacher' || user.role === 'student') && (
+                  <button
+                    onClick={() => { setShowMobileMenu(false); setShowSettingsModal(true); setSettingsModalInitTab('security'); }}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition"
+                    style={{ color: tokens.colors.text.secondary, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}
+                  >
+                    <Lock size={16} style={{ color: tokens.colors.text.muted }} /> 密码
+                  </button>
+                )}
+                {user.role === 'admin' && (
+                  <button
+                    onClick={() => { setShowMobileMenu(false); setShowAccountManagementModal(true); }}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition"
+                    style={{ color: tokens.colors.text.secondary, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}
+                  >
+                    <Shield size={16} style={{ color: tokens.colors.text.muted }} /> 账号
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => { setShowMobileMenu(false); onLogout(); }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm transition mt-2"
+                style={{ color: tokens.colors.accent.danger, background: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)' }}
+              >
+                <LogOut size={16} /> 退出登录
+              </button>
             </div>
           </div>
         </div>
