@@ -10,6 +10,13 @@ import { studentsAPI } from '../services/api';
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { user, studentList, setStudentList, showNotification, getTeacherList } = useApp();
   const { isDark, tokens, glassEnabled } = useTheme();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const teachers = getTeacherList ? getTeacherList() : [];
 
   // 升学老师 = 学部升学组/教务/无部门（直接从 API 返回的 teacher.department 判断）
@@ -267,7 +274,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             </div>
           </div>
           {/* 统计数据 */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 w-full sm:w-auto">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 w-full sm:w-auto">
             <div className="glass-card p-2 sm:p-3 text-center">
               <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{schools.length}</div>
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>志愿学校</div>
@@ -307,7 +314,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       </div>
 
       {/* Section Tabs */}
-      <div className="flex gap-2 pb-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.colors.border.subtle}` }}>
+      <div className={`flex pb-2 overflow-x-auto ${isMobile ? 'gap-1' : 'gap-2'}`} style={{ borderBottom: `1px solid ${tokens.colors.border.subtle}`, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
         {sections.map(sec => {
           const Icon = sec.icon;
           const isActive = activeSection === sec.id;
@@ -315,13 +322,13 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             <button
               key={sec.id}
               onClick={() => setActiveSection(sec.id)}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium transition whitespace-nowrap"
+              className={`flex items-center gap-1.5 ${isMobile ? 'px-2.5 py-1.5 text-sm' : 'px-3 sm:px-4 py-2'} rounded-lg font-medium transition whitespace-nowrap flex-shrink-0`}
               style={{
                 background: isActive ? (isDark ? 'rgba(99,102,241,0.12)' : '#eff6ff') : 'transparent',
                 color: isActive ? tokens.colors.accent.primary : tokens.colors.text.muted,
               }}
             >
-              <Icon size={18} />
+              <Icon size={isMobile ? 16 : 18} />
               {sec.label}
             </button>
           );
@@ -487,17 +494,17 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             {isEditing && (
               <div className="bg-themed-elevated rounded-lg p-4">
                 <p className="text-sm font-medium text-themed-secondary mb-3">添加 JLPT 成绩</p>
-                <div className="flex gap-3 flex-wrap">
-                  <input type="date" className="px-3 py-2 border rounded-lg text-sm" placeholder="考试日期"
+                <div className={`${isMobile ? 'grid grid-cols-2 gap-2' : 'flex gap-3 flex-wrap'}`}>
+                  <input type="date" className="px-3 py-2 border rounded-lg text-sm w-full" placeholder="考试日期"
                     id="newJlptDate" />
-                  <select className="px-3 py-2 border rounded-lg text-sm" id="newJlptLevel" defaultValue="N1">
+                  <select className="px-3 py-2 border rounded-lg text-sm w-full" id="newJlptLevel" defaultValue="N1">
                     <option value="N1">N1</option>
                     <option value="N2">N2</option>
                     <option value="N3">N3</option>
                     <option value="N4">N4</option>
                     <option value="N5">N5</option>
                   </select>
-                  <input type="number" className="px-3 py-2 border rounded-lg text-sm w-24" placeholder="分数" id="newJlptScore" />
+                  <input type="number" className={`px-3 py-2 border rounded-lg text-sm ${isMobile ? 'w-full' : 'w-24'}`} placeholder="分数" id="newJlptScore" />
                   <button onClick={() => {
                     const date = document.getElementById('newJlptDate').value;
                     const level = document.getElementById('newJlptLevel').value;
@@ -507,7 +514,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                       document.getElementById('newJlptDate').value = '';
                       document.getElementById('newJlptScore').value = '';
                     }
-                  }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1">
+                  }} className={`px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center justify-center gap-1 ${isMobile ? 'w-full' : ''}`}>
                     <Plus size={14} /> 添加
                   </button>
                 </div>
@@ -554,15 +561,15 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             {isEditing && (
               <div className="bg-themed-elevated rounded-lg p-4">
                 <p className="text-sm font-medium text-themed-secondary mb-3">添加英语成绩</p>
-                <div className="flex gap-3 flex-wrap">
-                  <input type="date" className="px-3 py-2 border rounded-lg text-sm" placeholder="考试日期" id="newEngDate" />
-                  <select className="px-3 py-2 border rounded-lg text-sm" id="newEngType" defaultValue="TOEFL">
+                <div className={`${isMobile ? 'grid grid-cols-2 gap-2' : 'flex gap-3 flex-wrap'}`}>
+                  <input type="date" className="px-3 py-2 border rounded-lg text-sm w-full" placeholder="考试日期" id="newEngDate" />
+                  <select className="px-3 py-2 border rounded-lg text-sm w-full" id="newEngType" defaultValue="TOEFL">
                     <option value="TOEFL">TOEFL</option>
                     <option value="IELTS">IELTS</option>
                     <option value="TOEIC">TOEIC</option>
                     <option value="其他">其他</option>
                   </select>
-                  <input type="number" className="px-3 py-2 border rounded-lg text-sm w-24" placeholder="分数" id="newEngScore" />
+                  <input type="number" className={`px-3 py-2 border rounded-lg text-sm ${isMobile ? 'w-full' : 'w-24'}`} placeholder="分数" id="newEngScore" />
                   <button onClick={() => {
                     const date = document.getElementById('newEngDate').value;
                     const type = document.getElementById('newEngType').value;
@@ -572,7 +579,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                       document.getElementById('newEngDate').value = '';
                       document.getElementById('newEngScore').value = '';
                     }
-                  }} className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition flex items-center gap-1">
+                  }} className={`px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition flex items-center justify-center gap-1 ${isMobile ? 'w-full' : ''}`}>
                     <Plus size={14} /> 添加
                   </button>
                 </div>
@@ -586,40 +593,68 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             </h4>
 
             {formData.ejuScores.length > 0 && (
-              <div className="overflow-x-auto mb-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">总分</th>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语</th>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">数学</th>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">理科/综合</th>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">文综</th>
-                      {isEditing && <th className="px-3 py-2"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.ejuScores.map(score => (
-                      <tr key={score.id} className="border-t">
-                        <td className="px-3 py-2">{score.date}</td>
-                        <td className="px-3 py-2 font-semibold text-blue-600">{score.totalScore}</td>
-                        <td className="px-3 py-2">{score.japanese || '-'}</td>
-                        <td className="px-3 py-2">{score.math || '-'}</td>
-                        <td className="px-3 py-2">{score.science || '-'}</td>
-                        <td className="px-3 py-2">{score.generalSubjects || '-'}</td>
-                        {isEditing && (
-                          <td className="px-3 py-2">
-                            <button onClick={() => handleRemoveEjuScore(score.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-                              <Trash2 size={16} />
+              isMobile ? (
+                /* 移动端：卡片式展示 EJU 成绩 */
+                <div className="space-y-3 mb-4">
+                  {formData.ejuScores.map(score => (
+                    <div key={score.id} className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{score.date}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold" style={{ color: '#3b82f6' }}>{score.totalScore}分</span>
+                          {isEditing && (
+                            <button onClick={() => handleRemoveEjuScore(score.id)} className="text-red-500 p-1 rounded">
+                              <Trash2 size={14} />
                             </button>
-                          </td>
-                        )}
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>日语</span><span style={{ color: tokens.colors.text.primary }}>{score.japanese || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>数学</span><span style={{ color: tokens.colors.text.primary }}>{score.math || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>理科</span><span style={{ color: tokens.colors.text.primary }}>{score.science || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>文综</span><span style={{ color: tokens.colors.text.primary }}>{score.generalSubjects || '-'}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* 桌面端：表格式展示 EJU 成绩 */
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">总分</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">数学</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">理科/综合</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">文综</th>
+                        {isEditing && <th className="px-3 py-2"></th>}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {formData.ejuScores.map(score => (
+                        <tr key={score.id} className="border-t">
+                          <td className="px-3 py-2">{score.date}</td>
+                          <td className="px-3 py-2 font-semibold text-blue-600">{score.totalScore}</td>
+                          <td className="px-3 py-2">{score.japanese || '-'}</td>
+                          <td className="px-3 py-2">{score.math || '-'}</td>
+                          <td className="px-3 py-2">{score.science || '-'}</td>
+                          <td className="px-3 py-2">{score.generalSubjects || '-'}</td>
+                          {isEditing && (
+                            <td className="px-3 py-2">
+                              <button onClick={() => handleRemoveEjuScore(score.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
 
             {formData.ejuScores.length === 0 && !isEditing && (
@@ -670,12 +705,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             {schools.length > 0 ? (
               <div className="space-y-3">
                 {schools.map(school => (
-                  <div key={school.id} className="flex items-center justify-between p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
-                    <div>
-                      <div className="font-semibold">{school.name}</div>
-                      <div className="text-sm text-themed-secondary">{school.program} - {school.type}</div>
+                  <div key={school.id} className={`${isMobile ? 'flex flex-col gap-2' : 'flex items-center justify-between'} p-3 sm:p-4 rounded-lg`} style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm sm:text-base truncate">{school.name}</div>
+                      <div className="text-xs sm:text-sm text-themed-secondary truncate">{school.program} - {school.type}</div>
                     </div>
-                    <StatusBadge status={school.status} />
+                    <div className={isMobile ? 'self-start' : ''}>
+                      <StatusBadge status={school.status} />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -711,16 +748,15 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             {events.filter(e => !e.completed).slice(0, 5).length > 0 ? (
               <div className="space-y-2">
                 {events.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5).map(event => (
-                  <div key={event.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">{event.type === 'exam' ? '📝' : event.type === 'deadline' ? '⏰' : '✉️'}</span>
-                      <div>
-                        <div className="font-medium text-sm">{event.title}</div>
-                        <div className="text-xs text-themed-secondary">{event.date}</div>
+                    <div className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg gap-2" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <span className="text-base sm:text-lg flex-shrink-0">{event.type === 'exam' ? '📝' : event.type === 'deadline' ? '⏰' : '✉️'}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium text-xs sm:text-sm truncate">{event.title}</div>
+                        <div className="text-[11px] sm:text-xs text-themed-secondary">{event.date}</div>
                       </div>
                     </div>
-                    <span className={`text-sm font-bold ${
-                      event.daysLeft <= 7 ? 'text-red-500' : event.daysLeft <= 30 ? 'text-orange-500' : ''
+                    <span className={`text-xs sm:text-sm font-bold flex-shrink-0 ${                      event.daysLeft <= 7 ? 'text-red-500' : event.daysLeft <= 30 ? 'text-orange-500' : ''
                     }`} style={event.daysLeft > 30 ? { color: tokens.colors.text.secondary } : {}}>
                       {event.daysLeft <= 0 ? '已过期' : `${event.daysLeft}天`}
                     </span>
@@ -745,7 +781,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                 <textarea
                   value={newNote}
                   onChange={e => setNewNote(e.target.value)}
-                  className="flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[80px] resize-none"
+                  className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[80px] resize-none text-sm sm:text-base"
                   placeholder="输入跟进备注内容..."
                   onKeyDown={e => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -755,7 +791,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                 />
               </div>
               <div className="flex justify-between items-center mt-3">
-                <span className="text-xs text-themed-muted">Ctrl/Cmd + Enter 快速提交</span>
+                {!isMobile && <span className="text-xs text-themed-muted">Ctrl/Cmd + Enter 快速提交</span>}
+                {isMobile && <span />}
                 <button
                   onClick={handleAddNote}
                   disabled={!newNote.trim()}
@@ -813,7 +850,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                       {canEdit && (
                         <button
                           onClick={() => handleDeleteNote(note.id)}
-                          className="p-1 text-themed-muted hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition"
+                          className={`p-1 text-themed-muted hover:text-red-500 rounded transition ${isMobile ? 'opacity-60' : 'opacity-0 group-hover:opacity-100'}`}
                         >
                           <Trash2 size={14} />
                         </button>
