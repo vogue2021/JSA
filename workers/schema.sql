@@ -1,5 +1,5 @@
 -- JSA D1 数据库初始化 SQL（与生产环境 schema 同步）
--- 最后更新: 2026-03-02
+-- 最后更新: 2026-03-10
 -- 在 Cloudflare D1 控制台或通过 wrangler 执行
 
 -- 1. 用户表
@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS students (
   package_end_date TEXT DEFAULT '',
   subject TEXT DEFAULT '',
   tags TEXT DEFAULT '[]',
+  phone TEXT DEFAULT '',
+  lang_school_shift TEXT DEFAULT '',
+  jlpt_scores TEXT DEFAULT '[]',
+  english_scores TEXT DEFAULT '[]',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -104,6 +108,7 @@ CREATE TABLE IF NOT EXISTS school_database (
   overseas_cert TEXT DEFAULT '不确定',
   important_dates TEXT DEFAULT '[]',
   requirements_url TEXT DEFAULT '',
+  required_materials TEXT DEFAULT '[]',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -183,7 +188,19 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- 11. 索引
+-- 11. 截止日期提醒表
+CREATE TABLE IF NOT EXISTS deadline_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id TEXT NOT NULL REFERENCES students(student_id),
+  event_id INTEGER,
+  event_title TEXT NOT NULL,
+  deadline_date TEXT NOT NULL,
+  acknowledged INTEGER NOT NULL DEFAULT 0,
+  acknowledged_at TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- 12. 索引
 CREATE INDEX IF NOT EXISTS idx_students_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_students_teacher_id ON students(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
