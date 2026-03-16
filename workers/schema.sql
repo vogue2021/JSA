@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS students (
   lang_school_shift TEXT DEFAULT '',
   jlpt_scores TEXT DEFAULT '[]',
   english_scores TEXT DEFAULT '[]',
+  xuebang_id TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -200,7 +201,17 @@ CREATE TABLE IF NOT EXISTS deadline_reminders (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- 12. 索引
+-- 12. 学邦同步日志表
+CREATE TABLE IF NOT EXISTS xuebang_sync_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  synced_count INTEGER DEFAULT 0,
+  result TEXT DEFAULT '',
+  message TEXT DEFAULT '',
+  synced_at TEXT DEFAULT (datetime('now'))
+);
+
+-- 13. 索引
 CREATE INDEX IF NOT EXISTS idx_students_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_students_teacher_id ON students(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
@@ -216,3 +227,4 @@ CREATE INDEX IF NOT EXISTS idx_materials_type ON materials(type);
 CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_logs(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_route_time ON audit_logs(route, created_at);
+CREATE INDEX IF NOT EXISTS idx_students_xuebang_id ON students(xuebang_id);

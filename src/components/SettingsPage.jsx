@@ -3,12 +3,13 @@ import {
   User, Save, Camera, Mail, Phone, MapPin, Lock, Check,
   GraduationCap, Calendar, Briefcase, Shield, BarChart3,
   Users, School, TrendingUp, CheckCircle, Clock, AlertCircle, PieChart, Plus,
-  FileText, Search, Trash2, Download, Filter, ChevronDown, ChevronUp
+  FileText, Search, Trash2, Download, Filter, ChevronDown, ChevronUp,
+  RefreshCw, Link2, ArrowDownToLine, Eye, UserPlus
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../utils/logService';
-import { studentsAPI, teachersAPI, usersAPI } from '../services/api';
+import { studentsAPI, teachersAPI, usersAPI, xuebangAPI } from '../services/api';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
   const { showNotification, apiRequest } = useApp();
@@ -181,6 +182,7 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
     { id: 'security', label: '安全设置', icon: Lock },
     ...(user.role === 'admin' ? [{ id: 'analytics', label: '数据统计', icon: BarChart3 }] : []),
     ...(user.role === 'admin' ? [{ id: 'logs', label: '系统日志', icon: FileText }] : []),
+    ...(user.role === 'admin' ? [{ id: 'xuebang', label: '学邦同步', icon: Link2 }] : []),
   ];
 
   // === 数据统计逻辑（仅管理员）===
@@ -631,6 +633,9 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
       {/* 系统日志（仅管理员） */}
       {activeTab === 'logs' && user.role === 'admin' && <LogsPanel />}
 
+      {/* 学邦同步（仅管理员） */}
+      {activeTab === 'xuebang' && user.role === 'admin' && <XuebangSyncPanel />}
+
       {/* 安全设置 */}
       {activeTab === 'security' && (
         <div className="glass-panel p-6">
@@ -670,6 +675,385 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+// === 学邦数据同步面板组件（管理员专用）===
+const XuebangSyncPanel = () => {
+  const { isDark, tokens } = useTheme();
+  const { showNotification } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [configData, setConfigData] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [syncLogs, setSyncLogs] = useState([]);
+  const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showPreview, setShowPreview] = useState(false);
+  const [teacherList, setTeacherList] = useState([]);
+  const [defaultTeacherId, setDefaultTeacherId] = useState('');
+
+  // 加载初始数据
+  useEffect(() => {
+    loadConfig();
+    loadSyncLogs();
+    loadTeachers();
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      const data = await xuebangAPI.getConfig();
+      setConfigData(data);
+    } catch (err) {
+      console.error('加载学邦配置失败:', err);
+    }
+  };
+
+  const loadSyncLogs = async () => {
+    try {
+      const data = await xuebangAPI.getSyncLogs();
+      setSyncLogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('加载同步日志失败:', err);
+    }
+  };
+
+  const loadTeachers = async () => {
+    try {
+      const data = await teachersAPI.getAll();
+      setTeacherList(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  // 预览学邦数据
+  const handlePreview = async () => {
+    setLoading(true);
+    try {
+      const data = await xuebangAPI.preview();
+      setPreviewData(data);
+      setShowPreview(true);
+      // 默认全选新学生
+      setSelectedIds(new Set((data.newStudents || []).map(s => s.xuebangId)));
+    } catch (err) {
+      showNotification('获取学邦数据失败: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 执行同步
+  const handleSync = async () => {
+    if (selectedIds.size === 0) {
+      showNotification('请选择要同步的学生', 'error');
+      return;
+    }
+    if (!window.confirm(`确定要同步 ${selectedIds.size} 名学生到 JSA 系统吗？`)) return;
+    setSyncing(true);
+    try {
+      const result = await xuebangAPI.sync({
+        selectedIds: Array.from(selectedIds),
+        defaultTeacherId,
+      });
+      showNotification(result.message || `成功同步 ${result.syncedCount} 名学生`, 'success');
+      setShowPreview(false);
+      setPreviewData(null);
+      loadConfig();
+      loadSyncLogs();
+    } catch (err) {
+      showNotification('同步失败: ' + err.message, 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // 刷新已关联学生信息
+  const handleRefresh = async () => {
+    if (!window.confirm('确定要从学邦刷新所有已关联学生的信息吗？（会更新姓名、电话、生日等基础信息）')) return;
+    setRefreshing(true);
+    try {
+      const result = await xuebangAPI.refresh();
+      showNotification(result.message || '刷新完成', 'success');
+    } catch (err) {
+      showNotification('刷新失败: ' + err.message, 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    if (!previewData?.newStudents) return;
+    if (selectedIds.size === previewData.newStudents.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(previewData.newStudents.map(s => s.xuebangId)));
+    }
+  };
+
+  const toggleSelect = (id) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 标题 + 状态 */}
+      <div className="glass-panel p-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h4 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <Link2 size={20} className="text-blue-500" /> 学邦数据同步
+            </h4>
+            <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>
+              从学邦系统同步学生数据到 JSA，学邦注册的学生可直接在 JSA 登录
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleRefresh} disabled={refreshing || !configData?.configured}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
+              style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? '刷新中...' : '刷新已关联'}
+            </button>
+            <button onClick={handlePreview} disabled={loading || !configData?.configured}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
+              style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
+              <ArrowDownToLine size={16} className={loading ? 'animate-bounce' : ''} /> {loading ? '获取中...' : '获取学邦数据'}
+            </button>
+          </div>
+        </div>
+
+        {/* 配置状态卡片 */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-2.5 h-2.5 rounded-full ${configData?.configured ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-xs font-medium" style={{ color: tokens.colors.text.muted }}>连接状态</span>
+            </div>
+            <p className="font-semibold" style={{ color: tokens.colors.text.primary }}>
+              {configData?.configured ? '✅ 已配置' : '❌ 未配置 Token'}
+            </p>
+            {!configData?.configured && (
+              <p className="text-xs mt-1" style={{ color: '#f97316' }}>
+                请在 Workers Secrets 中设置 XUEBANG_TOKEN
+              </p>
+            )}
+          </div>
+          <div className="p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+            <span className="text-xs font-medium" style={{ color: tokens.colors.text.muted }}>上次同步</span>
+            <p className="font-semibold" style={{ color: tokens.colors.text.primary }}>
+              {configData?.lastSyncTime
+                ? new Date(configData.lastSyncTime).toLocaleString('zh-CN')
+                : '从未同步'}
+            </p>
+          </div>
+          <div className="p-4 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+            <span className="text-xs font-medium" style={{ color: tokens.colors.text.muted }}>上次同步结果</span>
+            <p className="font-semibold" style={{ color: tokens.colors.text.primary }}>
+              {configData?.lastSyncResult === 'success' ? '✅ 成功' :
+               configData?.lastSyncResult === 'partial' ? '⚠️ 部分成功' :
+               configData?.lastSyncResult === 'error' ? '❌ 失败' : '—'}
+              {configData?.lastSyncCount > 0 && ` (${configData.lastSyncCount} 人)`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 预览面板 */}
+      {showPreview && previewData && (
+        <div className="glass-panel p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h5 className="font-bold text-base flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <Eye size={18} className="text-blue-500" /> 数据预览
+              <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
+                共 {previewData.total} 人
+              </span>
+            </h5>
+            <button onClick={() => setShowPreview(false)}
+              className="text-xs px-3 py-1 rounded-lg transition"
+              style={{ color: tokens.colors.text.muted, background: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6' }}>
+              关闭预览
+            </button>
+          </div>
+
+          {/* 统计概览 */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="p-3 rounded-lg flex items-center gap-3"
+              style={{ background: isDark ? 'rgba(34,197,94,0.08)' : 'rgba(34,197,94,0.05)' }}>
+              <UserPlus size={20} className="text-green-500" />
+              <div>
+                <p className="text-lg font-bold text-green-600">{previewData.newCount}</p>
+                <p className="text-xs" style={{ color: tokens.colors.text.muted }}>新增学生</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-lg flex items-center gap-3"
+              style={{ background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.05)' }}>
+              <Link2 size={20} className="text-blue-500" />
+              <div>
+                <p className="text-lg font-bold text-blue-600">{previewData.existingCount}</p>
+                <p className="text-xs" style={{ color: tokens.colors.text.muted }}>已关联学生</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 分配老师选择 */}
+          {previewData.newCount > 0 && (
+            <div className="mb-4 p-3 rounded-lg" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
+              <label className="text-sm font-medium flex items-center gap-2 mb-2" style={{ color: tokens.colors.text.secondary }}>
+                <GraduationCap size={16} /> 分配到老师（可选）
+              </label>
+              <select value={defaultTeacherId} onChange={e => setDefaultTeacherId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db'}` }}>
+                <option value="">不分配（待分配）</option>
+                {teacherList.map(t => (
+                  <option key={t.teacherId || t.teacher_id} value={t.teacherId || t.teacher_id}>
+                    {t.name} {t.department ? `(${t.department})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 新增学生列表 */}
+          {previewData.newCount > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h6 className="text-sm font-semibold flex items-center gap-2" style={{ color: '#22c55e' }}>
+                  <UserPlus size={16} /> 待导入的新学生 ({previewData.newCount})
+                </h6>
+                <button onClick={toggleSelectAll}
+                  className="text-xs px-3 py-1 rounded-lg transition"
+                  style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
+                  {selectedIds.size === previewData.newStudents.length ? '取消全选' : '全选'}
+                </button>
+              </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {previewData.newStudents.map(s => (
+                  <label key={s.xuebangId}
+                    className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition"
+                    style={{ background: selectedIds.has(s.xuebangId)
+                      ? (isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)')
+                      : (isDark ? 'rgba(255,255,255,0.03)' : '#fff'),
+                      border: `1px solid ${selectedIds.has(s.xuebangId)
+                        ? (isDark ? 'rgba(59,130,246,0.3)' : '#93c5fd')
+                        : (isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb')}`,
+                    }}>
+                    <input type="checkbox" checked={selectedIds.has(s.xuebangId)}
+                      onChange={() => toggleSelect(s.xuebangId)}
+                      className="w-4 h-4 rounded accent-blue-500" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm" style={{ color: tokens.colors.text.primary }}>{s.name}</span>
+                        {s.studentNo && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.muted }}>学号: {s.studentNo}</span>}
+                        {s.statusName && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.08)', color: '#22c55e' }}>{s.statusName}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: tokens.colors.text.muted }}>
+                        {s.contact && <span>📞 {s.contact}</span>}
+                        {s.birthday && <span>🎂 {s.birthday}</span>}
+                        {s.gradeName && <span>📚 {s.gradeName}</span>}
+                        {s.campusName && <span>🏫 {s.campusName}</span>}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 已关联学生列表 */}
+          {previewData.existingCount > 0 && (
+            <div className="mb-4">
+              <h6 className="text-sm font-semibold flex items-center gap-2 mb-2" style={{ color: '#3b82f6' }}>
+                <Link2 size={16} /> 已关联学生 ({previewData.existingCount})
+              </h6>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {previewData.existingMatches.map(s => (
+                  <div key={s.xuebangId} className="flex items-center gap-3 p-2 rounded-lg text-sm"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
+                    <CheckCircle size={16} className="text-blue-500 flex-shrink-0" />
+                    <span style={{ color: tokens.colors.text.primary }}>{s.xuebangName}</span>
+                    <span className="text-xs" style={{ color: tokens.colors.text.muted }}>→ JSA: {s.jsaName} ({s.jsaStudentId})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 同步按钮 */}
+          {previewData.newCount > 0 && (
+            <div className="flex items-center justify-between pt-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+              <span className="text-sm" style={{ color: tokens.colors.text.muted }}>
+                已选择 <strong style={{ color: '#3b82f6' }}>{selectedIds.size}</strong> / {previewData.newCount} 名学生
+              </span>
+              <button onClick={handleSync} disabled={syncing || selectedIds.size === 0}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+                style={{ background: syncing ? '#6b7280' : '#3b82f6' }}>
+                <ArrowDownToLine size={16} className={syncing ? 'animate-bounce' : ''} />
+                {syncing ? '同步中...' : `同步 ${selectedIds.size} 名学生`}
+              </button>
+            </div>
+          )}
+
+          {previewData.newCount === 0 && (
+            <div className="text-center py-6" style={{ color: tokens.colors.text.muted }}>
+              <CheckCircle size={32} className="mx-auto mb-2 text-green-500" />
+              <p className="font-medium">所有学邦学生已同步到 JSA</p>
+              <p className="text-xs mt-1">没有需要导入的新学生</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 同步历史 */}
+      <div className="glass-panel p-5">
+        <h5 className="font-bold text-base flex items-center gap-2 mb-4" style={{ color: tokens.colors.text.primary }}>
+          <Clock size={18} className="text-purple-500" /> 同步历史
+        </h5>
+        {syncLogs.length > 0 ? (
+          <div className="space-y-2">
+            {syncLogs.map((log, i) => (
+              <div key={log.id || i} className="flex items-center gap-3 p-3 rounded-lg text-sm"
+                style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  log.result === 'success' ? 'bg-green-500' :
+                  log.result === 'partial' ? 'bg-yellow-500' : 'bg-red-500'
+                }`} />
+                <div className="flex-1 min-w-0">
+                  <span style={{ color: tokens.colors.text.primary }}>{log.message}</span>
+                  <span className="text-xs ml-2" style={{ color: tokens.colors.text.muted }}>
+                    同步 {log.synced_count} 人
+                  </span>
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: tokens.colors.text.muted }}>
+                  {log.synced_at ? new Date(log.synced_at).toLocaleString('zh-CN') : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8" style={{ color: tokens.colors.text.muted }}>
+            <Clock size={32} className="mx-auto mb-2" />
+            <p>暂无同步记录</p>
+          </div>
+        )}
+      </div>
+
+      {/* 使用说明 */}
+      <div className="glass-panel p-5">
+        <h5 className="font-bold text-base flex items-center gap-2 mb-3" style={{ color: tokens.colors.text.primary }}>
+          <AlertCircle size={18} className="text-orange-500" /> 使用说明
+        </h5>
+        <div className="space-y-2 text-sm" style={{ color: tokens.colors.text.secondary }}>
+          <p>1. 首次使用需要在 Cloudflare Workers Secrets 中配置 <code className="px-1.5 py-0.5 rounded text-xs" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6' }}>XUEBANG_TOKEN</code>（学邦系统 API Token）</p>
+          <p>2. 点击「获取学邦数据」预览学邦系统中的学生列表，勾选要导入的学生后执行同步</p>
+          <p>3. 同步会在 JSA 的 students 表中创建对应记录，学号使用学邦学号</p>
+          <p>4. 同步后的学生需要在 JSA 中注册账号才能登录（使用学邦学号作为 student_id 注册）</p>
+          <p>5. 「刷新已关联」会从学邦拉取最新的姓名、电话、生日等信息更新到 JSA</p>
+        </div>
+      </div>
     </div>
   );
 };

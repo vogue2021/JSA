@@ -36,6 +36,7 @@ function formatStudent(row) {
     subject: row.subject || '',
     hasAccount: Boolean(row.has_account),
     isActive: Boolean(row.is_active !== 0),
+    xuebangId: row.xuebang_id || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

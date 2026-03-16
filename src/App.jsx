@@ -7,7 +7,7 @@ import {
   Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
-  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera
+  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
@@ -4900,6 +4900,21 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                         <div>
                           <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>系统日志</div>
                           <div className="text-xs" style={{ color: tokens.colors.text.muted }}>查看操作日志和系统事件</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setSettingsModalInitTab('xuebang')}
+                        className="flex items-center gap-4 p-4 rounded-xl transition text-left group"
+                        style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `2px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}` }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(14,165,233,0.4)' : '#7dd3fc'; e.currentTarget.style.background = isDark ? 'rgba(14,165,233,0.06)' : 'rgba(14,165,233,0.03)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'; e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#fff'; }}
+                      >
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isDark ? 'rgba(14,165,233,0.15)' : 'rgba(14,165,233,0.1)' }}>
+                          <RefreshCw size={20} style={{ color: '#0ea5e9' }} />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>学邦同步</div>
+                          <div className="text-xs" style={{ color: tokens.colors.text.muted }}>从学邦系统同步学生数据</div>
                         </div>
                       </button>
                     </>

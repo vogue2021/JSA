@@ -352,3 +352,32 @@ export const remindersAPI = {
     });
   },
 };
+
+// ─── 学邦数据同步 API ────────────────────────────────────────────────────────
+export const xuebangAPI = {
+  // 获取学邦配置状态
+  getConfig: async () => {
+    return await apiRequest('/xuebang/config');
+  },
+  // 预览学邦学生数据（不执行同步）
+  preview: async () => {
+    return await apiRequest('/xuebang/preview');
+  },
+  // 执行同步
+  sync: async ({ selectedIds, defaultTeacherId, defaultPassword } = {}) => {
+    return await apiRequest('/xuebang/sync', {
+      method: 'POST',
+      body: JSON.stringify({ selectedIds, defaultTeacherId, defaultPassword }),
+    });
+  },
+  // 刷新已关联学生的信息
+  refresh: async () => {
+    return await apiRequest('/xuebang/refresh', {
+      method: 'POST',
+    });
+  },
+  // 获取同步历史日志
+  getSyncLogs: async () => {
+    return await apiRequest('/xuebang/sync-logs');
+  },
+};
