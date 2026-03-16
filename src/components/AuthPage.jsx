@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Calendar, School, FileText,
-  User, GraduationCap, Mail, Lock, ArrowRight, Shield,
+  User, GraduationCap, Mail, Lock, ArrowRight, Shield, Globe,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { logAction, LOG_CATEGORIES } from '../utils/logService';
@@ -17,8 +17,11 @@ const AuthPage = ({ onLogin }) => {
   const [userType, setUserType] = useState('student'); // 'student', 'teacher', 'admin'
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
-
   const [isLoading, setIsLoading] = useState(false);
+
+  // 明学登录模式
+  const [loginMode, setLoginMode] = useState('email'); // 'email' | 'mingxue'
+  const [mingxueForm, setMingxueForm] = useState({ username: '', password: '' });
 
   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -77,6 +80,57 @@ const AuthPage = ({ onLogin }) => {
     } catch (err) {
       setErrors({ password: '网络错误，请检查网络连接后重试' });
       console.error('登录失败:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 明学账号登录
+  const handleMingxueLogin = async (e) => {
+    e.preventDefault();
+    const newErrors = {};
+    if (!mingxueForm.username) newErrors.username = '请输入明学用户名';
+    if (!mingxueForm.password) newErrors.password = '请输入密码';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const resp = await fetch(`${API_BASE_URL}/auth/mingxue-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: mingxueForm.username, password: mingxueForm.password }),
+      });
+
+      const result = await resp.json();
+
+      if (!resp.ok || !result.success) {
+        if (result.code === 'ACCOUNT_DISABLED') {
+          alert('⚠️ 账号已被禁用，请联系管理员');
+        }
+        setErrors({ password: result.message || '明学账号验证失败' });
+        return;
+      }
+
+      const userData = {
+        id: result.user.id,
+        role: result.user.role,
+        name: result.user.name,
+        email: result.user.email,
+        studentId: result.user.studentId || null,
+        teacherId: result.user.teacherId || null,
+        isAdmin: result.user.role === 'admin',
+      };
+
+      logAction(LOG_CATEGORIES.AUTH, `明学账号登录: ${userData.name} (${userData.role})`, { mingxueId: result.user.mingxueId });
+      onLogin(userData, result.token);
+    } catch (err) {
+      setErrors({ password: '网络错误，请检查网络连接后重试' });
+      console.error('明学登录失败:', err);
     } finally {
       setIsLoading(false);
     }
@@ -186,59 +240,142 @@ const AuthPage = ({ onLogin }) => {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* 邮箱 */}
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                <input type="email" value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? 'border-red-500' : ''}`}
-                  style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder="your@email.com" />
-              </div>
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
-            {/* 密码 */}
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                <input type="password" value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.password ? 'border-red-500' : ''}`}
-                  style={{ borderColor: errors.password ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder="••••••••" />
-              </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-            </div>
-
-            <button type="submit"
-              disabled={isLoading}
-              className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+          {/* 登录方式切换 */}
+          <div className="mb-4 flex rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('email'); setErrors({}); }}
+              className="flex-1 py-2 px-4 text-sm font-medium transition flex items-center justify-center gap-1.5"
               style={{
-                background: isDark ? `rgba(${current.rgb},0.15)` : `rgba(${current.rgb},0.1)`,
-                color: current.color,
-                backdropFilter: 'blur(8px)',
-                border: `1px solid ${isDark ? `rgba(${current.rgb},0.2)` : `rgba(${current.rgb},0.15)`}`,
-                opacity: isLoading ? 0.7 : 1,
-                cursor: isLoading ? 'not-allowed' : 'pointer',
+                background: loginMode === 'email'
+                  ? (isDark ? `rgba(${current.rgb},0.15)` : `rgba(${current.rgb},0.1)`)
+                  : 'transparent',
+                color: loginMode === 'email' ? current.color : tokens.colors.text.muted,
               }}
-              onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.25 : 0.18})`; }}
-              onMouseLeave={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.15 : 0.1})`; }}
             >
-              {isLoading ? '登录中...' : <>登录 <ArrowRight size={20} /></>}
+              <Mail size={16} /> 邮箱登录
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('mingxue'); setErrors({}); }}
+              className="flex-1 py-2 px-4 text-sm font-medium transition flex items-center justify-center gap-1.5"
+              style={{
+                background: loginMode === 'mingxue'
+                  ? (isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)')
+                  : 'transparent',
+                color: loginMode === 'mingxue' ? '#10b981' : tokens.colors.text.muted,
+              }}
+            >
+              <Globe size={16} /> 明学账号
+            </button>
+          </div>
+
+          {loginMode === 'email' ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* 邮箱 */}
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                  <input type="email" value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
+                    placeholder="your@email.com" />
+                </div>
+                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+              </div>
+              {/* 密码 */}
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                  <input type="password" value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.password ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.password ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
+                    placeholder="••••••••" />
+                </div>
+                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+              </div>
+
+              <button type="submit"
+                disabled={isLoading}
+                className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                style={{
+                  background: isDark ? `rgba(${current.rgb},0.15)` : `rgba(${current.rgb},0.1)`,
+                  color: current.color,
+                  backdropFilter: 'blur(8px)',
+                  border: `1px solid ${isDark ? `rgba(${current.rgb},0.2)` : `rgba(${current.rgb},0.15)`}`,
+                  opacity: isLoading ? 0.7 : 1,
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                }}
+                onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.25 : 0.18})`; }}
+                onMouseLeave={e => { if (!isLoading) e.currentTarget.style.background = `rgba(${current.rgb},${isDark ? 0.15 : 0.1})`; }}
+              >
+                {isLoading ? '登录中...' : <>登录 <ArrowRight size={20} /></>}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleMingxueLogin} className="space-y-4">
+              {/* 明学用户名 */}
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>明学用户名</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                  <input type="text" value={mingxueForm.username}
+                    onChange={(e) => setMingxueForm({ ...mingxueForm, username: e.target.value })}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${errors.username ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.username ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
+                    placeholder="请输入明学用户名" />
+                </div>
+                {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
+              </div>
+              {/* 密码 */}
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                  <input type="password" value={mingxueForm.password}
+                    onChange={(e) => setMingxueForm({ ...mingxueForm, password: e.target.value })}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${errors.password ? 'border-red-500' : ''}`}
+                    style={{ borderColor: errors.password ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
+                    placeholder="••••••••" />
+                </div>
+                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+              </div>
+
+              <button type="submit"
+                disabled={isLoading}
+                className="w-full py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                style={{
+                  background: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)',
+                  color: '#10b981',
+                  backdropFilter: 'blur(8px)',
+                  border: `1px solid ${isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.15)'}`,
+                  opacity: isLoading ? 0.7 : 1,
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                }}
+                onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = `rgba(16,185,129,${isDark ? 0.25 : 0.18})`; }}
+                onMouseLeave={e => { if (!isLoading) e.currentTarget.style.background = `rgba(16,185,129,${isDark ? 0.15 : 0.1})`; }}
+              >
+                {isLoading ? '验证中...' : <>明学账号登录 <ArrowRight size={20} /></>}
+              </button>
+
+              <p className="text-xs text-center" style={{ color: tokens.colors.text.muted }}>
+                使用明学系统的账号密码登录，首次登录将自动创建 JSA 账号
+              </p>
+            </form>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
-              账号由管理员统一创建，如需账号请联系管理员
+              {loginMode === 'email' ? '账号由管理员统一创建，如需账号请联系管理员' : '明学账号由明学系统管理，角色将自动映射'}
             </p>
           </div>
 
-          {/* 测试账号提示 */}
+          {/* 测试账号提示 - 仅邮箱登录模式显示 */}
+          {loginMode === 'email' && (
           <div className="mt-6 p-4 rounded-xl text-xs"
             style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${tokens.colors.border.subtle}`, color: tokens.colors.text.secondary }}>
             <p className="font-semibold mb-2">测试账号（数据存储于 Cloudflare D1）：</p>
@@ -264,6 +401,7 @@ const AuthPage = ({ onLogin }) => {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

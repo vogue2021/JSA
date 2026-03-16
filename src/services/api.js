@@ -353,6 +353,17 @@ export const remindersAPI = {
   },
 };
 
+// ─── 认证 API ────────────────────────────────────────────────────────────────
+export const authAPI = {
+  // 明学账号登录
+  mingxueLogin: async (username, password) => {
+    return await apiRequest('/auth/mingxue-login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+  },
+};
+
 // ─── 学邦数据同步 API ────────────────────────────────────────────────────────
 export const xuebangAPI = {
   // 获取学邦配置状态

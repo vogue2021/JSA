@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   student_id TEXT,
   teacher_id TEXT,
+  mingxue_id TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -228,3 +229,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_logs(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_route_time ON audit_logs(route, created_at);
 CREATE INDEX IF NOT EXISTS idx_students_xuebang_id ON students(xuebang_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mingxue_id ON users(mingxue_id) WHERE mingxue_id IS NOT NULL;
