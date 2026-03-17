@@ -221,7 +221,8 @@ const AuthPage = ({ onLogin }) => {
             <p style={{ color: tokens.colors.text.secondary }}>登录您的账号继续管理留学申请</p>
           </div>
 
-          {/* 角色选择 */}
+          {/* 角色选择 — 明学登录仅限学生，不显示角色切换 */}
+          {loginMode === 'email' && (
           <div className="mb-6">
             <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>我是</label>
             <div className="grid grid-cols-3 gap-3">
@@ -239,6 +240,7 @@ const AuthPage = ({ onLogin }) => {
               ))}
             </div>
           </div>
+          )}
 
           {/* 登录方式切换 */}
           <div className="mb-4 flex rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
@@ -363,14 +365,14 @@ const AuthPage = ({ onLogin }) => {
               </button>
 
               <p className="text-xs text-center" style={{ color: tokens.colors.text.muted }}>
-                使用明学系统的账号密码登录，首次登录将自动创建 JSA 账号
+                使用明学系统的账号密码登录（仅限学生），首次登录将自动创建 JSA 学生账号
               </p>
             </form>
           )}
 
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
-              {loginMode === 'email' ? '账号由管理员统一创建，如需账号请联系管理员' : '明学账号由明学系统管理，角色将自动映射'}
+              {loginMode === 'email' ? '账号由管理员统一创建，如需账号请联系管理员' : '明学登录仅限学生账号，老师/管理员请使用邮箱登录'}
             </p>
           </div>
 

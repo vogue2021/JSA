@@ -224,8 +224,9 @@ auth.post('/login', async (c) => {
   }
 })
 
-// ─── 明学账号登录（方案 A：统一登录入口）────────────────────────────────────
-// 用户输入明学 username/password → 后端调用明学 API 验证 → 本地创建/关联用户 → 签发 JSA JWT
+// ─── 明学账号登录（方案 A：仅限学生账号）───────────────────────────────────
+// 明学登录仅用于打通学生账号：用户输入 username/password → 后端调用明学 API 验证
+// → 验证通过后在 JSA 本地创建/关联学生用户 → 签发 JSA JWT Token
 auth.post('/mingxue-login', async (c) => {
   try {
     const { username, password } = await c.req.json()
@@ -254,18 +255,11 @@ auth.post('/mingxue-login', async (c) => {
     }
 
     const db = c.env.DB
-    const mingxueId = mingxueUser.id
+    const mingxueId = String(mingxueUser.id)
     const mingxueName = mingxueUser.name || username
-    const mingxueRoles = mingxueUser.roles || []
 
-    // 2. 根据明学角色映射 JSA 角色
-    //    dtl（教学组长）→ admin, teacher 角色 → teacher, 其他 → teacher（默认）
-    let jsaRole = 'teacher'
-    if (mingxueRoles.includes('admin') || mingxueRoles.includes('dtl')) {
-      jsaRole = 'admin'
-    } else if (mingxueRoles.includes('student')) {
-      jsaRole = 'student'
-    }
+    // 2. 明学登录只限定于学生账号（角色固定为 student）
+    const jsaRole = 'student'
 
     // 3. 查找是否已有关联的 JSA 用户（通过 mingxue_id 字段）
     let user = await db.prepare(
@@ -286,53 +280,44 @@ auth.post('/mingxue-login', async (c) => {
         user.name = mingxueName
       }
     } else {
-      // 4. 首次登录 — 自动创建 JSA 用户
+      // 4. 首次登录 — 自动创建 JSA 学生用户
       const userId = `mingxue_${Date.now()}`
-      // 生成一个虚拟邮箱（明学不提供 email 或返回 null）
+      const studentId = `mx_${mingxueId}`
+      // 生成一个虚拟邮箱（明学不提供 email）
       const virtualEmail = `${username}@mingxue.jsa.local`
       // 生成一个随机密码（用户通过明学认证，不需要 JSA 本地密码）
       const randomPassword = await hashPassword(crypto.randomUUID())
 
-      await db.prepare(
-        'INSERT INTO users (id, email, password, role, name, mingxue_id, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
-      ).bind(userId, virtualEmail, randomPassword, jsaRole, mingxueName, mingxueId).run()
+      // 批量操作：创建 users + students 记录
+      await db.batch([
+        // 创建 users 记录
+        db.prepare(
+          'INSERT INTO users (id, email, password, role, name, mingxue_id, student_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
+        ).bind(userId, virtualEmail, randomPassword, jsaRole, mingxueName, mingxueId, studentId),
 
-      // 如果是 teacher/admin 角色，自动创建 teachers 记录
-      if (jsaRole === 'teacher' || jsaRole === 'admin') {
-        const teacherId = `teacher_mx_${Date.now()}`
-        await db.prepare(
-          `INSERT OR IGNORE INTO teachers (teacher_id, user_id, department, subject, permissions)
-           VALUES (?, ?, '明学导入', '', '["manage_students","manage_events","manage_schools","manage_materials"]')`
-        ).bind(teacherId, userId).run()
-
-        // 更新 users 表的 teacher_id
-        await db.prepare(
-          'UPDATE users SET teacher_id = ? WHERE id = ?'
-        ).bind(teacherId, userId).run()
-      }
+        // 创建 students 记录（关联到刚创建的 user）
+        db.prepare(
+          `INSERT OR IGNORE INTO students (student_id, user_id, name, email, has_account, is_active, tags)
+           VALUES (?, ?, ?, ?, 1, 1, '["明学导入"]')`
+        ).bind(studentId, userId, mingxueName, virtualEmail),
+      ])
 
       user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
     }
 
-    // 5. 获取角色附加信息
-    let additionalData = {}
-    if (user.role === 'student') {
-      let studentId = user.student_id
-      if (!studentId) {
-        const student = await db.prepare(
-          'SELECT student_id FROM students WHERE user_id = ?'
-        ).bind(user.id).first()
-        studentId = student?.student_id
-      }
-      additionalData = { studentId }
-    } else if (user.role === 'teacher' || user.role === 'admin') {
-      additionalData = { teacherId: user.teacher_id }
+    // 5. 获取学生 ID
+    let studentId = user.student_id
+    if (!studentId) {
+      const student = await db.prepare(
+        'SELECT student_id FROM students WHERE user_id = ?'
+      ).bind(user.id).first()
+      studentId = student?.student_id
     }
 
     // 6. 签发 JSA JWT Token
     const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
     const token = await signJWT(
-      { id: user.id, email: user.email, role: user.role, name: user.name, ...additionalData },
+      { id: user.id, email: user.email, role: 'student', name: user.name, studentId },
       jwtSecret
     )
 
@@ -344,9 +329,9 @@ auth.post('/mingxue-login', async (c) => {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: 'student',
         mingxueId,
-        ...additionalData,
+        studentId,
       }
     })
   } catch (error) {
