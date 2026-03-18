@@ -163,36 +163,123 @@ auth.post('/verify-code', async (c) => {
   }
 })
 
-// ─── 登录 ────────────────────────────────────────────────────────────────────
+// ─── 登录（统一入口：支持邮箱 或 明学用户名）─────────────────────────────
+// 前端提交 { email, password } — email 字段可以是邮箱地址，也可以是明学用户名
+// 后端自动判断：包含 @ 则走邮箱登录，否则走明学 API 验证
 auth.post('/login', async (c) => {
   try {
     const { email, password } = await c.req.json()
 
     if (!email || !password) {
-      return c.json({ success: false, message: '请提供邮箱和密码' }, 400)
+      return c.json({ success: false, message: '请提供邮箱/用户名和密码' }, 400)
     }
 
     const db = c.env.DB
-    const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first()
+    const isEmail = email.includes('@')
 
-    if (!user) {
-      return c.json({ success: false, message: '邮箱或密码错误' }, 401)
-    }
+    if (isEmail) {
+      // ─── 邮箱登录（原逻辑）───
+      const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first()
 
-    const isValid = await verifyPassword(password, user.password)
-    if (!isValid) {
-      return c.json({ success: false, message: '邮箱或密码错误' }, 401)
-    }
+      if (!user) {
+        return c.json({ success: false, message: '邮箱或密码错误' }, 401)
+      }
 
-    // 检查账号是否被禁用
-    if (user.is_active === 0) {
-      return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
-    }
+      const isValid = await verifyPassword(password, user.password)
+      if (!isValid) {
+        return c.json({ success: false, message: '邮箱或密码错误' }, 401)
+      }
 
-    // 获取角色附加信息（直接从 users 表读取，不再查 teachers 表）
-    let additionalData = {}
-    if (user.role === 'student') {
-      // 优先用 users.student_id，再查 students 表
+      if (user.is_active === 0) {
+        return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
+      }
+
+      let additionalData = {}
+      if (user.role === 'student') {
+        let studentId = user.student_id
+        if (!studentId) {
+          const student = await db.prepare(
+            'SELECT student_id FROM students WHERE user_id = ?'
+          ).bind(user.id).first()
+          studentId = student?.student_id
+        }
+        additionalData = { studentId }
+      } else if (user.role === 'teacher') {
+        additionalData = { teacherId: user.teacher_id }
+      }
+
+      const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
+      const token = await signJWT(
+        { id: user.id, email: user.email, role: user.role, name: user.name, ...additionalData },
+        jwtSecret
+      )
+
+      return c.json({
+        success: true,
+        message: '登录成功',
+        token,
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, ...additionalData }
+      })
+    } else {
+      // ─── 明学用户名登录（自动转发到明学 API）───
+      const username = email  // 前端 email 字段实际传的是用户名
+
+      let mingxueUser
+      try {
+        const resp = await fetch('https://mingxue.coze.site/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        })
+        const result = await resp.json()
+
+        if (!resp.ok || !result.success) {
+          return c.json({ success: false, message: result.message || '用户名或密码错误' }, 401)
+        }
+        mingxueUser = result.user
+      } catch (fetchErr) {
+        console.error('Mingxue API call failed:', fetchErr)
+        return c.json({ success: false, message: '无法连接明学服务器，请稍后重试' }, 502)
+      }
+
+      const mingxueId = String(mingxueUser.id)
+      const mingxueName = mingxueUser.name || username
+
+      // 查找已关联的 JSA 用户
+      let user = await db.prepare(
+        'SELECT * FROM users WHERE mingxue_id = ?'
+      ).bind(mingxueId).first()
+
+      if (user) {
+        if (user.is_active === 0) {
+          return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
+        }
+        if (user.name !== mingxueName) {
+          await db.prepare(
+            'UPDATE users SET name = ?, updated_at = datetime(\'now\') WHERE id = ?'
+          ).bind(mingxueName, user.id).run()
+          user.name = mingxueName
+        }
+      } else {
+        // 首次明学登录 — 自动创建学生用户
+        const userId = `mingxue_${Date.now()}`
+        const studentId = `mx_${mingxueId}`
+        const virtualEmail = `${username}@mingxue.jsa.local`
+        const randomPassword = await hashPassword(crypto.randomUUID())
+
+        await db.batch([
+          db.prepare(
+            'INSERT INTO users (id, email, password, role, name, mingxue_id, student_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
+          ).bind(userId, virtualEmail, randomPassword, 'student', mingxueName, mingxueId, studentId),
+          db.prepare(
+            `INSERT OR IGNORE INTO students (student_id, user_id, name, email, has_account, is_active, tags)
+             VALUES (?, ?, ?, ?, 1, 1, '["明学导入"]')`
+          ).bind(studentId, userId, mingxueName, virtualEmail),
+        ])
+
+        user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
+      }
+
       let studentId = user.student_id
       if (!studentId) {
         const student = await db.prepare(
@@ -200,144 +287,41 @@ auth.post('/login', async (c) => {
         ).bind(user.id).first()
         studentId = student?.student_id
       }
-      additionalData = { studentId }
-    } else if (user.role === 'teacher') {
-      // 直接用 users.teacher_id
-      additionalData = { teacherId: user.teacher_id }
+
+      const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
+      const token = await signJWT(
+        { id: user.id, email: user.email, role: 'student', name: user.name, studentId },
+        jwtSecret
+      )
+
+      return c.json({
+        success: true,
+        message: '明学账号登录成功',
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: 'student',
+          mingxueId,
+          studentId,
+        }
+      })
     }
-
-    const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
-    const token = await signJWT(
-      { id: user.id, email: user.email, role: user.role, name: user.name, ...additionalData },
-      jwtSecret
-    )
-
-    return c.json({
-      success: true,
-      message: '登录成功',
-      token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, ...additionalData }
-    })
   } catch (error) {
     console.error('Login error:', error)
     return c.json({ success: false, message: '登录失败，请稍后再试' }, 500)
   }
 })
 
-// ─── 明学账号登录（方案 A：仅限学生账号）───────────────────────────────────
-// 明学登录仅用于打通学生账号：用户输入 username/password → 后端调用明学 API 验证
-// → 验证通过后在 JSA 本地创建/关联学生用户 → 签发 JSA JWT Token
+// ─── 明学账号登录（兼容性端点）────────────────────────────────────────────
+// 保留此端点以兼容旧版前端，新版前端统一使用 /login（email 字段填入用户名即可）
 auth.post('/mingxue-login', async (c) => {
-  try {
-    const { username, password } = await c.req.json()
-
-    if (!username || !password) {
-      return c.json({ success: false, message: '请提供用户名和密码' }, 400)
-    }
-
-    // 1. 调用明学 API 验证用户身份
-    let mingxueUser
-    try {
-      const resp = await fetch('https://mingxue.coze.site/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      const result = await resp.json()
-
-      if (!resp.ok || !result.success) {
-        return c.json({ success: false, message: result.message || '明学账号验证失败' }, 401)
-      }
-      mingxueUser = result.user
-    } catch (fetchErr) {
-      console.error('Mingxue API call failed:', fetchErr)
-      return c.json({ success: false, message: '无法连接明学服务器，请稍后重试' }, 502)
-    }
-
-    const db = c.env.DB
-    const mingxueId = String(mingxueUser.id)
-    const mingxueName = mingxueUser.name || username
-
-    // 2. 明学登录只限定于学生账号（角色固定为 student）
-    const jsaRole = 'student'
-
-    // 3. 查找是否已有关联的 JSA 用户（通过 mingxue_id 字段）
-    let user = await db.prepare(
-      'SELECT * FROM users WHERE mingxue_id = ?'
-    ).bind(mingxueId).first()
-
-    if (user) {
-      // 已关联用户 — 检查是否被禁用
-      if (user.is_active === 0) {
-        return c.json({ success: false, message: '账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' }, 403)
-      }
-
-      // 更新用户名（明学侧可能修改了姓名）
-      if (user.name !== mingxueName) {
-        await db.prepare(
-          'UPDATE users SET name = ?, updated_at = datetime(\'now\') WHERE id = ?'
-        ).bind(mingxueName, user.id).run()
-        user.name = mingxueName
-      }
-    } else {
-      // 4. 首次登录 — 自动创建 JSA 学生用户
-      const userId = `mingxue_${Date.now()}`
-      const studentId = `mx_${mingxueId}`
-      // 生成一个虚拟邮箱（明学不提供 email）
-      const virtualEmail = `${username}@mingxue.jsa.local`
-      // 生成一个随机密码（用户通过明学认证，不需要 JSA 本地密码）
-      const randomPassword = await hashPassword(crypto.randomUUID())
-
-      // 批量操作：创建 users + students 记录
-      await db.batch([
-        // 创建 users 记录
-        db.prepare(
-          'INSERT INTO users (id, email, password, role, name, mingxue_id, student_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
-        ).bind(userId, virtualEmail, randomPassword, jsaRole, mingxueName, mingxueId, studentId),
-
-        // 创建 students 记录（关联到刚创建的 user）
-        db.prepare(
-          `INSERT OR IGNORE INTO students (student_id, user_id, name, email, has_account, is_active, tags)
-           VALUES (?, ?, ?, ?, 1, 1, '["明学导入"]')`
-        ).bind(studentId, userId, mingxueName, virtualEmail),
-      ])
-
-      user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
-    }
-
-    // 5. 获取学生 ID
-    let studentId = user.student_id
-    if (!studentId) {
-      const student = await db.prepare(
-        'SELECT student_id FROM students WHERE user_id = ?'
-      ).bind(user.id).first()
-      studentId = student?.student_id
-    }
-
-    // 6. 签发 JSA JWT Token
-    const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
-    const token = await signJWT(
-      { id: user.id, email: user.email, role: 'student', name: user.name, studentId },
-      jwtSecret
-    )
-
-    return c.json({
-      success: true,
-      message: '明学账号登录成功',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: 'student',
-        mingxueId,
-        studentId,
-      }
-    })
-  } catch (error) {
-    console.error('Mingxue login error:', error)
-    return c.json({ success: false, message: '登录失败，请稍后再试' }, 500)
-  }
+  return c.json({
+    success: false,
+    message: '此端点已弃用，请使用 /api/auth/login（email 字段填入明学用户名即可自动识别）',
+    redirect: '/api/auth/login',
+  }, 410)
 })
 
 // ─── 学生注册 ────────────────────────────────────────────────────────────────
