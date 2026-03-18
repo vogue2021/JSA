@@ -8,9 +8,9 @@ import { logAction, LOG_CATEGORIES } from '../utils/logService';
 
 /**
  * 登录页面组件（从 App.jsx 拆分）
- * 统一登录入口：支持邮箱或明学用户名登录
- * - 输入邮箱 → 走邮箱验证，需选择角色
- * - 输入用户名（不含@）→ 走明学 API 验证，角色自动为学生
+ * 默认显示学生/老师/管理员角色选择器，始终可见
+ * - 学生入口：支持邮箱或明学用户名登录（不含@时自动走明学 API）
+ * - 老师/管理员入口：仅支持邮箱登录
  * Props:
  *   onLogin(userData, token)  - 登录成功回调
  */
@@ -24,12 +24,14 @@ const AuthPage = ({ onLogin }) => {
 
   // 判断当前输入是否是邮箱格式
   const isEmailInput = formData.email.includes('@');
+  // 学生角色且输入非邮箱 → 走明学登录
+  const isMingxueLogin = userType === 'student' && !isEmailInput && formData.email.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
-    if (!formData.email) newErrors.email = '请输入邮箱或用户名';
+    if (!formData.email) newErrors.email = userType === 'student' ? '请输入邮箱或用户名' : '请输入邮箱';
     if (!formData.password) newErrors.password = '请输入密码';
     else if (formData.password.length < 4) newErrors.password = '密码至少4位';
 
@@ -57,8 +59,8 @@ const AuthPage = ({ onLogin }) => {
         return;
       }
 
-      // 邮箱登录时验证角色是否匹配（明学用户名登录角色固定为 student，无需验证）
-      if (isEmailInput && result.user.role !== userType) {
+      // 验证角色是否匹配（明学用户名登录角色固定为 student，无需额外验证）
+      if (!isMingxueLogin && result.user.role !== userType) {
         setErrors({ password: `该账号不是${roleConfig[userType].label}账号，请切换角色` });
         return;
       }
@@ -73,7 +75,7 @@ const AuthPage = ({ onLogin }) => {
         isAdmin: result.user.role === 'admin',
       };
 
-      const loginType = isEmailInput ? '邮箱登录' : '明学账号登录';
+      const loginType = isMingxueLogin ? '明学账号登录' : '邮箱登录';
       logAction(LOG_CATEGORIES.AUTH, `${loginType}: ${userData.name} (${userData.role})`, { email: userData.email });
       onLogin(userData, result.token);
     } catch (err) {
@@ -90,8 +92,8 @@ const AuthPage = ({ onLogin }) => {
     admin:   { color: '#ef4444', rgb: '239,68,68',  label: '管理员', icon: <Shield size={20} /> },
   };
   const current = roleConfig[userType];
-  // 明学用户名登录时，按钮使用绿色风格
-  const buttonColor = isEmailInput ? current : { color: '#10b981', rgb: '16,185,129' };
+  // 按钮颜色：跟随角色色，明学用户名登录时保持学生蓝色
+  const buttonColor = current;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 themed-bg noise-overlay" style={backgroundStyle}>
@@ -171,8 +173,7 @@ const AuthPage = ({ onLogin }) => {
             <p style={{ color: tokens.colors.text.secondary }}>登录您的账号继续管理留学申请</p>
           </div>
 
-          {/* 角色选择 — 仅邮箱登录时显示（明学用户名登录角色固定为学生） */}
-          {isEmailInput && (
+          {/* 角色选择 — 始终显示 */}
           <div className="mb-6">
             <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>我是</label>
             <div className="grid grid-cols-3 gap-3">
@@ -190,31 +191,32 @@ const AuthPage = ({ onLogin }) => {
               ))}
             </div>
           </div>
-          )}
 
-          {/* 非邮箱输入时的学生标识提示 */}
-          {!isEmailInput && formData.email.length > 0 && (
+          {/* 学生角色输入用户名时，显示明学提示 */}
+          {isMingxueLogin && (
             <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
               style={{ background: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.06)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
               <Globe size={16} />
-              <span>将使用明学账号登录（仅限学生）</span>
+              <span>检测到明学用户名，将使用明学账号验证登录</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 邮箱或用户名 */}
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>邮箱或用户名</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>
+                {userType === 'student' ? '邮箱或用户名' : '邮箱'}
+              </label>
               <div className="relative">
-                {isEmailInput
-                  ? <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
-                  : <User className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                {(userType === 'student' && !isEmailInput)
+                  ? <User className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
+                  : <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                 }
                 <input type="text" value={formData.email}
                   onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({}); }}
                   className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? 'border-red-500' : ''}`}
                   style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder="your@email.com 或 明学用户名" />
+                  placeholder={userType === 'student' ? 'your@email.com 或 明学用户名' : 'your@email.com'} />
               </div>
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
             </div>
@@ -252,14 +254,13 @@ const AuthPage = ({ onLogin }) => {
 
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
-              {isEmailInput
-                ? '账号由管理员统一创建，如需账号请联系管理员'
-                : '输入明学用户名即可登录（仅限学生），首次登录自动创建 JSA 账号'}
+              {userType === 'student'
+                ? '支持邮箱或明学用户名登录，首次明学登录自动创建 JSA 账号'
+                : '账号由管理员统一创建，如需账号请联系管理员'}
             </p>
           </div>
 
-          {/* 测试账号提示 - 邮箱模式时显示 */}
-          {isEmailInput && (
+          {/* 测试账号提示 */}
           <div className="mt-6 p-4 rounded-xl text-xs"
             style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${tokens.colors.border.subtle}`, color: tokens.colors.text.secondary }}>
             <p className="font-semibold mb-2">测试账号（数据存储于 Cloudflare D1）：</p>
@@ -279,13 +280,15 @@ const AuthPage = ({ onLogin }) => {
             )}
             {userType === 'student' && (
               <>
+                <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>邮箱登录：</p>
                 <p>张三: zhangsan@student.jsa.com / stu2024001</p>
                 <p>李四: lisi@student.jsa.com / stu2024002</p>
                 <p>王五: wangwu@student.jsa.com / stu2024003</p>
+                <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>明学用户名登录：</p>
+                <p>直接输入明学用户名和密码即可</p>
               </>
             )}
           </div>
-          )}
         </div>
       </div>
     </div>
