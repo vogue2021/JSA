@@ -12,7 +12,7 @@ import { getLogs, clearLogs, filterLogs, LOG_LEVELS, LOG_CATEGORIES } from '../u
 import { studentsAPI, teachersAPI, usersAPI, xuebangAPI } from '../services/api';
 
 const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTabConsumed, studentList }) => {
-  const { showNotification, apiRequest } = useApp();
+  const { showNotification, apiRequest, loadStudentList, setUser } = useApp();
   const { isDark, tokens, glassEnabled } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -126,6 +126,14 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
       setAllUsers(prev => prev.map(u =>
         u.email === user.email && u.role === user.role ? { ...u, name: profileForm.name } : u
       ));
+      // 同步更新当前登录用户的 name（侧边栏、Header 等处立即生效）
+      const updatedUser = { ...user, name: profileForm.name };
+      setUser(updatedUser);
+      sessionStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+    // 刷新学生列表，确保学生信息页面显示最新名字
+    if (loadStudentList) {
+      loadStudentList();
     }
     if (showNotification) showNotification('个人信息已保存');
   };
