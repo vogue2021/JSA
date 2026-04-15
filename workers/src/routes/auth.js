@@ -221,29 +221,48 @@ auth.post('/login', async (c) => {
         user: { id: user.id, email: user.email, name: user.name, role: user.role, ...additionalData }
       })
     } else {
-      // ─── 明学用户名登录（自动转发到明学 API）───
-      const username = email  // 前端 email 字段实际传的是用户名
+      // ─── 明学用户名登录（通过 Coze API 验证）───
+      // phone_number 充当账号，verification_code 充当密码
+      const phoneNumber = email  // 前端 email 字段实际传的是手机号/用户名
+      const verificationCode = password  // 前端 password 字段传的是验证码
 
-      let mingxueUser
+      // Token 从 Workers Secrets 读取，不暴露在前端
+      const mingxueApiToken = c.env.MINGXUE_API_TOKEN
+      if (!mingxueApiToken) {
+        console.error('MINGXUE_API_TOKEN not configured in Workers Secrets')
+        return c.json({ success: false, message: '系统配置错误，请联系管理员' }, 500)
+      }
+
+      let mingxueResult
       try {
-        const resp = await fetch('https://mingxue.coze.site/api/auth/verify', {
+        const resp = await fetch('https://2svrcpx6mx.coze.site/run', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${mingxueApiToken}`,
+          },
+          body: JSON.stringify({
+            phone_number: phoneNumber,
+            project_type: 'xiaoneikao',
+            verification_code: verificationCode,
+          }),
         })
-        const result = await resp.json()
+        mingxueResult = await resp.json()
 
-        if (!resp.ok || !result.success) {
-          return c.json({ success: false, message: result.message || '用户名或密码错误' }, 401)
+        if (!resp.ok || (mingxueResult.code !== undefined && mingxueResult.code !== 0)) {
+          const errMsg = mingxueResult.message || mingxueResult.msg || '账号或验证码错误'
+          return c.json({ success: false, message: errMsg }, 401)
         }
-        mingxueUser = result.user
       } catch (fetchErr) {
         console.error('Mingxue API call failed:', fetchErr)
         return c.json({ success: false, message: '无法连接明学服务器，请稍后重试' }, 502)
       }
 
-      const mingxueId = String(mingxueUser.id)
-      const mingxueName = mingxueUser.name || username
+      // 从 API 返回中提取用户信息
+      // Coze API 返回格式可能是 { data: { ... } } 或直接返回用户信息
+      const mingxueData = mingxueResult.data || mingxueResult
+      const mingxueId = String(mingxueData.id || mingxueData.user_id || phoneNumber)
+      const mingxueName = mingxueData.name || mingxueData.username || phoneNumber
 
       // 查找已关联的 JSA 用户
       let user = await db.prepare(
@@ -264,7 +283,7 @@ auth.post('/login', async (c) => {
         // 首次明学登录 — 自动创建学生用户
         const userId = `mingxue_${Date.now()}`
         const studentId = `mx_${mingxueId}`
-        const virtualEmail = `${username}@mingxue.jsa.local`
+        const virtualEmail = `${phoneNumber}@mingxue.jsa.local`
         const randomPassword = await hashPassword(crypto.randomUUID())
 
         await db.batch([

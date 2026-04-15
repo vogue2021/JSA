@@ -9,7 +9,7 @@ import { logAction, LOG_CATEGORIES } from '../utils/logService';
 /**
  * 登录页面组件（从 App.jsx 拆分）
  * 默认显示学生/老师/管理员角色选择器，始终可见
- * - 学生入口：支持邮箱或明学用户名登录（不含@时自动走明学 API）
+ * - 学生入口：支持邮箱或明学手机号登录（不含@时自动走明学 API）
  * - 老师/管理员入口：仅支持邮箱登录
  * Props:
  *   onLogin(userData, token)  - 登录成功回调
@@ -31,7 +31,7 @@ const AuthPage = ({ onLogin }) => {
     e.preventDefault();
     const newErrors = {};
 
-    if (!formData.email) newErrors.email = userType === 'student' ? '请输入邮箱或用户名' : '请输入邮箱';
+    if (!formData.email) newErrors.email = userType === 'student' ? '请输入邮箱或手机号' : '请输入邮箱';
     if (!formData.password) newErrors.password = '请输入密码';
     else if (formData.password.length < 4) newErrors.password = '密码至少4位';
 
@@ -197,7 +197,7 @@ const AuthPage = ({ onLogin }) => {
             <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
               style={{ background: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.06)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
               <Globe size={16} />
-              <span>检测到明学用户名，将使用明学账号验证登录</span>
+              <span>检测到明学手机号，将使用明学账号验证登录</span>
             </div>
           )}
 
@@ -205,7 +205,7 @@ const AuthPage = ({ onLogin }) => {
             {/* 邮箱或用户名 */}
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>
-                {userType === 'student' ? '邮箱或用户名' : '邮箱'}
+                {userType === 'student' ? '邮箱或手机号' : '邮箱'}
               </label>
               <div className="relative">
                 {(userType === 'student' && !isEmailInput)
@@ -216,13 +216,13 @@ const AuthPage = ({ onLogin }) => {
                   onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({}); }}
                   className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? 'border-red-500' : ''}`}
                   style={{ borderColor: errors.email ? undefined : (isDark ? 'rgba(255,255,255,0.15)' : '#d1d5db'), background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary }}
-                  placeholder={userType === 'student' ? 'your@email.com 或 明学用户名' : 'your@email.com'} />
+                  placeholder={userType === 'student' ? 'your@email.com 或 明学手机号' : 'your@email.com'} />
               </div>
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
             </div>
             {/* 密码 */}
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>密码</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>{isMingxueLogin ? '验证码' : '密码'}</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2" size={20} style={{ color: tokens.colors.text.muted }} />
                 <input type="password" value={formData.password}
@@ -255,7 +255,7 @@ const AuthPage = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
               {userType === 'student'
-                ? '支持邮箱或明学用户名登录，首次明学登录自动创建 JSA 账号'
+                ? '支持邮箱或明学手机号登录，首次明学登录自动创建 JSA 账号'
                 : '账号由管理员统一创建，如需账号请联系管理员'}
             </p>
           </div>
@@ -284,8 +284,8 @@ const AuthPage = ({ onLogin }) => {
                 <p>张三: zhangsan@student.jsa.com / stu2024001</p>
                 <p>李四: lisi@student.jsa.com / stu2024002</p>
                 <p>王五: wangwu@student.jsa.com / stu2024003</p>
-                <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>明学用户名登录：</p>
-                <p>直接输入明学用户名和密码即可</p>
+                <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>明学手机号登录：</p>
+                <p>输入明学手机号和验证码即可</p>
               </>
             )}
           </div>
