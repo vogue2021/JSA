@@ -72,14 +72,6 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     academicAdvisorId: studentInfo.academicAdvisorId || '',
     teacherId: studentInfo.teacherId || '',
     subject: studentInfo.subject || '',
-    // 明学义塾专用字段
-    mingxueId: studentInfo.mingxueId || '',
-    region: studentInfo.region || '',
-    emergencyContactName: studentInfo.emergencyContactName || '',
-    emergencyContactPhone: studentInfo.emergencyContactPhone || '',
-    emergencyContactRelation: studentInfo.emergencyContactRelation || '',
-    passportNo: studentInfo.passportNo || '',
-    residenceCardNo: studentInfo.residenceCardNo || '',
   });
 
   // 套餐列表（与实际数据保持一致）
@@ -122,14 +114,6 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       academicAdvisorId: info.academicAdvisorId || '',
       teacherId: info.teacherId || '',
       subject: info.subject || '',
-      // 明学义塾专用字段
-      mingxueId: info.mingxueId || '',
-      region: info.region || '',
-      emergencyContactName: info.emergencyContactName || '',
-      emergencyContactPhone: info.emergencyContactPhone || '',
-      emergencyContactRelation: info.emergencyContactRelation || '',
-      passportNo: info.passportNo || '',
-      residenceCardNo: info.residenceCardNo || '',
     });
     setIsEditing(false);
     setActiveSection('basic');
@@ -167,14 +151,6 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         subject: formData.subject,
         teacher_id: formData.teacherId,
         academic_advisor_id: formData.academicAdvisorId,
-        // 明学义塾专用字段
-        mingxue_id: formData.mingxueId,
-        region: formData.region,
-        emergency_contact_name: formData.emergencyContactName,
-        emergency_contact_phone: formData.emergencyContactPhone,
-        emergency_contact_relation: formData.emergencyContactRelation,
-        passport_no: formData.passportNo,
-        residence_card_no: formData.residenceCardNo,
       });
     } catch (err) {
       console.error('保存学生信息失败:', err);
@@ -388,36 +364,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             <InfoField label="文理科" value={formData.subject} editing={isEditing} type="select"
               options={['', '文科', '理科']}
               onChange={v => setFormData({...formData, subject: v})} />
-            <InfoField label="明学学号" value={formData.mingxueId} editing={isEditing}
-              placeholder="明学义塾内部学号"
-              onChange={v => setFormData({...formData, mingxueId: v})} />
-            <InfoField label="所在地区 / 籍贯" value={formData.region} editing={isEditing}
-              placeholder="如：中国上海 / 日本东京"
-              onChange={v => setFormData({...formData, region: v})} />
-            <InfoField label="护照号码" value={formData.passportNo} editing={isEditing}
-              placeholder="请输入护照号码"
-              onChange={v => setFormData({...formData, passportNo: v})} />
-            <InfoField label="在留卡号" value={formData.residenceCardNo} editing={isEditing}
-              placeholder="在日学生在留卡编号"
-              onChange={v => setFormData({...formData, residenceCardNo: v})} />
           </div>
-
-          {/* 紧急联系人 */}
-          <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${tokens.colors.border.subtle}` }}>
-            <h5 className="font-semibold text-sm mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
-              <UserCheck size={16} /> 紧急联系人
-            </h5>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <InfoField label="姓名" value={formData.emergencyContactName} editing={isEditing}
-                placeholder="紧急联系人姓名"
-                onChange={v => setFormData({...formData, emergencyContactName: v})} />
-              <InfoField label="电话" value={formData.emergencyContactPhone} editing={isEditing}
-                placeholder="紧急联系人电话"
-                onChange={v => setFormData({...formData, emergencyContactPhone: v})} />
-              <InfoField label="关系" value={formData.emergencyContactRelation} editing={isEditing} type="select"
-                options={['', '父亲', '母亲', '配偶', '兄弟姐妹', '亲戚', '朋友', '其他']}
-                onChange={v => setFormData({...formData, emergencyContactRelation: v})} />
-            </div>
 
           {/* 项目套餐信息 */}
           <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${tokens.colors.border.subtle}` }}>
