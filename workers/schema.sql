@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS students (
   jlpt_scores TEXT DEFAULT '[]',
   english_scores TEXT DEFAULT '[]',
   xuebang_id TEXT DEFAULT '',
+  -- 明学义塾专用字段
+  mingxue_id TEXT DEFAULT '',
+  region TEXT DEFAULT '',
+  emergency_contact_name TEXT DEFAULT '',
+  emergency_contact_phone TEXT DEFAULT '',
+  emergency_contact_relation TEXT DEFAULT '',
+  passport_no TEXT DEFAULT '',
+  residence_card_no TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

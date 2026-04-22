@@ -4109,10 +4109,16 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
             borderRight: `1px solid ${tokens.colors.border.hairline}`,
           }}>
-          {/* 侧边栏顶部 - 留学考学助手 + 收缩按钮 */}
+          {/* 侧边栏顶部 - 明学义塾升学系统 + 收缩按钮 */}
           <div className="flex items-center px-3 py-2.5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
             {!sidebarCollapsed && (
-              <h2 className="text-sm font-semibold flex-1 truncate" style={{ color: tokens.colors.text.primary }}>留学考学助手</h2>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <img src="/mingxue-logo.png" alt="明学义塾" className="w-6 h-6 object-contain flex-shrink-0" />
+                <h2 className="text-sm font-semibold truncate" style={{ color: tokens.colors.text.primary }}>明学义塾升学系统</h2>
+              </div>
+            )}
+            {sidebarCollapsed && (
+              <img src="/mingxue-logo.png" alt="明学义塾" className="w-6 h-6 object-contain mx-auto" />
             )}
             <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className="p-1.5 rounded-md transition flex-shrink-0"
@@ -4569,7 +4575,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         {/* 页面底部免责声明 */}
         <div className="mt-8 pb-4 text-center" style={{ color: tokens.colors.text.muted }}>
           <div className="text-xs leading-relaxed space-y-1 max-w-2xl mx-auto px-4" style={{ opacity: 0.7 }}>
-            <p>© {new Date().getFullYear()} JSA 日本留学考学助手 · 仅供内部学习管理使用</p>
+            <p>© {new Date().getFullYear()} 明学义塾升学系统 · 仅供内部学习管理使用</p>
             <p>本平台所展示的学校信息、出愿日期等数据仅供参考，请以各校官网公布的最新信息为准。</p>
             <p>平台不对因信息延迟或错误导致的任何损失承担责任。如有问题请联系管理员。</p>
           </div>

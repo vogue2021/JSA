@@ -37,6 +37,14 @@ function formatStudent(row) {
     hasAccount: Boolean(row.has_account),
     isActive: Boolean(row.is_active !== 0),
     xuebangId: row.xuebang_id || '',
+    // 明学义塾专用字段
+    mingxueId: row.mingxue_id || '',
+    region: row.region || '',
+    emergencyContactName: row.emergency_contact_name || '',
+    emergencyContactPhone: row.emergency_contact_phone || '',
+    emergencyContactRelation: row.emergency_contact_relation || '',
+    passportNo: row.passport_no || '',
+    residenceCardNo: row.residence_card_no || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -270,7 +278,11 @@ students.put('/:id', async (c) => {
   const updatable = ['name', 'email', 'birthday', 'high_school', 'language_school',
     'lang_school_shift', 'phone',
     'jlpt_score', 'english_score', 'photo',
-    'package_name', 'package_end_date', 'subject']
+    'package_name', 'package_end_date', 'subject',
+    // 明学义塾专用字段
+    'mingxue_id', 'region',
+    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+    'passport_no', 'residence_card_no']
 
   updatable.forEach(f => {
     if (body[f] !== undefined) { fields.push(`${f} = ?`); params.push(body[f]) }

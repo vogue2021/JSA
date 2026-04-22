@@ -165,7 +165,7 @@ const generateChecklistHTML = (student, checklist, schools) => {
   </div>
   ${generalHTML}
   ${schoolHTML}
-  <div class="footer">日本留学考学助手 - JSA | 打印时间: ${new Date().toLocaleString('zh-CN')}</div>
+  <div class="footer">明学义塾升学系统 | 打印时间: ${new Date().toLocaleString('zh-CN')}</div>
 </body></html>`;
 };
 
@@ -174,7 +174,7 @@ export const exportEventsToICS = (events, studentName) => {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//JSA//Japan Study App//CN',
+    'PRODID:-//MingxueYishu//Academic Pathway App//CN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${studentName}的考学日程`,

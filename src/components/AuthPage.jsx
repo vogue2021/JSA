@@ -140,15 +140,15 @@ const AuthPage = ({ onLogin }) => {
               animationDelay: '1.5s',
             }} />
           </div>
-          <div className="mb-8 relative z-10">
-            <div className="w-32 h-32 rounded-full flex items-center justify-center mb-6"
-              style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
-              <GraduationCap size={64} className="text-white" />
+          <div className="mb-8 relative z-10 flex flex-col items-center">
+            <div className="w-32 h-32 rounded-2xl flex items-center justify-center mb-6 overflow-hidden"
+              style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', padding: '12px' }}>
+              <img src="/mingxue-logo.png" alt="明学义塾" className="w-full h-full object-contain" />
             </div>
-            <h1 className="text-4xl font-bold mb-4">日本留学考学助手</h1>
+            <h1 className="text-4xl font-bold mb-4">明学义塾升学系统</h1>
             <p className="text-center" style={{ color: 'rgba(255,255,255,0.8)' }}>
-              专业的日本留学申请管理平台<br/>
-              让留学之路更加清晰高效
+              专业的日本升学申请管理平台<br/>
+              让升学之路更加清晰高效
             </p>
           </div>
           <div className="space-y-4 w-full max-w-sm relative z-10">
@@ -255,7 +255,7 @@ const AuthPage = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
               {userType === 'student'
-                ? '支持邮箱或明学手机号登录，首次明学登录自动创建 JSA 账号'
+                ? '支持邮箱或明学手机号登录，首次明学登录自动创建系统账号'
                 : '账号由管理员统一创建，如需账号请联系管理员'}
             </p>
           </div>
