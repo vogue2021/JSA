@@ -49,8 +49,8 @@ teachers.get('/:id/students', async (c) => {
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
   const { results: studentList } = await db.prepare(
-    'SELECT * FROM students WHERE teacher_id = ? AND is_active = 1'
-  ).bind(teacher.teacher_id).all()
+    'SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ?) AND is_active = 1'
+  ).bind(teacher.teacher_id, teacher.teacher_id).all()
 
   // 为每个学生附加统计信息
   const studentsWithStats = await Promise.all(studentList.map(async (student) => {
@@ -104,8 +104,8 @@ teachers.get('/:id', async (c) => {
   teacher.permissions = (() => { try { return JSON.parse(teacher.permissions || '[]') } catch { return [] } })()
 
   const studentCount = await db.prepare(
-    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ?'
-  ).bind(teacher.teacher_id).first()
+    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ? OR academic_advisor_id = ?'
+  ).bind(teacher.teacher_id, teacher.teacher_id).first()
 
   return c.json({
     success: true,
@@ -291,13 +291,13 @@ teachers.delete('/:id', async (c) => {
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
   const studentCount = await db.prepare(
-    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ?'
-  ).bind(teacher.teacher_id).first()
+    'SELECT COUNT(*) as count FROM students WHERE teacher_id = ? OR academic_advisor_id = ?'
+  ).bind(teacher.teacher_id, teacher.teacher_id).first()
 
   if (studentCount?.count > 0) {
     return c.json({
       success: false,
-      message: `该老师还有 ${studentCount.count} 个学生，请先转移学生后再删除`
+      message: `该老师还有 ${studentCount.count} 个学生（含作为学管老师负责的学生），请先转移学生后再删除`
     }, 400)
   }
 

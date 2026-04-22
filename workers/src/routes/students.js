@@ -56,8 +56,10 @@ students.get('/search/query', async (c) => {
   const params = []
 
   if (isTeacher(user)) {
-    sql += ' AND teacher_id = ?'
-    params.push(user.teacherId || '__none__')
+    // 老师角色 — 同时可见升学负责学生(teacher_id) 和 学管负责学生(academic_advisor_id)
+    sql += ' AND (teacher_id = ? OR academic_advisor_id = ?)'
+    const tid = user.teacherId || '__none__'
+    params.push(tid, tid)
   }
   if (q) {
     sql += ' AND (name LIKE ? OR email LIKE ? OR student_id LIKE ?)'
@@ -84,8 +86,10 @@ students.get('/', async (c) => {
   if (isAdmin(user)) {
     // 全部可见
   } else if (isTeacher(user)) {
-    sql += ' AND teacher_id = ?'
-    params.push(user.teacherId || '__none__')
+    // 老师角色 — 同时可见升学负责学生和学管负责学生
+    sql += ' AND (teacher_id = ? OR academic_advisor_id = ?)'
+    const tid = user.teacherId || '__none__'
+    params.push(tid, tid)
   } else if (isStudent(user)) {
     // 学生只能看自己
     sql += ' AND student_id = ?'
@@ -131,9 +135,10 @@ students.get('/teacher/:teacherId', async (c) => {
   }
 
   const db = c.env.DB
+  // 按 teacher_id 或 academic_advisor_id 查询（该老师可能既是升学老师也是学管老师）
   const { results } = await db.prepare(
-    'SELECT * FROM students WHERE teacher_id = ? AND is_active = 1 ORDER BY created_at DESC'
-  ).bind(teacherId).all()
+    'SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ?) AND is_active = 1 ORDER BY created_at DESC'
+  ).bind(teacherId, teacherId).all()
 
   // 批量查询材料进度
   const studentIds = results.map(s => s.student_id)
@@ -175,7 +180,7 @@ students.get('/:id', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
 
@@ -260,7 +265,7 @@ students.put('/:id', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
 
@@ -363,7 +368,7 @@ students.post('/:id/notes', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
 
@@ -410,7 +415,7 @@ students.delete('/:id/notes/:noteId', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId) {
+  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
 

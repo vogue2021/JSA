@@ -66,8 +66,8 @@ events.get('/:id', async (c) => {
     return c.json({ success: false, message: '无权访问该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
-    if (stu?.teacher_id !== user.teacherId) {
+    const stu = await db.prepare('SELECT teacher_id, academic_advisor_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId && stu?.academic_advisor_id !== user.teacherId) {
       return c.json({ success: false, message: '无权访问该事件' }, 403)
     }
   }
@@ -125,8 +125,8 @@ events.put('/:id', async (c) => {
     return c.json({ success: false, message: '无权修改该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
-    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权修改该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id, academic_advisor_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId && stu?.academic_advisor_id !== user.teacherId) return c.json({ success: false, message: '无权修改该事件' }, 403)
   }
 
   const body = await c.req.json()
@@ -167,8 +167,8 @@ events.delete('/:id', async (c) => {
     return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
-    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权删除该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id, academic_advisor_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId && stu?.academic_advisor_id !== user.teacherId) return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
 
   if (event.school_id) {
@@ -192,8 +192,8 @@ events.patch('/:id/toggle', async (c) => {
     return c.json({ success: false, message: '无权操作该事件' }, 403)
   }
   if (isTeacher(user)) {
-    const stu = await db.prepare('SELECT teacher_id FROM students WHERE student_id = ?').bind(event.student_id).first()
-    if (stu?.teacher_id !== user.teacherId) return c.json({ success: false, message: '无权操作该事件' }, 403)
+    const stu = await db.prepare('SELECT teacher_id, academic_advisor_id FROM students WHERE student_id = ?').bind(event.student_id).first()
+    if (stu?.teacher_id !== user.teacherId && stu?.academic_advisor_id !== user.teacherId) return c.json({ success: false, message: '无权操作该事件' }, 403)
   }
 
   const newCompleted = event.completed ? 0 : 1

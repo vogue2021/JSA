@@ -17,8 +17,8 @@ schools.get('/stats', async (c) => {
   `
   const params = []
   if (teacher_id) {
-    sql += ' WHERE st.teacher_id = ?'
-    params.push(teacher_id)
+    sql += ' WHERE (st.teacher_id = ? OR st.academic_advisor_id = ?)'
+    params.push(teacher_id, teacher_id)
   }
   sql += ' GROUP BY s.name, s.type, s.program, s.status'
 
@@ -71,8 +71,8 @@ schools.get('/stats/events', async (c) => {
   `
   const params = []
   if (teacher_id) {
-    sql += ' AND st.teacher_id = ?'
-    params.push(teacher_id)
+    sql += ' AND (st.teacher_id = ? OR st.academic_advisor_id = ?)'
+    params.push(teacher_id, teacher_id)
   }
 
   const { results: allEvents } = await db.prepare(sql).bind(...params).all()

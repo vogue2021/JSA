@@ -37,13 +37,13 @@ users.delete('/:id', async (c) => {
   const target = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first()
   if (!target) return c.json({ success: false, message: '用户不存在' }, 404)
 
-  // 如果是老师，检查是否有学生
+  // 如果是老师，检查是否有学生（含升学老师和学管老师两种身份）
   if (target.role === 'teacher' && target.teacher_id) {
     const studentCount = await db.prepare(
-      'SELECT COUNT(*) as count FROM students WHERE teacher_id = ?'
-    ).bind(target.teacher_id).first()
+      'SELECT COUNT(*) as count FROM students WHERE teacher_id = ? OR academic_advisor_id = ?'
+    ).bind(target.teacher_id, target.teacher_id).first()
     if (studentCount?.count > 0) {
-      return c.json({ success: false, message: `该老师还有 ${studentCount.count} 个学生，请先转移学生` }, 400)
+      return c.json({ success: false, message: `该老师还有 ${studentCount.count} 个学生（含作为学管老师负责的学生），请先转移学生` }, 400)
     }
   }
 
