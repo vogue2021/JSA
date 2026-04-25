@@ -147,13 +147,24 @@ schoolDatabase.put('/:id', async (c) => {
     }
     const jsonCols = new Set(['programs', 'important_dates', 'required_materials'])
     const intCols = new Set(['ranking', 'requirements_updated'])
+    // 【需求40】判断是否为 camelCase 风格 key（避免 snake_case 旧字段覆盖用户改过的 camelCase 新值）
+    const isCamelKey = (k) => /[A-Z]/.test(k)
 
-    // 收集 body 中已提供的字段（只处理一次，后者覆盖前者）
+    // 收集 body 中已提供的字段
+    // 【需求40】保护策略：如果同一目标列同时从 camelCase 和 snake_case 两个 key 提供了值，
+    //   始终以 camelCase 的值为准（因为前端编辑只会更新 camelCase 字段，
+    //   snake_case 字段往往是 API 回显的旧值残留）。
     const updates = {}
+    const updatesFromCamel = new Set()
     for (const [key, value] of Object.entries(body)) {
       const col = fieldMap[key]
       if (!col) continue
+      if (updatesFromCamel.has(col) && !isCamelKey(key)) {
+        // 已被 camelCase 的值占据，忽略 snake_case
+        continue
+      }
       updates[col] = value
+      if (isCamelKey(key)) updatesFromCamel.add(col)
     }
 
     if (Object.keys(updates).length === 0) {
@@ -167,7 +178,20 @@ schoolDatabase.put('/:id', async (c) => {
       sets.push(`${col} = ?`)
       let v = rawVal
       if (jsonCols.has(col)) {
-        v = JSON.stringify(Array.isArray(v) ? v : [])
+        // 【需求40】JSON 列容错：值可能是数组、字符串形式的 JSON、null/undefined
+        if (Array.isArray(v)) {
+          v = JSON.stringify(v)
+        } else if (typeof v === 'string') {
+          // 已经是 JSON 字符串：先尝试解析再重新序列化（排除非法字符串）
+          try {
+            const parsed = JSON.parse(v)
+            v = JSON.stringify(Array.isArray(parsed) ? parsed : [])
+          } catch {
+            v = '[]'
+          }
+        } else {
+          v = '[]'
+        }
       } else if (intCols.has(col)) {
         if (typeof v === 'boolean') v = v ? 1 : 0
         else if (v === '' || v === null || v === undefined) v = 0

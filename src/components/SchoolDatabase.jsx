@@ -124,19 +124,43 @@ const SchoolDatabase = () => {
 
   const handleSave = async () => {
     if (!formData.name) return;
+
+    // 【需求40】关键修复：构建"干净的 camelCase payload"，
+    // 避免 formData 里残留的 snake_case 字段（如 xuexin_cert / important_dates / required_materials 字符串）
+    // 与 camelCase 字段（如 xuexinCert / importantDates）同时发到后端，
+    // 造成后端 fieldMap 迭代顺序问题，或把字符串形式的 JSON 误判成空数组。
+    const payload = {
+      name: formData.name || '',
+      nameJa: formData.nameJa || '',
+      type: formData.type || '国立',
+      location: formData.location || '',
+      programs: Array.isArray(formData.programs) ? formData.programs : [],
+      requirements: formData.requirements || '',
+      notes: formData.notes || '',
+      acceptanceRate: formData.acceptanceRate || '',
+      xuexinCert: formData.xuexinCert || '不确定',
+      overseasCert: formData.overseasCert || '不确定',
+      importantDates: Array.isArray(formData.importantDates) ? formData.importantDates : [],
+      requirementsUrl: formData.requirementsUrl || '',
+      requiredMaterials: Array.isArray(formData.requiredMaterials) ? formData.requiredMaterials : [],
+      requirementsYear: formData.requirementsYear || '',
+      requirementsUpdated: !!formData.requirementsUpdated,
+      requirementsUpdatedAt: formData.requirementsUpdatedAt || '',
+    };
+
     try {
       if (editingSchool) {
-        const updated = await schoolDatabaseAPI.update(editingSchool.id, formData);
-        // 合并策略：以 formData 为主（保证刚改的 camelCase 字段一定生效），
+        const updated = await schoolDatabaseAPI.update(editingSchool.id, payload);
+        // 合并策略：以 payload 为主（保证刚改的 camelCase 字段一定生效），
         // API 返回的 updated 作为 fallback（补齐 id/createdAt 等服务端字段）
         // 这样即使后端返回 snake_case 或部分字段，UI 也能立即反映用户改动
-        const merged = { ...(updated || {}), ...formData, id: editingSchool.id };
+        const merged = { ...(updated || {}), ...payload, id: editingSchool.id };
         setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? merged : s));
         if (showNotification) showNotification('学校信息已更新');
       } else {
-        const created = await schoolDatabaseAPI.create(formData);
-        // 新建同理：formData 为主，API 返回补 id
-        const merged = { ...(created || {}), ...formData, id: created?.id || Date.now() };
+        const created = await schoolDatabaseAPI.create(payload);
+        // 新建同理：payload 为主，API 返回补 id
+        const merged = { ...(created || {}), ...payload, id: created?.id || Date.now() };
         setSchoolDb(prev => [...prev, merged]);
         if (showNotification) showNotification('学校已添加到信息库');
       }
