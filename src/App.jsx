@@ -20,6 +20,7 @@ import StudentProfile from './components/StudentProfile';
 import TimelineLinear from './components/TimelineLinear';
 import TeacherManagement from './components/TeacherManagement';
 import SchoolDatabase from './components/SchoolDatabase';
+import StudyResources from './components/StudyResources';
 import SettingsPage from './components/SettingsPage';
 import CalendarView from './components/CalendarView';
 import UpcomingSchools from './components/UpcomingSchools';
@@ -79,7 +80,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const navigate = useNavigate();
 
   // 有效的 tab ID 列表（用于 URL 路径校验）
-  const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'upcoming', 'calendar', 'settings'];
+const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'resources', 'upcoming', 'calendar', 'settings'];
 
   // 从 URL 路径提取当前 tab
   const getTabFromPath = () => {
@@ -3954,6 +3955,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
     // 学校信息库 - 学生不显示，老师需权限
     ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
+    // 塾内备考资料库 - 需求38：老师可编辑，学生只读公开资料
+    { id: 'resources', label: '备考资料库', icon: BookOpen },
     // 近期可报学校 - 所有角色可见（学生端重要入口）
     { id: 'upcoming', label: '近期可报', icon: Calendar },
   ];
@@ -4161,7 +4164,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 { label: '概览', ids: ['dashboard'] },
                 { label: '学业管理', ids: ['timeline', 'schools', 'checklist'] },
                 { label: '人员管理', ids: ['students', 'profile', 'teachers'] },
-                { label: '信息查询', ids: ['schooldb', 'upcoming'] },
+                { label: '信息查询', ids: ['schooldb', 'resources', 'upcoming'] },
               ];
               return groups.map((group, gi) => {
                 const groupTabs = tabs.filter(t => group.ids.includes(t.id));
@@ -4585,6 +4588,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         )}
         {activeTab === 'teachers' && <TeacherManagement />}
         {activeTab === 'schooldb' && <SchoolDatabase />}
+        {activeTab === 'resources' && <StudyResources />}
         {activeTab === 'upcoming' && (
           <UpcomingSchools
             studentList={studentList}

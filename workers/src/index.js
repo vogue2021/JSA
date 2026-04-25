@@ -14,6 +14,7 @@ import schoolDatabaseRoutes from './routes/school_database.js'
 import userRoutes from './routes/users.js'
 import reminderRoutes from './routes/reminders.js'
 import xuebangRoutes from './routes/xuebang.js'
+import studyResourcesRoutes from './routes/study_resources.js'
 
 const app = new Hono()
 
@@ -64,6 +65,8 @@ app.use('/api/reminders/*', authMiddleware)
 app.use('/api/reminders', authMiddleware)
 app.use('/api/xuebang/*', authMiddleware)
 app.use('/api/xuebang', authMiddleware)
+app.use('/api/study-resources/*', authMiddleware)
+app.use('/api/study-resources', authMiddleware)
 // 注意：feedback 路由在内部自行处理鉴权（POST 允许匿名，GET/PATCH 需要 admin）
 // 不在这里挂载 authMiddleware，避免 Hono 路径匹配问题
 
@@ -77,6 +80,7 @@ app.route('/api/school-database', schoolDatabaseRoutes)
 app.route('/api/users', userRoutes)
 app.route('/api/reminders', reminderRoutes)
 app.route('/api/xuebang', xuebangRoutes)
+app.route('/api/study-resources', studyResourcesRoutes)
 
 // ─── 404 处理 ─────────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ success: false, message: '接口不存在' }, 404))

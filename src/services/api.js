@@ -364,6 +364,48 @@ export const authAPI = {
   },
 };
 
+// ─── 塾内备考资料库 API（需求38）──────────────────────────────────────────────
+export const studyResourcesAPI = {
+  // 列表查询：search, category, is_public（'0'/'1'，仅老师/管理员可过滤）
+  list: async ({ search, category, is_public } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (category) params.append('category', category);
+    if (is_public === '0' || is_public === '1' || is_public === 0 || is_public === 1) {
+      params.append('is_public', String(is_public));
+    }
+    const qs = params.toString();
+    return await apiRequest(`/study-resources${qs ? '?' + qs : ''}`);
+  },
+  get: async (id) => {
+    return await apiRequest(`/study-resources/${id}`);
+  },
+  create: async (data) => {
+    return await apiRequest('/study-resources', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  update: async (id, data) => {
+    return await apiRequest(`/study-resources/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  // 快速切换公开/私密
+  setVisibility: async (id, isPublic) => {
+    return await apiRequest(`/study-resources/${id}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_public: !!isPublic }),
+    });
+  },
+  delete: async (id) => {
+    return await apiRequest(`/study-resources/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // ─── 学邦数据同步 API ────────────────────────────────────────────────────────
 export const xuebangAPI = {
   // 获取学邦配置状态
