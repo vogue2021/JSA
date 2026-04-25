@@ -277,22 +277,42 @@ auth.post('/login', async (c) => {
       }
 
       // 从 API 返回中提取用户信息
-      // Coze API 成功返回格式为 { is_student: true, student_info: { id, name, ... } }
+      // Coze API 成功返回格式为 { is_student: true, student_info: { studentId, name, contact, ... } }
       // 兼容可能的 { data: {...} } 或直接返回用户信息的老格式
       const mingxueData =
         mingxueResult.student_info ||
         mingxueResult.data ||
         mingxueResult
       const mingxueId = String(
-        mingxueData.id || mingxueData.user_id || mingxueData.student_id || phoneNumber
+        mingxueData.studentId ||
+        mingxueData.student_id ||
+        mingxueData.id ||
+        mingxueData.user_id ||
+        phoneNumber
       )
       const mingxueName =
         mingxueData.name || mingxueData.username || mingxueData.student_name || phoneNumber
 
-      // 查找已关联的 JSA 用户
+      // 查找已关联的 JSA 用户（优先按 mingxue_id 精确匹配）
       let user = await db.prepare(
         'SELECT * FROM users WHERE mingxue_id = ?'
       ).bind(mingxueId).first()
+
+      // 兼容漏洞时代的历史残留：若按新 mingxue_id 没查到，但按手机号占位 email 能查到
+      // 旧代码曾把手机号当 mingxue_id 写入。此处只升级 users.mingxue_id 到真实 studentId，
+      // 保留 students.student_id 不变以避免动 PK（其他表可能外键引用）
+      if (!user) {
+        const legacyUser = await db.prepare(
+          'SELECT * FROM users WHERE email = ? AND role = ?'
+        ).bind(`${phoneNumber}@mingxue.jsa.local`, 'student').first()
+
+        if (legacyUser) {
+          await db.prepare(
+            'UPDATE users SET mingxue_id = ?, name = ?, updated_at = datetime(\'now\') WHERE id = ?'
+          ).bind(mingxueId, mingxueName, legacyUser.id).run()
+          user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(legacyUser.id).first()
+        }
+      }
 
       if (user) {
         if (user.is_active === 0) {
