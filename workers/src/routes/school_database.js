@@ -107,6 +107,8 @@ schoolDatabase.post('/', async (c) => {
 })
 
 // ─── 更新学校信息 ─────────────────────────────────────────────────────────────
+// 【需求32】极简方案：动态 UPDATE，只更新 body 里明确提供的字段，
+// 不做复杂 fallback，不碰 body 没有的字段，和其他任何字段一视同仁。
 schoolDatabase.put('/:id', async (c) => {
   const user = c.get('user')
   if (!isAdmin(user) && !isTeacher(user)) {
@@ -117,94 +119,80 @@ schoolDatabase.put('/:id', async (c) => {
   const db = c.env.DB
 
   try {
-    const existing = await db.prepare('SELECT * FROM school_database WHERE id = ?').bind(id).first()
+    const existing = await db.prepare('SELECT id FROM school_database WHERE id = ?').bind(id).first()
     if (!existing) return c.json({ success: false, message: '学校不存在' }, 404)
 
     const body = await c.req.json()
 
-    // 安全归一化：确保所有 bind 参数都是 D1 允许的标量（string/number/null），
-    // 不出现 undefined / boolean / object / NaN（这些会导致 D1 bind 抛错 → 500）
-    const safeStr = (v, fallback = '') => {
-      if (v === undefined || v === null) return fallback
-      if (typeof v === 'string') return v
-      if (typeof v === 'number' && Number.isFinite(v)) return String(v)
-      if (typeof v === 'boolean') return v ? '1' : ''
-      return String(v)
+    // camelCase → snake_case 映射，前端任意一种 key 都支持
+    const fieldMap = {
+      name: 'name',
+      nameJa: 'name_ja', name_ja: 'name_ja',
+      type: 'type',
+      location: 'location',
+      programs: 'programs',                  // JSON
+      requirements: 'requirements',
+      notes: 'notes',
+      acceptanceRate: 'acceptance_rate', acceptance_rate: 'acceptance_rate',
+      difficulty: 'difficulty',
+      ranking: 'ranking',                    // INTEGER
+      xuexinCert: 'xuexin_cert', xuexin_cert: 'xuexin_cert',
+      overseasCert: 'overseas_cert', overseas_cert: 'overseas_cert',
+      importantDates: 'important_dates', important_dates: 'important_dates',  // JSON
+      requirementsUrl: 'requirements_url', requirements_url: 'requirements_url',
+      requiredMaterials: 'required_materials', required_materials: 'required_materials', // JSON
+      requirementsYear: 'requirements_year', requirements_year: 'requirements_year',
+      requirementsUpdated: 'requirements_updated', requirements_updated: 'requirements_updated', // INTEGER 0/1
+      requirementsUpdatedAt: 'requirements_updated_at', requirements_updated_at: 'requirements_updated_at',
     }
-    const safeInt = (v, fallback = 0) => {
-      if (v === undefined || v === null || v === '') return fallback
-      const n = typeof v === 'number' ? v : parseInt(v, 10)
-      return Number.isFinite(n) ? n : fallback
+    const jsonCols = new Set(['programs', 'important_dates', 'required_materials'])
+    const intCols = new Set(['ranking', 'requirements_updated'])
+
+    // 收集 body 中已提供的字段（只处理一次，后者覆盖前者）
+    const updates = {}
+    for (const [key, value] of Object.entries(body)) {
+      const col = fieldMap[key]
+      if (!col) continue
+      updates[col] = value
     }
-    const safeJson = (v, existingRaw) => {
-      try {
-        if (v !== undefined && v !== null) return JSON.stringify(Array.isArray(v) ? v : [])
-        // fallback 用 existing 原始 JSON 字符串
-        if (typeof existingRaw === 'string' && existingRaw) return existingRaw
-        return '[]'
-      } catch {
-        return '[]'
+
+    if (Object.keys(updates).length === 0) {
+      return c.json({ success: false, message: '没有可更新的字段' }, 400)
+    }
+
+    // 构建动态 SQL，只 SET body 实际包含的列
+    const sets = []
+    const params = []
+    for (const [col, rawVal] of Object.entries(updates)) {
+      sets.push(`${col} = ?`)
+      let v = rawVal
+      if (jsonCols.has(col)) {
+        v = JSON.stringify(Array.isArray(v) ? v : [])
+      } else if (intCols.has(col)) {
+        if (typeof v === 'boolean') v = v ? 1 : 0
+        else if (v === '' || v === null || v === undefined) v = 0
+        else {
+          const n = typeof v === 'number' ? v : parseInt(v, 10)
+          v = Number.isFinite(n) ? n : 0
+        }
+      } else {
+        // 文本列：null/undefined → ''，其他 toString
+        if (v === null || v === undefined) v = ''
+        else if (typeof v !== 'string') v = String(v)
       }
+      params.push(v)
     }
-    const pickStr = (a, b, existingVal, fallback = '') => {
-      if (a !== undefined && a !== null && a !== '') return safeStr(a, fallback)
-      if (b !== undefined && b !== null && b !== '') return safeStr(b, fallback)
-      return safeStr(existingVal, fallback)
-    }
+    sets.push(`updated_at = datetime('now')`)
+    params.push(id)
 
-    const params = [
-      safeStr(body.name, existing.name),                                                   // 1 name
-      pickStr(body.nameJa, body.name_ja, existing.name_ja, ''),                            // 2 name_ja
-      safeStr(body.type, existing.type),                                                   // 3 type
-      body.location !== undefined ? safeStr(body.location) : safeStr(existing.location),   // 4 location
-      safeJson(body.programs, existing.programs),                                          // 5 programs
-      body.requirements !== undefined ? safeStr(body.requirements) : safeStr(existing.requirements), // 6
-      body.notes !== undefined ? safeStr(body.notes) : safeStr(existing.notes),            // 7 notes
-      pickStr(body.acceptanceRate, body.acceptance_rate, existing.acceptance_rate, ''),    // 8
-      body.difficulty !== undefined ? safeStr(body.difficulty) : safeStr(existing.difficulty), // 9
-      safeInt(body.ranking !== undefined ? body.ranking : existing.ranking, 0),            // 10 ranking (INTEGER)
-      pickStr(body.xuexinCert, body.xuexin_cert, existing.xuexin_cert, '不确定'),          // 11
-      pickStr(body.overseasCert, body.overseas_cert, existing.overseas_cert, '不确定'),    // 12
-      safeJson(body.importantDates !== undefined ? body.importantDates : body.important_dates, existing.important_dates), // 13
-      pickStr(body.requirementsUrl, body.requirements_url, existing.requirements_url, ''), // 14
-      safeJson(body.requiredMaterials !== undefined ? body.requiredMaterials : body.required_materials, existing.required_materials), // 15
-      (() => {                                                                              // 16 requirements_year
-        if (body.requirementsYear !== undefined) return safeStr(body.requirementsYear)
-        if (body.requirements_year !== undefined) return safeStr(body.requirements_year)
-        return safeStr(existing.requirements_year)
-      })(),
-      (() => {                                                                              // 17 requirements_updated (INTEGER 0/1)
-        if (body.requirementsUpdated !== undefined) return body.requirementsUpdated ? 1 : 0
-        if (body.requirements_updated !== undefined) return body.requirements_updated ? 1 : 0
-        return safeInt(existing.requirements_updated, 0) ? 1 : 0
-      })(),
-      (() => {                                                                              // 18 requirements_updated_at
-        if (body.requirementsUpdatedAt !== undefined) return safeStr(body.requirementsUpdatedAt)
-        if (body.requirements_updated_at !== undefined) return safeStr(body.requirements_updated_at)
-        return safeStr(existing.requirements_updated_at)
-      })(),
-      id,                                                                                   // 19 WHERE id
-    ]
-
-    await db.prepare(`
-      UPDATE school_database SET
-        name = ?, name_ja = ?, type = ?, location = ?, programs = ?, requirements = ?, notes = ?,
-        acceptance_rate = ?, difficulty = ?, ranking = ?, xuexin_cert = ?, overseas_cert = ?,
-        important_dates = ?, requirements_url = ?, required_materials = ?,
-        requirements_year = ?, requirements_updated = ?, requirements_updated_at = ?,
-        updated_at = datetime('now')
-      WHERE id = ?
-    `).bind(...params).run()
+    await db.prepare(`UPDATE school_database SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
 
     const updated = await db.prepare('SELECT * FROM school_database WHERE id = ?').bind(id).first()
-
     return c.json({ success: true, message: '学校信息已更新', data: formatSchool(updated) })
   } catch (err) {
-    // 关键：把真实错误返回给前端，便于定位（500 根源）
-    const msg = err && (err.message || err.toString()) || '未知错误'
-    const stack = err && err.stack ? String(err.stack).slice(0, 500) : ''
-    console.error('[school-database PUT] error:', msg, stack)
-    return c.json({ success: false, message: `服务器错误：${msg}`, stack }, 500)
+    const msg = (err && (err.message || err.toString())) || '未知错误'
+    console.error('[school-database PUT] error:', msg, err && err.stack)
+    return c.json({ success: false, message: `服务器错误：${msg}` }, 500)
   }
 })
 
