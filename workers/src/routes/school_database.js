@@ -35,6 +35,9 @@ schoolDatabase.get('/', async (c) => {
     requirementsUrl: r.requirements_url || '',
     xuexinCert: r.xuexin_cert || '不确定',
     overseasCert: r.overseas_cert || '不确定',
+    requirementsYear: r.requirements_year || '',
+    requirementsUpdated: Boolean(r.requirements_updated),
+    requirementsUpdatedAt: r.requirements_updated_at || '',
     programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
     importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
     requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),
@@ -59,6 +62,9 @@ schoolDatabase.get('/:id', async (c) => {
     requirementsUrl: school.requirements_url || '',
     xuexinCert: school.xuexin_cert || '不确定',
     overseasCert: school.overseas_cert || '不确定',
+    requirementsYear: school.requirements_year || '',
+    requirementsUpdated: Boolean(school.requirements_updated),
+    requirementsUpdatedAt: school.requirements_updated_at || '',
     programs: (() => { try { return JSON.parse(school.programs || '[]') } catch { return [] } })(),
     importantDates: (() => { try { return JSON.parse(school.important_dates || '[]') } catch { return [] } })(),
     requiredMaterials: (() => { try { return JSON.parse(school.required_materials || '[]') } catch { return [] } })(),
@@ -82,8 +88,9 @@ schoolDatabase.post('/', async (c) => {
   const db = c.env.DB
   await db.prepare(`
     INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
-      acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials,
+      requirements_year, requirements_updated, requirements_updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     body.name, body.nameJa || body.name_ja || '',
     body.type, body.location || '',
@@ -95,7 +102,10 @@ schoolDatabase.post('/', async (c) => {
     body.overseasCert || body.overseas_cert || '不确定',
     JSON.stringify(body.importantDates || body.important_dates || []),
     body.requirementsUrl || body.requirements_url || '',
-    JSON.stringify(body.requiredMaterials || body.required_materials || [])
+    JSON.stringify(body.requiredMaterials || body.required_materials || []),
+    body.requirementsYear || body.requirements_year || '',
+    (body.requirementsUpdated || body.requirements_updated) ? 1 : 0,
+    body.requirementsUpdatedAt || body.requirements_updated_at || ''
   ).run()
 
   const newSchool = await db.prepare(
@@ -129,7 +139,9 @@ schoolDatabase.put('/:id', async (c) => {
     UPDATE school_database SET
       name = ?, name_ja = ?, type = ?, location = ?, programs = ?, requirements = ?, notes = ?,
       acceptance_rate = ?, difficulty = ?, ranking = ?, xuexin_cert = ?, overseas_cert = ?,
-      important_dates = ?, requirements_url = ?, required_materials = ?, updated_at = datetime('now')
+      important_dates = ?, requirements_url = ?, required_materials = ?,
+      requirements_year = ?, requirements_updated = ?, requirements_updated_at = ?,
+      updated_at = datetime('now')
     WHERE id = ?
   `).bind(
     body.name || existing.name,
@@ -147,6 +159,11 @@ schoolDatabase.put('/:id', async (c) => {
     JSON.stringify(body.importantDates || body.important_dates || (() => { try { return JSON.parse(existing.important_dates || '[]') } catch { return [] } })()),
     body.requirementsUrl || body.requirements_url || existing.requirements_url || '',
     JSON.stringify(body.requiredMaterials || body.required_materials || (() => { try { return JSON.parse(existing.required_materials || '[]') } catch { return [] } })()),
+    body.requirementsYear !== undefined ? body.requirementsYear : (body.requirements_year !== undefined ? body.requirements_year : (existing.requirements_year || '')),
+    (body.requirementsUpdated !== undefined || body.requirements_updated !== undefined)
+      ? ((body.requirementsUpdated ?? body.requirements_updated) ? 1 : 0)
+      : (existing.requirements_updated || 0),
+    body.requirementsUpdatedAt !== undefined ? body.requirementsUpdatedAt : (body.requirements_updated_at !== undefined ? body.requirements_updated_at : (existing.requirements_updated_at || '')),
     id
   ).run()
 
@@ -201,8 +218,9 @@ schoolDatabase.post('/batch', async (c) => {
     try {
       await db.prepare(`
         INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
-          acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials,
+          requirements_year, requirements_updated, requirements_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         s.name, s.nameJa || s.name_ja || '',
         s.type || '私立', s.location || '',
@@ -214,7 +232,10 @@ schoolDatabase.post('/batch', async (c) => {
         s.overseasCert || s.overseas_cert || '不确定',
         JSON.stringify(s.importantDates || s.important_dates || []),
         s.requirementsUrl || s.requirements_url || '',
-        JSON.stringify(s.requiredMaterials || s.required_materials || [])
+        JSON.stringify(s.requiredMaterials || s.required_materials || []),
+        s.requirementsYear || s.requirements_year || '',
+        (s.requirementsUpdated || s.requirements_updated) ? 1 : 0,
+        s.requirementsUpdatedAt || s.requirements_updated_at || ''
       ).run()
       results.success.push({ index: i, name: s.name })
     } catch (err) {

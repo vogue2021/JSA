@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS students (
   jlpt_scores TEXT DEFAULT '[]',
   english_scores TEXT DEFAULT '[]',
   xuebang_id TEXT DEFAULT '',
+  has_china_high_school_record TEXT DEFAULT '',
+  overseas_certifications TEXT DEFAULT '[]',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -111,6 +113,9 @@ CREATE TABLE IF NOT EXISTS school_database (
   important_dates TEXT DEFAULT '[]',
   requirements_url TEXT DEFAULT '',
   required_materials TEXT DEFAULT '[]',
+  requirements_year TEXT DEFAULT '',
+  requirements_updated INTEGER DEFAULT 0,
+  requirements_updated_at TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

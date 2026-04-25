@@ -72,6 +72,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     academicAdvisorId: studentInfo.academicAdvisorId || '',
     teacherId: studentInfo.teacherId || '',
     subject: studentInfo.subject || '',
+    hasChinaHighSchoolRecord: studentInfo.hasChinaHighSchoolRecord || '',
+    overseasCertifications: Array.isArray(studentInfo.overseasCertifications) ? studentInfo.overseasCertifications : [],
   });
 
   // 套餐列表（与实际数据保持一致）
@@ -114,6 +116,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       academicAdvisorId: info.academicAdvisorId || '',
       teacherId: info.teacherId || '',
       subject: info.subject || '',
+      hasChinaHighSchoolRecord: info.hasChinaHighSchoolRecord || '',
+      overseasCertifications: Array.isArray(info.overseasCertifications) ? info.overseasCertifications : [],
     });
     setIsEditing(false);
     setActiveSection('basic');
@@ -151,6 +155,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         subject: formData.subject,
         teacher_id: formData.teacherId,
         academic_advisor_id: formData.academicAdvisorId,
+        has_china_high_school_record: formData.hasChinaHighSchoolRecord,
+        overseas_certifications: formData.overseasCertifications,
       });
     } catch (err) {
       console.error('保存学生信息失败:', err);
@@ -352,6 +358,54 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             <InfoField label="毕业高中" value={formData.highSchool} editing={isEditing}
               placeholder="请输入毕业高中名称"
               onChange={v => setFormData({...formData, highSchool: v})} />
+            <InfoField label="中国高中学籍" value={formData.hasChinaHighSchoolRecord} editing={isEditing} type="select"
+              options={['', '有', '无', '不确定']}
+              onChange={v => setFormData({...formData, hasChinaHighSchoolRecord: v})} />
+            {/* 海外认证（多选） — 占整行 */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1" style={{ color: isEditing ? tokens.colors.text.secondary : tokens.colors.text.muted }}>
+                可开具的海外认证
+              </label>
+              {isEditing ? (
+                <div className="flex flex-wrap gap-2">
+                  {['Cognia', 'WASC', 'CIS', 'NEASC/MSA', 'COBIS/BSO', 'IB'].map(cert => {
+                    const checked = formData.overseasCertifications.includes(cert);
+                    return (
+                      <label key={cert}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition select-none"
+                        style={{
+                          background: checked
+                            ? (isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.1)')
+                            : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                          color: checked ? '#3b82f6' : tokens.colors.text.secondary,
+                          border: checked ? '1px solid #3b82f6' : `1px solid ${tokens.colors.border.subtle}`,
+                        }}>
+                        <input type="checkbox" checked={checked}
+                          onChange={e => {
+                            const next = e.target.checked
+                              ? [...formData.overseasCertifications, cert]
+                              : formData.overseasCertifications.filter(c => c !== cert);
+                            setFormData({...formData, overseasCertifications: next});
+                          }}
+                          className="w-3.5 h-3.5" />
+                        {cert}
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-themed-primary font-medium flex flex-wrap gap-1.5">
+                  {formData.overseasCertifications.length > 0
+                    ? formData.overseasCertifications.map(cert => (
+                        <span key={cert} className="px-2 py-0.5 rounded text-xs" style={{
+                          background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)',
+                          color: '#3b82f6',
+                        }}>{cert}</span>
+                      ))
+                    : <span className="text-themed-muted">-</span>}
+                </div>
+              )}
+            </div>
             <InfoField label="在读语言学校" value={formData.languageSchool} editing={isEditing}
               placeholder="请输入语言学校名称"
               onChange={v => setFormData({...formData, languageSchool: v})} />

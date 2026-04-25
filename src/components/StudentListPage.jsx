@@ -26,7 +26,6 @@ const StudentListPage = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('all');
-  const [filterTeacherType, setFilterTeacherType] = useState('shengxue'); // shengxue | xueguan
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all'); // all | assigned | unassigned
   const [viewMode, setViewMode] = useState('card'); // card | table
@@ -63,20 +62,14 @@ const StudentListPage = ({
         const tagMatch = (s.tags || []).some(t => t.toLowerCase().includes(q));
         if (!nameMatch && !idMatch && !tagMatch) return false;
       }
-      // 按老师筛选
+      // 按老师筛选（不再区分升学/学管，一个老师可能同时是升学和学管，只要 OR 匹配两个字段即可）
       if (filterTeacher !== 'all') {
         if (filterTeacher === 'unassigned') {
-          if (filterTeacherType === 'shengxue') {
-            if (s.teacherId && s.teacherId !== 'unassigned') return false;
-          } else {
-            if (s.academicAdvisorId) return false;
-          }
+          // 待分配 = 既没有升学老师也没有学管老师
+          if ((s.teacherId && s.teacherId !== 'unassigned') || s.academicAdvisorId) return false;
         } else {
-          if (filterTeacherType === 'shengxue') {
-            if (s.teacherId !== filterTeacher) return false;
-          } else {
-            if (s.academicAdvisorId !== filterTeacher) return false;
-          }
+          // 匹配该老师作为升学老师 或 学管老师
+          if (s.teacherId !== filterTeacher && s.academicAdvisorId !== filterTeacher) return false;
         }
       }
       // 按文理科筛选
@@ -194,30 +187,16 @@ const StudentListPage = ({
               className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
-          {/* 老师类型切换 + 老师筛选 */}
+          {/* 老师筛选 */}
           {user.role === 'admin' && (
-            <div className="flex items-center gap-1">
-              <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
-                <button onClick={() => { setFilterTeacherType('shengxue'); setFilterTeacher('all'); }}
-                  className="px-2.5 py-2 text-xs transition font-medium"
-                  style={{ background: filterTeacherType === 'shengxue' ? (isDark ? 'rgba(99,102,241,0.15)' : 'rgba(59,130,246,0.1)') : 'transparent', color: filterTeacherType === 'shengxue' ? tokens.colors.accent.primary : tokens.colors.text.muted }}>
-                  升学
-                </button>
-                <button onClick={() => { setFilterTeacherType('xueguan'); setFilterTeacher('all'); }}
-                  className="px-2.5 py-2 text-xs transition font-medium"
-                  style={{ background: filterTeacherType === 'xueguan' ? (isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)') : 'transparent', color: filterTeacherType === 'xueguan' ? '#22c55e' : tokens.colors.text.muted }}>
-                  学管
-                </button>
-              </div>
-              <select value={filterTeacher} onChange={(e) => setFilterTeacher(e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
-                <option value="all">{filterTeacherType === 'shengxue' ? '所有升学老师' : '所有学管老师'}</option>
-                {teachers.map(t => (
-                  <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>
-                ))}
-                <option value="unassigned">待分配</option>
-              </select>
-            </div>
+            <select value={filterTeacher} onChange={(e) => setFilterTeacher(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+              <option value="all">所有老师</option>
+              {teachers.map(t => (
+                <option key={t.id || t.teacherId} value={t.id || t.teacherId}>{t.name}</option>
+              ))}
+              <option value="unassigned">待分配</option>
+            </select>
           )}
           {/* 文理科筛选 */}
           <select value={filterSubject} onChange={(e) => setFilterSubject(e.target.value)}

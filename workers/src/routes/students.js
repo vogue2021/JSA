@@ -37,6 +37,8 @@ function formatStudent(row) {
     hasAccount: Boolean(row.has_account),
     isActive: Boolean(row.is_active !== 0),
     xuebangId: row.xuebang_id || '',
+    hasChinaHighSchoolRecord: row.has_china_high_school_record || '',
+    overseasCertifications: (() => { try { return JSON.parse(row.overseas_certifications || '[]') } catch { return [] } })(),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -275,7 +277,8 @@ students.put('/:id', async (c) => {
   const updatable = ['name', 'email', 'birthday', 'high_school', 'language_school',
     'lang_school_shift', 'phone',
     'jlpt_score', 'english_score', 'photo',
-    'package_name', 'package_end_date', 'subject']
+    'package_name', 'package_end_date', 'subject',
+    'has_china_high_school_record']
 
   updatable.forEach(f => {
     if (body[f] !== undefined) { fields.push(`${f} = ?`); params.push(body[f]) }
@@ -286,6 +289,7 @@ students.put('/:id', async (c) => {
   if (body.jlpt_scores !== undefined) { fields.push('jlpt_scores = ?'); params.push(JSON.stringify(body.jlpt_scores)) }
   if (body.english_scores !== undefined) { fields.push('english_scores = ?'); params.push(JSON.stringify(body.english_scores)) }
   if (body.tags !== undefined) { fields.push('tags = ?'); params.push(JSON.stringify(body.tags)) }
+  if (body.overseas_certifications !== undefined) { fields.push('overseas_certifications = ?'); params.push(JSON.stringify(body.overseas_certifications)) }
   if (body.follow_up_notes !== undefined) {
     fields.push('follow_up_notes = ?')
     params.push(typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes))

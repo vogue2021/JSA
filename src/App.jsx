@@ -366,7 +366,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalInitTab, setSettingsModalInitTab] = useState(null);
   const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
-  const [showChangelogPanel, setShowChangelogPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const [deadlineReminders, setDeadlineReminders] = useState([]); // 截止日提醒列表
@@ -4320,15 +4319,6 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   )}
                   <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="my-1" />
                   <button
-                    onClick={() => { setShowSidebarUserMenu(false); setShowChangelogPanel(true); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
-                    style={{ color: tokens.colors.text.secondary }}
-                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <FileText size={16} style={{ color: tokens.colors.text.muted }} /> 版本日志
-                  </button>
-                  <button
                     onClick={() => { setShowSidebarUserMenu(false); setShowFeedbackPanel(true); }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition"
                     style={{ color: tokens.colors.text.secondary }}
@@ -4944,114 +4934,6 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         </div>
       )}
 
-      {/* 版本日志弹窗 */}
-      {showChangelogPanel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={() => setShowChangelogPanel(false)}>
-          <div className="rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-scale-in" style={{
-            background: glassEnabled ? tokens.colors.surface.glass : (isDark ? tokens.colors.surface.solid : '#fff'),
-            backdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
-            WebkitBackdropFilter: glassEnabled ? `blur(${tokens.blur.backdropBlur}px)` : 'none',
-            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
-            boxShadow: glassEnabled ? tokens.shadow.elevation : '0 20px 60px rgba(0,0,0,0.3)',
-          }} onClick={e => e.stopPropagation()}>
-            <div className="p-5" style={{ borderBottom: `1px solid ${tokens.colors.border.hairline}` }}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><FileText size={20} /> 版本更新日志</h3>
-                <button onClick={() => setShowChangelogPanel(false)} className="p-1 rounded-lg transition" style={{ color: tokens.colors.text.muted }}
-                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><X size={18} /></button>
-              </div>
-            </div>
-            <div className="p-5 space-y-4">
-              {[
-                { version: 'v2.0.0', date: '2026-02-28', changes: [
-                  '🆕 学部入试流程适配：申请状态从「已联系」改为「已出愿」，符合学部升学流程',
-                  '🆕 事件类型移除「联系」类型，新增「面试」类型；事件分类移除「研究室联系」，新增「校内考」「面试」',
-                  '🆕 管理员可查看用户反馈记录（左下角菜单→查看反馈），支持清空操作',
-                  '✏️ 默认数据中研究科全部改为学部名称（如工学研究科→工学部）',
-                  '✏️ 研究计划书材料改为志望理由书，京都大学教授联系事件改为校内考准备',
-                  '✏️ 学校信息库8所学校的programs字段全部改为学部名称',
-                  '🐛 修复CalendarView重复interview键的问题',
-                ]},
-                { version: 'v1.9.0', date: '2026-02-28', changes: [
-                  '🆕 老师部门划分：所属部门改为下拉选择（学部升学组/学管/教务/其他）',
-                  '🆕 学生信息页面新增文理科字段的展示和编辑',
-                  '✏️ 升学老师选择器仅显示学部升学组老师，学管老师选择器仅显示学管老师',
-                  '✏️ 默认老师数据预设部门信息（teacher_1~5为学部升学组，teacher_6~7为学管）',
-                  '🐛 修复反馈发送逻辑（mailto链接触发方式优化 + localStorage备份记录 + toast通知）',
-                ]},
-                { version: 'v1.8.0', date: '2026-02-28', changes: [
-                  '🆕 近期可报学校改为弹窗展示（避免缩放问题）',
-                  '🆕 学校信息库/志愿学校新增【所需材料】字段',
-                  '✏️ 出愿时间判断仅基于出愿开始时间（不参考考试/截止时间）',
-                  '✏️ 志愿学校删除【学校名称(日文)】字段',
-                  '🐛 修复弹出菜单溢出裁切导致版本日志/反馈建议不可见',
-                ]},
-                { version: 'v1.7.0', date: '2026-02-28', changes: [
-                  '🆕 版本日志和反馈建议移至左下角快捷菜单',
-                  '🆕 学校信息库新增「学信网认证」和「海外认证」字段',
-                  '🐛 修复 localStorage 缓存导致新学管老师/菜单分组不显示的问题',
-                  '✏️ 出愿时间（文字描述）字段替换为认证需求字段',
-                ]},
-                { version: 'v1.6.0', date: '2026-02-28', changes: [
-                  '🆕 设置页新增「版本更新日志」和「反馈与建议」tab',
-                  '🆕 新增学管老师专职账号（高老师、林老师）',
-                  '✏️ 升学老师改为可编辑（学生信息页）',
-                  '✏️ 左侧菜单栏按功能分组展示',
-                  '🐛 近期可报学校：学生页面隐藏"已申请该校的学生"',
-                  '🐛 修复卡片展开冲突',
-                  '💅 学校详情弹窗改为玻璃拟态风格',
-                ]},
-                { version: 'v1.5.0', date: '2026-02-28', changes: [
-                  '🆕 近期可报学校页面（按月份展示可报考学校）',
-                  '✏️ 取消学生自注册，改为管理员后台创建',
-                  '🐛 数据库实时同步修复（统一AppContext数据源）',
-                  '✏️ 操作反馈提示完善（toast通知）',
-                ]},
-                { version: 'v1.4.0', date: '2026-02-28', changes: [
-                  '💅 全站弹窗/表单glass风格改造',
-                  '💅 深度暗色适配',
-                  '✏️ 邮箱认证流程完善',
-                  '📊 全新测试数据集（12学生+9账号）',
-                ]},
-                { version: 'v1.3.0', date: '2026-02-28', changes: [
-                  '💅 全站UI统一改造（玻璃拟态风格）',
-                  '🌓 全站暗色模式适配',
-                  '🎨 语义化颜色主题系统重构',
-                ]},
-                { version: 'v1.0.0', date: '2026-01-31', changes: [
-                  '🎉 基础登录系统（学生/老师/管理员）',
-                  '📅 时间线管理功能（CRUD）',
-                  '🏫 学校申请跟踪',
-                  '📋 材料清单管理',
-                ]},
-              ].map((release, idx) => (
-                <div key={idx} className="rounded-xl p-4" style={{
-                  background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
-                  border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}`,
-                }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-sm font-bold px-2.5 py-1 rounded-lg" style={{
-                      background: idx === 0 ? (isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)') : (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)'),
-                      color: idx === 0 ? '#22c55e' : tokens.colors.accent.primary,
-                    }}>{release.version} {idx === 0 && '🆕 最新'}</span>
-                    <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{release.date}</span>
-                  </div>
-                  <ul className="space-y-1.5">
-                    {release.changes.map((c, ci) => (
-                      <li key={ci} className="text-sm flex items-start gap-2" style={{ color: tokens.colors.text.secondary }}>
-                        <span className="mt-0.5 text-xs">•</span><span>{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 反馈建议弹窗 */}
       {/* 截止日提醒弹窗（仅学生端） */}
       {showDeadlineReminder && deadlineReminders.length > 0 && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
