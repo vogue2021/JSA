@@ -30,6 +30,9 @@ const serialize = (row) => ({
   category: row.category || '',
   tags: safeJsonArray(row.tags),
   is_public: row.is_public === 1 || row.is_public === true,
+  resource_type: row.resource_type === 'link' ? 'link' : 'markdown',
+  url: row.url || '',
+  description: row.description || '',
   author_id: row.author_id || '',
   author_name: row.author_name || '',
   updated_by: row.updated_by || '',
@@ -95,10 +98,22 @@ studyResources.post('/', async (c) => {
   if (!canEdit(user)) return c.json({ success: false, message: '无权创建资料' }, 403)
 
   const body = await c.req.json().catch(() => ({}))
-  const { title, content = '', category = '', tags = [], is_public = false } = body
+  const {
+    title, content = '', category = '', tags = [], is_public = false,
+    resource_type = 'markdown', url = '', description = '',
+  } = body
 
   if (!title || !String(title).trim()) {
     return c.json({ success: false, message: '标题不能为空' }, 400)
+  }
+
+  const rType = resource_type === 'link' ? 'link' : 'markdown'
+  if (rType === 'link') {
+    const u = String(url || '').trim()
+    if (!u) return c.json({ success: false, message: '链接类型资料必须提供 URL' }, 400)
+    if (!/^https?:\/\//i.test(u)) {
+      return c.json({ success: false, message: 'URL 必须以 http:// 或 https:// 开头' }, 400)
+    }
   }
 
   const db = c.env.DB
@@ -108,14 +123,18 @@ studyResources.post('/', async (c) => {
 
   const result = await db.prepare(`
     INSERT INTO study_resources
-      (title, content, category, tags, is_public, author_id, author_name, updated_by, updated_by_name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (title, content, category, tags, is_public, resource_type, url, description,
+       author_id, author_name, updated_by, updated_by_name, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     String(title).trim(),
-    String(content || ''),
+    rType === 'link' ? '' : String(content || ''),
     String(category || ''),
     JSON.stringify(Array.isArray(tags) ? tags : []),
     is_public ? 1 : 0,
+    rType,
+    rType === 'link' ? String(url).trim() : '',
+    String(description || ''),
     authorId,
     authorName,
     authorId,
@@ -146,8 +165,26 @@ studyResources.put('/:id', async (c) => {
   const nextTitle = body.title !== undefined ? String(body.title).trim() : row.title
   if (!nextTitle) return c.json({ success: false, message: '标题不能为空' }, 400)
 
-  const nextContent = body.content !== undefined ? String(body.content || '') : (row.content || '')
+  const nextType = body.resource_type !== undefined
+    ? (body.resource_type === 'link' ? 'link' : 'markdown')
+    : (row.resource_type === 'link' ? 'link' : 'markdown')
+
+  // URL 校验：link 类型必须有有效 URL
+  let nextUrl = body.url !== undefined ? String(body.url || '').trim() : (row.url || '')
+  if (nextType === 'link') {
+    if (!nextUrl) return c.json({ success: false, message: '链接类型资料必须提供 URL' }, 400)
+    if (!/^https?:\/\//i.test(nextUrl)) {
+      return c.json({ success: false, message: 'URL 必须以 http:// 或 https:// 开头' }, 400)
+    }
+  } else {
+    nextUrl = ''
+  }
+
+  const nextContent = nextType === 'link'
+    ? ''
+    : (body.content !== undefined ? String(body.content || '') : (row.content || ''))
   const nextCategory = body.category !== undefined ? String(body.category || '') : (row.category || '')
+  const nextDescription = body.description !== undefined ? String(body.description || '') : (row.description || '')
   const nextTags = body.tags !== undefined
     ? JSON.stringify(Array.isArray(body.tags) ? body.tags : [])
     : (row.tags || '[]')
@@ -157,10 +194,12 @@ studyResources.put('/:id', async (c) => {
   await db.prepare(`
     UPDATE study_resources SET
       title = ?, content = ?, category = ?, tags = ?, is_public = ?,
+      resource_type = ?, url = ?, description = ?,
       updated_by = ?, updated_by_name = ?, updated_at = ?
     WHERE id = ?
   `).bind(
     nextTitle, nextContent, nextCategory, nextTags, nextPublic,
+    nextType, nextUrl, nextDescription,
     String(user.id || ''), user.name || '', now,
     id,
   ).run()
