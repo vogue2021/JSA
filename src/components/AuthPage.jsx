@@ -260,35 +260,42 @@ const AuthPage = ({ onLogin }) => {
             </p>
           </div>
 
-          {/* 测试账号提示 */}
-          <div className="mt-6 p-4 rounded-xl text-xs"
-            style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${tokens.colors.border.subtle}`, color: tokens.colors.text.secondary }}>
-            <p className="font-semibold mb-2">测试账号（数据存储于 Cloudflare D1）：</p>
-            {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
-            {userType === 'teacher' && (
-              <>
-                <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师：</p>
-                <p>王老师: wang@school.com / wang123</p>
-                <p>李老师: li@school.com / li123</p>
-                <p>张老师: zhang@school.com / zhang123</p>
-                <p>陈老师: chen@school.com / chen123</p>
-                <p>赵老师: zhao@school.com / zhao123</p>
-                <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>学管老师：</p>
-                <p>高老师: gao@school.com / gao123</p>
-                <p>林老师: lin@school.com / lin123</p>
-              </>
-            )}
-            {userType === 'student' && (
-              <>
-                <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>邮箱登录：</p>
-                <p>张三: zhangsan@student.jsa.com / stu2024001</p>
-                <p>李四: lisi@student.jsa.com / stu2024002</p>
-                <p>王五: wangwu@student.jsa.com / stu2024003</p>
-                <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>明学手机号登录：</p>
-                <p>输入明学手机号和验证码即可</p>
-              </>
-            )}
-          </div>
+          {/* 测试账号提示 —— 仅非生产环境显示（需求37：正式环境隐藏） */}
+          {(() => {
+            const appEnv = import.meta.env.VITE_APP_ENV;
+            const isProduction = !appEnv || appEnv === 'production';
+            if (isProduction) return null;
+            return (
+              <div className="mt-6 p-4 rounded-xl text-xs"
+                style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${tokens.colors.border.subtle}`, color: tokens.colors.text.secondary }}>
+                <p className="font-semibold mb-2">测试账号（数据存储于 Cloudflare D1）：</p>
+                {userType === 'admin' && <p>邮箱: admin@jsa.com 密码: admin123</p>}
+                {userType === 'teacher' && (
+                  <>
+                    <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>升学老师：</p>
+                    <p>王老师: wang@school.com / wang123</p>
+                    <p>李老师: li@school.com / li123</p>
+                    <p>张老师: zhang@school.com / zhang123</p>
+                    <p>陈老师: chen@school.com / chen123</p>
+                    <p>赵老师: zhao@school.com / zhao123</p>
+                    <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>学管老师：</p>
+                    <p>高老师: gao@school.com / gao123</p>
+                    <p>林老师: lin@school.com / lin123</p>
+                  </>
+                )}
+                {userType === 'student' && (
+                  <>
+                    <p className="font-medium mb-1" style={{ color: tokens.colors.text.muted }}>邮箱登录：</p>
+                    <p>张三: zhangsan@student.jsa.com / stu2024001</p>
+                    <p>李四: lisi@student.jsa.com / stu2024002</p>
+                    <p>王五: wangwu@student.jsa.com / stu2024003</p>
+                    <p className="font-medium mt-2 mb-1" style={{ color: tokens.colors.text.muted }}>明学手机号登录：</p>
+                    <p>输入明学手机号和验证码即可</p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
