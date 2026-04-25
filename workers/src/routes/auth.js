@@ -249,8 +249,26 @@ auth.post('/login', async (c) => {
         })
         mingxueResult = await resp.json()
 
-        if (!resp.ok || (mingxueResult.code !== undefined && mingxueResult.code !== 0)) {
-          const errMsg = mingxueResult.message || mingxueResult.msg || '账号或验证码错误'
+        // HTTP 层错误（网络/鉴权等）
+        if (!resp.ok) {
+          console.error('Mingxue API non-2xx:', resp.status, mingxueResult)
+          return c.json({ success: false, message: '明学服务异常，请稍后重试' }, 502)
+        }
+
+        // 业务层错误 — Coze 返回 HTTP 200 但校验失败时格式为：
+        //   { is_student: false, error_message: "..." }  或  { is_student: false, ... }
+        // 兼容老格式 { code != 0, message }
+        const bizFail =
+          mingxueResult.is_student === false ||
+          !!mingxueResult.error_message ||
+          (mingxueResult.code !== undefined && mingxueResult.code !== 0)
+
+        if (bizFail) {
+          const errMsg =
+            mingxueResult.error_message ||
+            mingxueResult.message ||
+            mingxueResult.msg ||
+            '账号或验证码错误'
           return c.json({ success: false, message: errMsg }, 401)
         }
       } catch (fetchErr) {
@@ -259,10 +277,17 @@ auth.post('/login', async (c) => {
       }
 
       // 从 API 返回中提取用户信息
-      // Coze API 返回格式可能是 { data: { ... } } 或直接返回用户信息
-      const mingxueData = mingxueResult.data || mingxueResult
-      const mingxueId = String(mingxueData.id || mingxueData.user_id || phoneNumber)
-      const mingxueName = mingxueData.name || mingxueData.username || phoneNumber
+      // Coze API 成功返回格式为 { is_student: true, student_info: { id, name, ... } }
+      // 兼容可能的 { data: {...} } 或直接返回用户信息的老格式
+      const mingxueData =
+        mingxueResult.student_info ||
+        mingxueResult.data ||
+        mingxueResult
+      const mingxueId = String(
+        mingxueData.id || mingxueData.user_id || mingxueData.student_id || phoneNumber
+      )
+      const mingxueName =
+        mingxueData.name || mingxueData.username || mingxueData.student_name || phoneNumber
 
       // 查找已关联的 JSA 用户
       let user = await db.prepare(
