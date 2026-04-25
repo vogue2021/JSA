@@ -171,6 +171,7 @@ const Dashboard = ({
     const teacherStudentMap = {}; // teacherId -> [students]
     const schoolTypeMap = {}; // 国立/公立/私立 -> count
     const statusCounts = { not_started: 0, preparing: 0, applied: 0, submitted: 0, admitted: 0, rejected: 0 };
+    const studentMaterialProgress = []; // [{ studentId, name, total, completed, percent }]
 
     // 一次性读取 studentData 大对象（App.jsx 将所有学生数据存储在此）
     let allStudentDataParsed = null;
@@ -226,8 +227,19 @@ const Dashboard = ({
         // 聚合材料
         const cl = data.checklist || {};
         const generalItems = cl.general || [];
-        totalMaterials += generalItems.length;
-        completedMaterials += generalItems.filter(i => i.completed).length;
+        const perStudentTotal = generalItems.length;
+        const perStudentCompleted = generalItems.filter(i => i.completed).length;
+        totalMaterials += perStudentTotal;
+        completedMaterials += perStudentCompleted;
+        if (perStudentTotal > 0) {
+          studentMaterialProgress.push({
+            studentId: student.studentId,
+            name: student.name,
+            total: perStudentTotal,
+            completed: perStudentCompleted,
+            percent: Math.round(perStudentCompleted / perStudentTotal * 100),
+          });
+        }
       } catch {
         // 解析失败时静默忽略
       }
@@ -266,6 +278,7 @@ const Dashboard = ({
       schoolTypeMap,
       teacherStudentMap,
       allSchoolApps,
+      studentMaterialProgress,
     };
   }, [visibleStudents, teachers]);
 
@@ -668,6 +681,110 @@ const Dashboard = ({
             <Users size={isMobile ? 16 : 18} style={{ color: tokens.colors.accent.secondary }} /> 老师名下学生分布
           </h3>
           <BarChartSVG data={teacherBarData} height={isMobile ? 150 : 200} />
+        </div>
+      )}
+
+      {/* 材料准备进度可视化 —— Sprint1 需求② */}
+      {(aggregatedData.totalMaterials > 0 || aggregatedData.studentMaterialProgress.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          {/* 总体环形进度图 */}
+          <div className={`glass-panel ${isMobile ? 'p-4' : 'p-5'}`}>
+            <h3 className="font-bold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <CheckSquare size={isMobile ? 16 : 18} style={{ color: '#a855f7' }} /> 材料准备总进度
+            </h3>
+            <div className="flex items-center justify-center py-2">
+              {(() => {
+                const size = isMobile ? 140 : 180;
+                const stroke = isMobile ? 14 : 18;
+                const r = (size - stroke) / 2;
+                const cx = size / 2;
+                const cy = size / 2;
+                const circumference = 2 * Math.PI * r;
+                const percent = aggregatedData.materialProgress || 0;
+                const dashOffset = circumference * (1 - percent / 100);
+                const trackColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+                return (
+                  <div className="relative" style={{ width: size, height: size }}>
+                    <svg width={size} height={size}>
+                      <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill="none"
+                        stroke="#a855f7"
+                        strokeWidth={stroke}
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={dashOffset}
+                        transform={`rotate(-90 ${cx} ${cy})`}
+                        style={{ transition: 'stroke-dashoffset 600ms cubic-bezier(0.16,1,0.3,1)' }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <div className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold`} style={{ color: tokens.colors.text.primary }}>
+                        {percent}%
+                      </div>
+                      <div className="text-[11px] sm:text-xs mt-1" style={{ color: tokens.colors.text.muted }}>
+                        {aggregatedData.completedMaterials}/{aggregatedData.totalMaterials} 项完成
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            {aggregatedData.studentMaterialProgress.length > 0 && (
+              <div className="flex justify-center gap-4 mt-2 text-[11px] sm:text-xs" style={{ color: tokens.colors.text.muted }}>
+                <span>学生数：{aggregatedData.studentMaterialProgress.length}</span>
+                <span>平均完成率：{Math.round(aggregatedData.studentMaterialProgress.reduce((s, x) => s + x.percent, 0) / aggregatedData.studentMaterialProgress.length)}%</span>
+              </div>
+            )}
+          </div>
+
+          {/* 按学生 Top N 材料完成率条形图 */}
+          <div className={`glass-panel ${isMobile ? 'p-4' : 'p-5'}`}>
+            <h3 className="font-bold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+              <BarChart3 size={isMobile ? 16 : 18} style={{ color: '#a855f7' }} /> 学生材料完成率
+              <span className="text-[11px] font-normal px-2 py-0.5 rounded-full" style={{
+                background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)',
+                color: tokens.colors.accent.secondary,
+              }}>
+                Top {Math.min(isMobile ? 6 : 10, aggregatedData.studentMaterialProgress.length)}
+              </span>
+            </h3>
+            {aggregatedData.studentMaterialProgress.length === 0 ? (
+              <div className="text-center py-10 text-xs" style={{ color: tokens.colors.text.muted }}>
+                暂无学生材料数据
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {[...aggregatedData.studentMaterialProgress]
+                  .sort((a, b) => b.percent - a.percent)
+                  .slice(0, isMobile ? 6 : 10)
+                  .map(s => {
+                    const barColor = s.percent >= 80 ? '#22c55e'
+                                   : s.percent >= 50 ? '#3b82f6'
+                                   : s.percent >= 30 ? '#eab308'
+                                   : '#ef4444';
+                    return (
+                      <div key={s.studentId}>
+                        <div className="flex items-center justify-between text-[11px] sm:text-xs mb-1">
+                          <span className="font-medium truncate max-w-[60%]" style={{ color: tokens.colors.text.primary }}>{s.name}</span>
+                          <span style={{ color: tokens.colors.text.muted }}>{s.completed}/{s.total} · <span style={{ color: barColor, fontWeight: 600 }}>{s.percent}%</span></span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}>
+                          <div className="h-full rounded-full" style={{
+                            width: `${s.percent}%`,
+                            background: barColor,
+                            transition: 'width 600ms cubic-bezier(0.16,1,0.3,1)',
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
