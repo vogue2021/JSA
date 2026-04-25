@@ -27,6 +27,10 @@ const emptyForm = {
   importantDates: [], // 支持多组日期（一审、二审等）
   requirementsUrl: '',
   requiredMaterials: [], // 所需材料列表
+  // 需求27.1 / 28.1：募集要项年度更新状态
+  requirementsYear: '',           // 参考年度，如 '2026' 或 '2025（沿用去年）'
+  requirementsUpdated: false,     // true = 已更新到最新年度，false = 沿用去年要项
+  requirementsUpdatedAt: '',      // 最后更新日期 YYYY-MM-DD
 };
 
 const SchoolDatabase = () => {
@@ -48,6 +52,7 @@ const SchoolDatabase = () => {
   };
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [filterUpdateStatus, setFilterUpdateStatus] = useState('all'); // all | updated | outdated
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSchool, setEditingSchool] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -98,7 +103,11 @@ const SchoolDatabase = () => {
   const filteredSchools = schoolDb.filter(s => {
     const matchSearch = s.name.includes(searchQuery) || s.location?.includes(searchQuery);
     const matchType = filterType === 'all' || s.type === filterType;
-    return matchSearch && matchType;
+    const matchUpdate =
+      filterUpdateStatus === 'all' ||
+      (filterUpdateStatus === 'updated' && s.requirementsUpdated) ||
+      (filterUpdateStatus === 'outdated' && !s.requirementsUpdated);
+    return matchSearch && matchType && matchUpdate;
   });
 
   const openEdit = (school) => {
@@ -283,6 +292,31 @@ const SchoolDatabase = () => {
             </button>
           ))}
         </div>
+        {/* 募集要项更新状态筛选（需求 28.1） */}
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'all', label: '全部要项' },
+            { value: 'updated', label: '✅ 已更新', color: '#22c55e', bg: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' },
+            { value: 'outdated', label: '⏳ 沿用去年', color: '#f59e0b', bg: isDark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.1)' },
+          ].map(opt => {
+            const active = filterUpdateStatus === opt.value;
+            return (
+              <button key={opt.value} onClick={() => setFilterUpdateStatus(opt.value)}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition"
+                style={{
+                  background: active
+                    ? (opt.bg || tokens.colors.accent.primary)
+                    : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                  color: active
+                    ? (opt.color || tokens.colors.text.inverse)
+                    : tokens.colors.text.secondary,
+                  border: active && opt.color ? `1px solid ${opt.color}` : `1px solid ${tokens.colors.border.subtle}`,
+                }}>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* 统计 */}
@@ -335,6 +369,20 @@ const SchoolDatabase = () => {
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold text-lg">{school.name}</h3>
                     <span className="text-xs px-2 py-1 rounded-full" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}>{school.type}</span>
+                    {/* 募集要项更新状态徽章（需求 28.1） */}
+                    {school.requirementsUpdated ? (
+                      <span className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1"
+                        style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+                        title={school.requirementsUpdatedAt ? `更新于 ${school.requirementsUpdatedAt}` : '要项已更新'}>
+                        ✅ 要项已更新{school.requirementsYear ? ` · ${school.requirementsYear}` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1"
+                        style={{ background: isDark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+                        title="当前仍沿用去年募集要项，请关注官网">
+                        ⏳ 沿用去年{school.requirementsYear ? ` · ${school.requirementsYear}` : ''}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-themed-secondary flex-wrap">
                     {school.location && <span className="flex items-center gap-1"><MapPin size={14} /> {school.location}</span>}
@@ -481,6 +529,40 @@ const SchoolDatabase = () => {
                 <label className="block text-sm font-medium mb-1">募集要项URL</label>
                 <input type="url" value={formData.requirementsUrl || ''} onChange={e => setFormData({...formData, requirementsUrl: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg" placeholder="学校官方招生信息链接" />
+              </div>
+
+              {/* 募集要项年度更新状态（需求 28.1） */}
+              <div className="p-4 bg-themed-elevated rounded-lg space-y-3">
+                <h4 className="font-semibold text-sm text-themed-primary flex items-center gap-2">
+                  <Calendar size={16} /> 募集要项更新状态
+                </h4>
+                <p className="text-xs text-themed-muted">
+                  日本大学每年募集要项在报名前几个月更新。未更新时一般沿用去年要项（变化较小），可在此标记进度。
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-themed-secondary">参考年度</label>
+                    <input type="text" value={formData.requirementsYear || ''}
+                      onChange={e => setFormData({...formData, requirementsYear: e.target.value})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                      placeholder="例：2026" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-themed-secondary">更新状态</label>
+                    <select value={formData.requirementsUpdated ? 'yes' : 'no'}
+                      onChange={e => setFormData({...formData, requirementsUpdated: e.target.value === 'yes'})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm">
+                      <option value="no">⏳ 沿用去年（未更新）</option>
+                      <option value="yes">✅ 已更新到最新年度</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-themed-secondary">最后更新日期</label>
+                    <input type="date" value={formData.requirementsUpdatedAt || ''}
+                      onChange={e => setFormData({...formData, requirementsUpdatedAt: e.target.value})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                </div>
               </div>
 
               {/* 重要日期（可添加多组，支持一审、二审等） */}

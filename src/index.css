@@ -545,3 +545,78 @@ input[type="range"]::-moz-range-thumb {
     animation: none !important;
   }
 }
+
+/* ==================== 手机端适配（需求 28.2） ==================== */
+
+@media (max-width: 767px) {
+  /* 1. 防止输入框聚焦时 iOS 自动放大页面（字号必须 ≥ 16px） */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="month"],
+  input[type="time"],
+  input[type="week"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* 2. 防止 flex 容器溢出屏幕 —— 常见原因是 flex 子项 min-width: auto */
+  main, .glass-panel, .glass-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* 3. 全局容器溢出保护：任何元素不会超出视口宽度 */
+  body, #root {
+    overflow-x: hidden;
+  }
+
+  /* 4. 表格横向滚动：防止宽表被挤压 */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 5. 弹窗在小屏自动满屏（fix inset-0 容器里的 max-w-xxx 不会让弹窗过于拥挤） */
+  .modal-mobile-full {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+  }
+
+  /* 6. 触摸目标最小尺寸（Apple HIG 建议 44×44pt） */
+  button, .btn, [role="button"] {
+    min-height: 36px;
+  }
+
+  /* 7. 长字符串自动换行（姓名 / 学校名 等） */
+  .truncate-mobile-wrap {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
+  }
+
+  /* 8. 主页面内容容器在手机端减少横向 padding（留出更多内容空间） */
+  .max-w-7xl {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
+
+/* iOS safe-area（刘海屏 / Home Bar） */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
