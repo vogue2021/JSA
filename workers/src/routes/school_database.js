@@ -7,7 +7,26 @@ const schoolDatabase = new Hono()
 const isAdmin = (user) => user?.role === 'admin'
 const isTeacher = (user) => user?.role === 'teacher'
 
-// ─── 获取所有学校信息 ─────────────────────────────────────────────────────────
+// 将数据库行转换为前端格式（camelCase + JSON 解析）
+function formatSchool(r) {
+  if (!r) return null
+  return {
+    ...r,
+    nameJa: r.name_ja || '',
+    acceptanceRate: r.acceptance_rate || '',
+    requirementsUrl: r.requirements_url || '',
+    xuexinCert: r.xuexin_cert || '不确定',
+    overseasCert: r.overseas_cert || '不确定',
+    requirementsYear: r.requirements_year || '',
+    requirementsUpdated: Boolean(r.requirements_updated),
+    requirementsUpdatedAt: r.requirements_updated_at || '',
+    programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
+    importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
+    requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),
+  }
+}
+
+// ─── 获取所有学校信息 ───────────────────────────────────────────────
 schoolDatabase.get('/', async (c) => {
   const { type, search } = c.req.query()
   const db = c.env.DB
@@ -27,25 +46,10 @@ schoolDatabase.get('/', async (c) => {
 
   const { results } = await db.prepare(sql).bind(...params).all()
 
-  // 解析 JSON 字段并标准化为 camelCase
-  const data = results.map(r => ({
-    ...r,
-    nameJa: r.name_ja || '',
-    acceptanceRate: r.acceptance_rate || '',
-    requirementsUrl: r.requirements_url || '',
-    xuexinCert: r.xuexin_cert || '不确定',
-    overseasCert: r.overseas_cert || '不确定',
-    requirementsYear: r.requirements_year || '',
-    requirementsUpdated: Boolean(r.requirements_updated),
-    requirementsUpdatedAt: r.requirements_updated_at || '',
-    programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
-    importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
-    requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),
-  }))
+  const data = results.map(formatSchool)
 
   return c.json({ success: true, data })
 })
-
 // ─── 获取单个学校信息 ─────────────────────────────────────────────────────────
 schoolDatabase.get('/:id', async (c) => {
   const { id } = c.req.param()
@@ -54,21 +58,8 @@ schoolDatabase.get('/:id', async (c) => {
   const school = await db.prepare('SELECT * FROM school_database WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
 
-  // 标准化为 camelCase，与 GET / 返回格式一致
-  const data = {
-    ...school,
-    nameJa: school.name_ja || '',
-    acceptanceRate: school.acceptance_rate || '',
-    requirementsUrl: school.requirements_url || '',
-    xuexinCert: school.xuexin_cert || '不确定',
-    overseasCert: school.overseas_cert || '不确定',
-    requirementsYear: school.requirements_year || '',
-    requirementsUpdated: Boolean(school.requirements_updated),
-    requirementsUpdatedAt: school.requirements_updated_at || '',
-    programs: (() => { try { return JSON.parse(school.programs || '[]') } catch { return [] } })(),
-    importantDates: (() => { try { return JSON.parse(school.important_dates || '[]') } catch { return [] } })(),
-    requiredMaterials: (() => { try { return JSON.parse(school.required_materials || '[]') } catch { return [] } })(),
-  }
+  // 统一使用 formatSchool 转为 camelCase
+  const data = formatSchool(school)
 
   return c.json({ success: true, data })
 })
@@ -112,13 +103,7 @@ schoolDatabase.post('/', async (c) => {
     'SELECT * FROM school_database ORDER BY id DESC LIMIT 1'
   ).first()
 
-  if (newSchool) {
-    newSchool.programs = (() => { try { return JSON.parse(newSchool.programs || '[]') } catch { return [] } })()
-    newSchool.importantDates = (() => { try { return JSON.parse(newSchool.important_dates || '[]') } catch { return [] } })()
-    newSchool.requiredMaterials = (() => { try { return JSON.parse(newSchool.required_materials || '[]') } catch { return [] } })()
-  }
-
-  return c.json({ success: true, message: '学校信息已添加', data: newSchool }, 201)
+  return c.json({ success: true, message: '学校信息已添加', data: formatSchool(newSchool) }, 201)
 })
 
 // ─── 更新学校信息 ─────────────────────────────────────────────────────────────
@@ -168,13 +153,8 @@ schoolDatabase.put('/:id', async (c) => {
   ).run()
 
   const updated = await db.prepare('SELECT * FROM school_database WHERE id = ?').bind(id).first()
-  if (updated) {
-    updated.programs = (() => { try { return JSON.parse(updated.programs || '[]') } catch { return [] } })()
-    updated.importantDates = (() => { try { return JSON.parse(updated.important_dates || '[]') } catch { return [] } })()
-    updated.requiredMaterials = (() => { try { return JSON.parse(updated.required_materials || '[]') } catch { return [] } })()
-  }
 
-  return c.json({ success: true, message: '学校信息已更新', data: updated })
+  return c.json({ success: true, message: '学校信息已更新', data: formatSchool(updated) })
 })
 
 // ─── 删除学校信息 ─────────────────────────────────────────────────────────────

@@ -127,11 +127,17 @@ const SchoolDatabase = () => {
     try {
       if (editingSchool) {
         const updated = await schoolDatabaseAPI.update(editingSchool.id, formData);
-        setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? (updated || { ...formData, id: editingSchool.id }) : s));
+        // 合并策略：以 formData 为主（保证刚改的 camelCase 字段一定生效），
+        // API 返回的 updated 作为 fallback（补齐 id/createdAt 等服务端字段）
+        // 这样即使后端返回 snake_case 或部分字段，UI 也能立即反映用户改动
+        const merged = { ...(updated || {}), ...formData, id: editingSchool.id };
+        setSchoolDb(prev => prev.map(s => s.id === editingSchool.id ? merged : s));
         if (showNotification) showNotification('学校信息已更新');
       } else {
         const created = await schoolDatabaseAPI.create(formData);
-        setSchoolDb(prev => [...prev, created || { ...formData, id: Date.now() }]);
+        // 新建同理：formData 为主，API 返回补 id
+        const merged = { ...(created || {}), ...formData, id: created?.id || Date.now() };
+        setSchoolDb(prev => [...prev, merged]);
         if (showNotification) showNotification('学校已添加到信息库');
       }
     } catch (err) {

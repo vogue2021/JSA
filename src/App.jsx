@@ -4357,7 +4357,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       {isMobile && showMobileMenu && (
         <div className="fixed inset-0 z-50 flex">
           <div className="fixed inset-0 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }} onClick={() => setShowMobileMenu(false)} />
-          <div className="relative flex-1 flex flex-col max-w-xs w-full animate-slide-in-left"
+          <div className="relative h-full flex-1 flex flex-col max-w-xs w-full animate-slide-in-left"
             style={{
               background: isDark ? 'rgba(20,20,45,0.95)' : 'rgba(255,255,255,0.95)',
               backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
@@ -4385,9 +4385,20 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 </div>
               </div>
               <button
+                onClick={() => { setShowMobileMenu(false); onLogout(); }}
+                className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+                style={{ color: tokens.colors.accent.danger || '#ef4444' }}
+                title="退出登录"
+                aria-label="退出登录"
+              >
+                <LogOut size={20} />
+              </button>
+              <button
                 onClick={() => setShowMobileMenu(false)}
                 className="p-1.5 rounded-lg transition-colors flex-shrink-0"
                 style={{ color: tokens.colors.text.muted }}
+                title="关闭菜单"
+                aria-label="关闭菜单"
               >
                 <X size={20} />
               </button>
@@ -4421,7 +4432,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </div>
 
             {/* 移动端菜单底部 - 账户操作区 */}
-            <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }} className="p-3">
+            <div style={{ borderTop: `1px solid ${tokens.colors.border.hairline}`, paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }} className="p-3 flex-shrink-0">
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => { setShowMobileMenu(false); setShowSettingsModal(true); setSettingsModalInitTab(null); }}
@@ -4456,12 +4467,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   </button>
                 )}
               </div>
+              {/* 退出登录按钮：醒目红色背景，确保用户一眼能看到 */}
               <button
                 onClick={() => { setShowMobileMenu(false); onLogout(); }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm transition mt-2"
-                style={{ color: tokens.colors.accent.danger, background: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)' }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-lg text-sm font-semibold transition mt-3"
+                style={{
+                  color: '#ffffff',
+                  background: tokens.colors.accent.danger || '#ef4444',
+                  boxShadow: '0 2px 8px rgba(239,68,68,0.25)',
+                }}
               >
-                <LogOut size={16} /> 退出登录
+                <LogOut size={18} /> 退出登录
               </button>
             </div>
           </div>
