@@ -4078,19 +4078,35 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
             {/* 移动端用户头像快捷入口 */}
             {isMobile && (
-              <button
-                onClick={() => setShowMobileMenu(true)}
-                className="p-1 rounded-full transition-all ml-1"
-                style={{
-                  background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                }}
-                title={user.name}
-              >
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
-                  style={{ color: tokens.colors.text.secondary }}>
-                  {user.name?.charAt(0) || '?'}
-                </div>
-              </button>
+              <>
+                {/* 手机端直接退出按钮 - 永远可见，一键退出，不依赖抽屉 */}
+                <button
+                  onClick={() => {
+                    if (window.confirm('确定要退出登录吗？')) {
+                      onLogout();
+                    }
+                  }}
+                  className="p-2 rounded-lg transition-all"
+                  style={{ color: tokens.colors.accent.danger || '#ef4444' }}
+                  title="退出登录"
+                  aria-label="退出登录"
+                >
+                  <LogOut size={18} />
+                </button>
+                <button
+                  onClick={() => setShowMobileMenu(true)}
+                  className="p-1 rounded-full transition-all ml-1"
+                  style={{
+                    background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                  }}
+                  title={user.name}
+                >
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
+                    style={{ color: tokens.colors.text.secondary }}>
+                    {user.name?.charAt(0) || '?'}
+                  </div>
+                </button>
+              </>
             )}
 
 
