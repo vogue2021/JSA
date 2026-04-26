@@ -2348,20 +2348,25 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           tags: newStudent.tags || [],
           ...(wantsAccount ? { password: newStudent.password } : {}),
         };
+        // 新需求44：apiRequest 会自动解包 data 字段，所以 res 本身就是学生对象
+        // 之前错误地判断 res?.success 导致即使创建成功也显示"添加失败"
         const res = await studentsAPI.create(payload);
-        if (res?.success) {
+        const created = res || {};
+        // 只要拿到了带学号的对象即视为成功（apiRequest 对非 2xx 会 throw）
+        const ok = !!(created.studentId || created.student_id || created.id);
+        if (ok) {
           // 同步到前端 state（以后端返回的数据为准，补全前端专有字段）
-          const d = res.data || {};
+          const d = created;
           const student = {
             id: d.id || d.studentId || sid,
             name: d.name || newStudent.name,
-            studentId: d.studentId || sid,
+            studentId: d.studentId || d.student_id || sid,
             email: d.email || newStudent.email || `${newStudent.name.toLowerCase()}@example.com`,
             progress: 0,
             urgentTasks: 0,
             avatar: '👨‍🎓',
-            teacherId: d.teacherId || newStudent.teacherId || 'unassigned',
-            academicAdvisorId: d.academicAdvisorId || newStudent.academicAdvisorId || '',
+            teacherId: d.teacherId || d.teacher_id || newStudent.teacherId || 'unassigned',
+            academicAdvisorId: d.academicAdvisorId || d.academic_advisor_id || newStudent.academicAdvisorId || '',
             targetCountry: '日本',
             targetLevel: '修士',
             subject: d.subject || newStudent.subject,
@@ -2378,7 +2383,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             );
           }
         } else {
-          if (showNotification) showNotification(res?.message || '添加失败', 'error');
+          // 很少走到这里：后端返回 2xx 但没有 data
+          if (showNotification) showNotification('后端响应格式异常，请刷新页面确认', 'error');
         }
       } catch (err) {
         console.error('[AddStudent] failed:', err);
@@ -2390,11 +2396,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
     return (
 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{ backgroundColor: `rgba(0,0,0,${isDark ? '0.6' : '0.4'})`, backdropFilter: 'blur(4px)' }}>
-<div className="rounded-xl max-w-md w-full animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
-          <div className="p-6" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+{/* 新需求44：限制最大高度 + flex column，避免长表单溢出导致下方按钮无法点击 */}
+<div className="rounded-xl max-w-md w-full max-h-[90vh] flex flex-col animate-scale-in" style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div className="p-6 flex-shrink-0" style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
             <h3 className="font-bold text-xl" style={{ color: tokens.colors.text.primary }}>添加新学生</h3>
           </div>
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-4 flex-1 overflow-y-auto">
             <div>
               <label className="block text-sm font-medium mb-2">学号 *</label>
               <input type="text" value={newStudent.studentId}
@@ -2524,7 +2531,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </div>
             </div>
           </div>
-          <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+          <div className="p-6 flex gap-3 flex-shrink-0" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
             <button onClick={handleAddStudent} disabled={!newStudent.name || submitting}
               className="flex-1 py-2 rounded-lg font-semibold transition disabled:opacity-40"
               style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
