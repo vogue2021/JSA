@@ -8,6 +8,24 @@ const isAdmin = (user) => user?.role === 'admin'
 const isTeacher = (user) => user?.role === 'teacher'
 const isStudent = (user) => user?.role === 'student'
 
+// 密码哈希（Web Crypto PBKDF2，与 auth.js 保持一致）
+// 用于新需求43：管理员/老师添加学生时，可选直接设置初始密码
+async function hashPassword(password) {
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']
+  )
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const hash = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, 256
+  )
+  const combined = new Uint8Array(salt.length + hash.byteLength)
+  combined.set(salt)
+  combined.set(new Uint8Array(hash), salt.length)
+  return btoa(String.fromCharCode(...combined))
+}
+
 // 将数据库行转换为前端格式
 function formatStudent(row) {
   return {
@@ -212,6 +230,7 @@ students.get('/:id', async (c) => {
 })
 
 // ─── 创建学生（仅管理员/老师）────────────────────────────────────────────────
+// 新需求43：支持在创建学生的同时，通过 password 字段直接创建登录账号
 students.post('/', async (c) => {
   const user = c.get('user')
   if (!isAdmin(user) && !isTeacher(user)) {
@@ -225,30 +244,82 @@ students.post('/', async (c) => {
     return c.json({ success: false, message: '学号和姓名为必填项' }, 400)
   }
 
+  // 学号格式校验：只允许数字/字母（避免 NaN / 脏数据写入）
+  const studentIdStr = String(body.student_id).trim()
+  if (!/^[A-Za-z0-9_-]{3,20}$/.test(studentIdStr)) {
+    return c.json({ success: false, message: '学号格式不合法（3-20 位字母、数字、下划线或短横线）' }, 400)
+  }
+
   // 检查学号是否已存在
-  const existing = await db.prepare('SELECT student_id FROM students WHERE student_id = ?').bind(body.student_id).first()
+  const existing = await db.prepare('SELECT student_id FROM students WHERE student_id = ?').bind(studentIdStr).first()
   if (existing) return c.json({ success: false, message: '该学号已存在' }, 400)
 
+  // ─── 新需求43：可选直接创建登录账号 ─────────────────────────────────────
+  // 如果同时传入 password，则必须传入合法 email；否则不允许设置密码
+  const wantsAccount = Boolean(body.password)
+  let userId = null
+  let hashedPassword = null
+  const emailStr = (body.email || '').trim()
+
+  if (wantsAccount) {
+    if (!emailStr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+      return c.json({ success: false, message: '设置密码时必须填写合法的邮箱' }, 400)
+    }
+    if (String(body.password).length < 6) {
+      return c.json({ success: false, message: '密码长度至少 6 位' }, 400)
+    }
+    // 邮箱唯一性检查
+    const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').bind(emailStr).first()
+    if (existingUser) {
+      return c.json({ success: false, message: '该邮箱已被注册' }, 400)
+    }
+    hashedPassword = await hashPassword(String(body.password))
+    userId = `student_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+  }
+
   const teacherId = isTeacher(user) ? user.teacherId : (body.teacher_id || '')
+  const hasAccount = wantsAccount ? 1 : 0
 
-  await db.prepare(
-    `INSERT INTO students (student_id, name, email, teacher_id, academic_advisor_id,
-      birthday, high_school, language_school, jlpt_score, english_score, eju_scores,
-      follow_up_notes, package_name, package_end_date, tags, subject, has_account)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-  ).bind(
-    body.student_id, body.name, body.email || '',
-    teacherId, body.academic_advisor_id || '',
-    body.birthday || '', body.high_school || '', body.language_school || '',
-    body.jlpt_score || '', body.english_score || '',
-    JSON.stringify(body.eju_scores || []),
-    typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes || []),
-    body.package_name || '', body.package_end_date || '',
-    JSON.stringify(body.tags || []), body.subject || ''
-  ).run()
+  // 使用 batch 保证 students + users 原子写入
+  const statements = [
+    db.prepare(
+      `INSERT INTO students (student_id, user_id, name, email, teacher_id, academic_advisor_id,
+        birthday, high_school, language_school, jlpt_score, english_score, eju_scores,
+        follow_up_notes, package_name, package_end_date, tags, subject, has_account)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      studentIdStr, userId, body.name, emailStr,
+      teacherId, body.academic_advisor_id || '',
+      body.birthday || '', body.high_school || '', body.language_school || '',
+      body.jlpt_score || '', body.english_score || '',
+      JSON.stringify(body.eju_scores || []),
+      typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes || []),
+      body.package_name || '', body.package_end_date || '',
+      JSON.stringify(body.tags || []), body.subject || '',
+      hasAccount
+    )
+  ]
+  if (wantsAccount) {
+    statements.push(
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, name) VALUES (?, ?, ?, ?, ?)'
+      ).bind(userId, emailStr, hashedPassword, 'student', body.name)
+    )
+  }
 
-  const created = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(body.student_id).first()
-  return c.json({ success: true, data: formatStudent(created), message: '学生创建成功' }, 201)
+  try {
+    await db.batch(statements)
+  } catch (err) {
+    console.error('[students.POST] batch failed:', err)
+    return c.json({ success: false, message: '创建失败：' + (err.message || String(err)) }, 500)
+  }
+
+  const created = await db.prepare('SELECT * FROM students WHERE student_id = ?').bind(studentIdStr).first()
+  return c.json({
+    success: true,
+    data: formatStudent(created),
+    message: wantsAccount ? '学生及登录账号创建成功' : '学生创建成功（未设置登录密码）'
+  }, 201)
 })
 
 // ─── 更新学生信息 ─────────────────────────────────────────────────────────────

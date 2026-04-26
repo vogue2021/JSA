@@ -164,6 +164,13 @@ export const studentsAPI = {
   getById: async (id) => {
     return await apiRequest(`/students/${id}`);
   },
+  // 新需求43：创建学生（可选同时创建登录账号，传 password 即可）
+  create: async (data) => {
+    return await apiRequest('/students', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
   update: async (id, data) => {
     return await apiRequest(`/students/${id}`, {
       method: 'PUT',

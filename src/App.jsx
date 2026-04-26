@@ -4,12 +4,12 @@ import {
   Calendar, Clock, School, FileText, CheckSquare, Plus,
   ChevronRight, AlertCircle, Edit, Users, LogOut, Save,
   X, User, Bell, Search, Filter, Download, Upload,
-  Menu, ChevronDown, Eye, Trash2, Check, Edit2, UserCheck,
+  Menu, ChevronDown, Eye, EyeOff, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw
 } from 'lucide-react';
-import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI } from './services/api';
+import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -676,8 +676,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   // 生成学号
   const generateStudentId = () => {
     const year = new Date().getFullYear();
-    const existingIds = studentList.map(s => parseInt(s.studentId));
-    const maxId = Math.max(...existingIds, year * 1000);
+    // 新需求43：只统计纯数字学号，过滤非数字（如邮箱、xuebang_id 等），避免 Math.max 得到 NaN
+    const numericIds = (studentList || [])
+      .map(s => {
+        const raw = s?.studentId != null ? String(s.studentId) : '';
+        return /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+      })
+      .filter(n => Number.isFinite(n));
+    const base = year * 1000;
+    const maxId = numericIds.length > 0 ? Math.max(...numericIds, base) : base;
     return String(maxId + 1);
   };
 
@@ -2291,37 +2298,93 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
   // 添加学生弹窗
   const AddStudentModal = () => {
-    const newStudentId = generateStudentId();
+    const autoStudentId = generateStudentId();
     const [newStudent, setNewStudent] = useState({
       name: '',
+      studentId: autoStudentId, // 新需求43：学号可编辑
       email: '',
+      password: '',           // 新需求43：可选设置初始密码
+      confirmPassword: '',
       teacherId: user.role === 'admin' ? '' : (user.teacherId || 'teacher_1'),
       academicAdvisorId: '',
       subject: '',
       tags: [],
     });
     const [newTag, setNewTag] = useState('');
+    const [showPwd, setShowPwd] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState({});
 
-    const handleAddStudent = () => {
-      if (newStudent.name) {
-        const student = {
-          id: Date.now(),
-          name: newStudent.name,
-          studentId: newStudentId,
-          email: newStudent.email || `${newStudent.name.toLowerCase()}@example.com`,
-          progress: 0,
-          urgentTasks: 0,
-          avatar: '👨‍🎓',
-          teacherId: newStudent.teacherId || 'unassigned',
-          academicAdvisorId: newStudent.academicAdvisorId || '',
-          targetCountry: '日本',
-          targetLevel: '修士',
-          subject: newStudent.subject,
-          tags: newStudent.tags,
+    const handleAddStudent = async () => {
+      // 前端校验
+      const errs = {};
+      if (!newStudent.name.trim()) errs.name = '请输入学生姓名';
+      const sid = String(newStudent.studentId || '').trim();
+      if (!/^[A-Za-z0-9_-]{3,20}$/.test(sid)) errs.studentId = '学号为 3-20 位字母/数字/_-';
+      const wantsAccount = !!newStudent.password;
+      if (wantsAccount) {
+        if (!newStudent.email.trim()) errs.email = '设置密码时邮箱必填';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newStudent.email)) errs.email = '邮箱格式不正确';
+        if (newStudent.password.length < 6) errs.password = '密码至少 6 位';
+        if (newStudent.password !== newStudent.confirmPassword) errs.confirmPassword = '两次密码不一致';
+      } else if (newStudent.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newStudent.email)) {
+        errs.email = '邮箱格式不正确';
+      }
+      if (Object.keys(errs).length > 0) {
+        setErrors(errs);
+        return;
+      }
+      setErrors({});
+      setSubmitting(true);
+      try {
+        // 新需求43：调用后端 API，同步学生到数据库
+        const payload = {
+          student_id: sid,
+          name: newStudent.name.trim(),
+          email: newStudent.email.trim(),
+          teacher_id: newStudent.teacherId || '',
+          academic_advisor_id: newStudent.academicAdvisorId || '',
+          subject: newStudent.subject || '',
+          tags: newStudent.tags || [],
+          ...(wantsAccount ? { password: newStudent.password } : {}),
         };
-        setStudentList(prev => [...prev, student]);
-        setShowAddStudentModal(false);
-        if (showNotification) showNotification(`学生 ${newStudent.name} 已添加，学号：${newStudentId}`);
+        const res = await studentsAPI.create(payload);
+        if (res?.success) {
+          // 同步到前端 state（以后端返回的数据为准，补全前端专有字段）
+          const d = res.data || {};
+          const student = {
+            id: d.id || d.studentId || sid,
+            name: d.name || newStudent.name,
+            studentId: d.studentId || sid,
+            email: d.email || newStudent.email || `${newStudent.name.toLowerCase()}@example.com`,
+            progress: 0,
+            urgentTasks: 0,
+            avatar: '👨‍🎓',
+            teacherId: d.teacherId || newStudent.teacherId || 'unassigned',
+            academicAdvisorId: d.academicAdvisorId || newStudent.academicAdvisorId || '',
+            targetCountry: '日本',
+            targetLevel: '修士',
+            subject: d.subject || newStudent.subject,
+            tags: d.tags || newStudent.tags,
+            hasAccount: !!d.hasAccount || wantsAccount,
+          };
+          setStudentList(prev => [...prev, student]);
+          setShowAddStudentModal(false);
+          if (showNotification) {
+            showNotification(
+              wantsAccount
+                ? `学生 ${student.name} 已添加，学号：${sid}（已创建登录账号）`
+                : `学生 ${student.name} 已添加，学号：${sid}（未设置密码，学生可自行注册）`
+            );
+          }
+        } else {
+          if (showNotification) showNotification(res?.message || '添加失败', 'error');
+        }
+      } catch (err) {
+        console.error('[AddStudent] failed:', err);
+        if (showNotification) showNotification(err?.message || '网络异常，添加失败', 'error');
+      } finally {
+        setSubmitting(false);
       }
     };
 
@@ -2333,26 +2396,63 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">学号（自动生成）</label>
-              <input type="text" value={newStudentId} disabled
-                className="w-full px-3 py-2 rounded-lg"
-                style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f3f4f6', color: tokens.colors.text.muted, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#d1d5db'}` }} />
-              <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>学生需要使用此学号进行账号注册</p>
+              <label className="block text-sm font-medium mb-2">学号 *</label>
+              <input type="text" value={newStudent.studentId}
+                onChange={(e) => setNewStudent({ ...newStudent, studentId: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500"
+                style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', color: tokens.colors.text.primary, border: `1px solid ${errors.studentId ? '#ef4444' : (isDark ? 'rgba(255,255,255,0.1)' : '#d1d5db')}` }}
+                placeholder="例：2026001" />
+              <p className="text-xs mt-1" style={{ color: errors.studentId ? '#ef4444' : tokens.colors.text.muted }}>
+                {errors.studentId || '已自动生成一个建议学号，可直接修改'}
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">学生姓名 *</label>
               <input type="text" value={newStudent.name}
                 onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                style={{ borderColor: errors.name ? '#ef4444' : undefined }}
                 placeholder="请输入学生姓名" />
+              {errors.name && <p className="text-xs mt-1" style={{ color: '#ef4444' }}>{errors.name}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">邮箱（可选）</label>
+              <label className="block text-sm font-medium mb-2">邮箱{newStudent.password ? ' *' : '（可选）'}</label>
               <input type="email" value={newStudent.email}
                 onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入邮箱" />
+                style={{ borderColor: errors.email ? '#ef4444' : undefined }}
+                placeholder="设置密码时必填（用于登录）" />
+              {errors.email && <p className="text-xs mt-1" style={{ color: '#ef4444' }}>{errors.email}</p>}
             </div>
+            {/* 新需求43：初始密码字段 */}
+            <div>
+              <label className="block text-sm font-medium mb-2">初始密码（可选）</label>
+              <div className="relative">
+                <input type={showPwd ? 'text' : 'password'} value={newStudent.password}
+                  onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
+                  className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  style={{ borderColor: errors.password ? '#ef4444' : undefined }}
+                  placeholder="留空则学生自行注册；填写至少 6 位即可直接登录" />
+                <button type="button" onClick={() => setShowPwd(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+                  style={{ color: tokens.colors.text.muted }}
+                  title={showPwd ? '隐藏密码' : '显示密码'}>
+                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {errors.password && <p className="text-xs mt-1" style={{ color: '#ef4444' }}>{errors.password}</p>}
+            </div>
+            {newStudent.password && (
+              <div>
+                <label className="block text-sm font-medium mb-2">确认密码 *</label>
+                <input type={showPwd ? 'text' : 'password'} value={newStudent.confirmPassword}
+                  onChange={(e) => setNewStudent({ ...newStudent, confirmPassword: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  style={{ borderColor: errors.confirmPassword ? '#ef4444' : undefined }}
+                  placeholder="再输入一次密码" />
+                {errors.confirmPassword && <p className="text-xs mt-1" style={{ color: '#ef4444' }}>{errors.confirmPassword}</p>}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium mb-2">文科/理科</label>
               <select value={newStudent.subject}
@@ -2425,15 +2525,15 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </div>
           </div>
           <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
-            <button onClick={handleAddStudent} disabled={!newStudent.name}
+            <button onClick={handleAddStudent} disabled={!newStudent.name || submitting}
               className="flex-1 py-2 rounded-lg font-semibold transition disabled:opacity-40"
               style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
               onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.2)' }}
               onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
-              添加学生
+              {submitting ? '添加中…' : '添加学生'}
             </button>
-            <button onClick={() => setShowAddStudentModal(false)}
-className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}>
+            <button onClick={() => setShowAddStudentModal(false)} disabled={submitting}
+className="flex-1 py-2 rounded-lg font-semibold transition disabled:opacity-40" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb', color: tokens.colors.text.primary }}>
               取消
             </button>
           </div>
