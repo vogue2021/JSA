@@ -27,6 +27,7 @@ import UpcomingSchools from './components/UpcomingSchools';
 import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
 import AuthPage from './components/AuthPage';
+import OnboardingTour from './components/common/OnboardingTour';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
@@ -136,6 +137,23 @@ const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [schoolDetailModal, setSchoolDetailModal] = useState(null); // 学生点击学校卡片弹窗
   const [showSidebarUserMenu, setShowSidebarUserMenu] = useState(false); // 侧边栏头像菜单
+
+  // 新需求42：新用户引导（首次登录自动打开，问号图标可再次触发）
+  const ONBOARDING_STORAGE_KEY = 'jsa_onboarding_done_v2';
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  // 首次登录自动打开引导（用户级别，按 user.id 区分）
+  useEffect(() => {
+    if (!user || !user.id) return;
+    try {
+      const key = `${ONBOARDING_STORAGE_KEY}__${user.id}`;
+      const done = localStorage.getItem(key);
+      if (!done) {
+        // 延迟一点，等待布局/侧栏/顶栏渲染稳定
+        const t = setTimeout(() => setShowOnboardingTour(true), 800);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, [user?.id]);
 
   // AccountManagementModal 的加载标志（提升到 MainApp 级别，防止组件重建时 ref 重置）
   const accountLoadedRef = React.useRef(false);
@@ -4037,6 +4055,20 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               {resolvedMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
+            {/* 新需求42：使用引导问号按钮（所有角色可见） */}
+            <button
+              data-tour="help"
+              onClick={() => setShowOnboardingTour(true)}
+              className="p-2 rounded-lg transition-all"
+              style={{ color: tokens.colors.text.muted }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title="使用引导"
+              aria-label="使用引导"
+            >
+              <HelpCircle size={18} />
+            </button>
+
             {/* 外观自定义按钮 - 仅桌面端显示，移动端通过抽屉菜单访问 */}
             {!isMobile && (
             <button
@@ -4120,7 +4152,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       <div className="flex pt-14 relative z-10">
       {/* Desktop Sidebar - 玻璃拟态侧边栏 */}
       {!isMobile && (
-        <div className={`fixed top-0 left-0 bottom-0 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-56'}`}
+        <div data-tour="sidebar" className={`fixed top-0 left-0 bottom-0 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-56'}`}
           style={{
             background: glassEnabled ? tokens.colors.surface.glass : tokens.colors.surface.solid,
             backdropFilter: glassEnabled ? `blur(${tokens.blur.heavyBlur}px)` : 'none',
@@ -4191,6 +4223,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       return (
                         <button
                           key={tab.id}
+                          data-tour={`nav-${tab.id}`}
                           onClick={() => { setActiveTab(tab.id); setShowSidebarUserMenu(false); }}
                           title={sidebarCollapsed ? tab.label : ''}
                           className={`w-full flex items-center gap-3 transition-all ${
@@ -4659,6 +4692,44 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
       {/* Theme Customizer */}
       {showThemeCustomizer && <ThemeCustomizer onClose={() => setShowThemeCustomizer(false)} />}
+
+      {/* 新需求42：新用户引导 Tour */}
+      <OnboardingTour
+        open={showOnboardingTour}
+        onClose={() => setShowOnboardingTour(false)}
+        storageKey={`${ONBOARDING_STORAGE_KEY}__${user?.id || 'guest'}`}
+        steps={(() => {
+          const welcomeTitle =
+            user?.role === 'student'
+              ? '欢迎来到明学义塾学习中心 👋'
+              : user?.role === 'admin'
+              ? '欢迎使用明学义塾管理后台 👋'
+              : '欢迎使用明学义塾老师端 👋';
+          const welcomeContent =
+            user?.role === 'student'
+              ? '这里是你的日本升学备考助手：可以查看备考时间线、可报学校、材料清单，还能学习老师准备的备考资料。\n\n跟着这个简短引导，快速了解各个功能入口吧～'
+              : '这是一套帮助老师/管理员高效管理学生日本升学全流程的系统，包含时间线、学校管理、材料清单、备考资料库等模块。\n\n跟着本引导走一遍，快速上手所有核心功能。';
+          const base = [
+            { title: welcomeTitle, content: welcomeContent, placement: 'center' },
+            { target: '[data-tour="sidebar"]', title: '侧边栏导航', content: '所有核心功能模块都在左侧侧边栏。桌面端可以点击收起按钮切换紧凑模式；手机端点击顶栏的菜单按钮打开抽屉。', placement: 'right' },
+          ];
+          // 根据角色动态增加步骤
+          const steps = [...base];
+          if (user?.role !== 'student') {
+            steps.push({ target: '[data-tour="nav-dashboard"]', title: '仪表盘', content: '快速查看所有学生的备考进度、学校出愿状态、材料准备进度 Top N 等关键数据。', placement: 'right' });
+          }
+          steps.push({ target: '[data-tour="nav-timeline"]', title: '时间线', content: '展示考试、出愿、面试等关键事件时间线，支持卡片/线性两种视图，可按类别筛选。', placement: 'right' });
+          steps.push({ target: '[data-tour="nav-schools"]', title: '学校', content: '管理目标学校的基础信息与出愿进度；点击学校卡片可查看详情和进度步骤。', placement: 'right' });
+          steps.push({ target: '[data-tour="nav-checklist"]', title: '材料', content: '材料准备清单，按学校/类别分类跟踪每一项材料的完成状态。', placement: 'right' });
+          if (user?.role !== 'student') {
+            steps.push({ target: '[data-tour="nav-students"]', title: '学生列表', content: '管理所有学生、切换当前查看的学生、批量导出等操作都在这里。', placement: 'right' });
+          }
+          steps.push({ target: '[data-tour="nav-resources"]', title: '备考资料库', content: '塾内整理的备考资料（EJU、日语、面试经验等），支持在线 Markdown 文档或外部链接。老师可编辑、学生只读公开资料。', placement: 'right' });
+          steps.push({ target: '[data-tour="nav-upcoming"]', title: '近期可报', content: '展示近期即将开放或截止的学校报名信息，帮你/学生不错过任何重要截止日。', placement: 'right' });
+          steps.push({ target: '[data-tour="help"]', title: '随时重新打开引导', content: '以后如果想再看一次新手引导，点击顶栏右上角的问号图标即可。\n\n祝你使用顺利 🎉', placement: 'bottom' });
+          return steps;
+        })()}
+      />
 
       {/* Modals */}
       {showStudentList && <StudentListModal />}
