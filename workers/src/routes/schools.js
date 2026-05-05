@@ -3,6 +3,37 @@ import { Hono } from 'hono'
 
 const schools = new Hono()
 
+// ─── 自动迁移工具 ────────────────────────────────────────────────────────────
+// 【新需求48】自动确保 schools 表有 extra_dates 列
+// 背景：需求45 引入 extra_dates 列用于存储一审/二审/自定义日期，
+// 需要手动执行 migration-needs45.sql 才会生效；
+// 为避免用户忘记执行导致保存失败，这里在 POST/PUT 入口自动检测并补列。
+// D1 / SQLite 使用 PRAGMA table_info 判断列是否存在。
+// 使用 Symbol/全局缓存避免每次请求都查询 PRAGMA：同一个 worker 实例只检查一次。
+let _extraDatesEnsured = false
+async function ensureExtraDatesColumn(db) {
+  if (_extraDatesEnsured) return
+  try {
+    const { results } = await db.prepare(`PRAGMA table_info(schools)`).all()
+    const hasColumn = Array.isArray(results) && results.some(r => r && r.name === 'extra_dates')
+    if (!hasColumn) {
+      console.log('[schools] 自动迁移：schools 表缺少 extra_dates 列，正在 ALTER TABLE 添加...')
+      await db.prepare(`ALTER TABLE schools ADD COLUMN extra_dates TEXT NOT NULL DEFAULT '{}'`).run()
+      console.log('[schools] 自动迁移完成：extra_dates 列已添加')
+    }
+    _extraDatesEnsured = true
+  } catch (err) {
+    // ALTER 可能因并发重复执行抛 "duplicate column" 错误，视为成功
+    const msg = String(err && err.message || '')
+    if (/duplicate column name|already exists/i.test(msg)) {
+      _extraDatesEnsured = true
+      return
+    }
+    // 其它错误：打日志但不阻塞请求，后续的降级 SQL 会兜底
+    console.warn('[schools] ensureExtraDatesColumn 失败，将依赖降级逻辑：', msg)
+  }
+}
+
 // ─── 统计接口 ────────────────────────────────────────────────────────────────
 
 // GET /api/schools/stats - 全局学校报考统计（仪表盘）
@@ -155,6 +186,9 @@ schools.post('/', async (c) => {
 
   const db = c.env.DB
 
+  // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
+  await ensureExtraDatesColumn(db)
+
   // 验证学生是否存在
   const studentExists = await db.prepare(
     'SELECT student_id FROM students WHERE student_id = ? LIMIT 1'
@@ -283,12 +317,14 @@ schools.post('/', async (c) => {
 
 // PUT /api/schools/:id - 更新学校
 schools.put('/:id', async (c) => {
-  const { id } = c.req.param()
+  const id = c.req.param('id')
   const db = c.env.DB
+
+  // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
+  await ensureExtraDatesColumn(db)
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
-
   const body = await c.req.json()
   // 【新需求45】处理 extra_dates（JSON 字段）
   let extraDatesJson = (school.extra_dates || '{}')
