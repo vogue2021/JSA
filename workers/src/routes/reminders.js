@@ -137,14 +137,25 @@ reminders.get('/acknowledged/:studentId', async (c) => {
 })
 
 // ─── 获取提醒设置 ──────────────────────────────────────────────────────────
+// 需求56：老师/管理员可通过 ?studentId=xxx 读取指定学生的设置（用于在老师端展示/编辑该学生的提醒时间）
 reminders.get('/settings', async (c) => {
   const user = c.get('user')
   const db = c.env.DB
 
   const defaultSettings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 }
 
-  // 非学生用户直接返回默认设置
-  if (!user.studentId) {
+  // 解析要读取哪个学生的设置
+  let targetStudentId = null
+  if (user.role === 'student' && user.studentId) {
+    // 学生：只能读自己的
+    targetStudentId = user.studentId
+  } else if ((user.role === 'teacher' || user.role === 'admin')) {
+    // 老师/管理员：可通过 query 参数指定
+    const qsId = c.req.query('studentId')
+    if (qsId) targetStudentId = qsId
+  }
+
+  if (!targetStudentId) {
     return c.json({ success: true, data: defaultSettings })
   }
 
@@ -152,7 +163,7 @@ reminders.get('/settings', async (c) => {
   const settings = await db.prepare(`
     SELECT event_title as settings_json FROM deadline_reminders
     WHERE student_id = ? AND event_id = -1
-  `).bind(user.studentId).first()
+  `).bind(targetStudentId).first()
 
   if (settings && settings.settings_json) {
     try {
@@ -164,6 +175,10 @@ reminders.get('/settings', async (c) => {
 })
 
 // ─── 保存提醒设置 ──────────────────────────────────────────────────────────
+// 需求56修复：
+// - 学生角色：仅能为自己保存（维持原行为）
+// - 老师/管理员：必须传 targetStudentIds: number[]（一个或多个学生），
+//   否则无法持久化到学生记录中——这样学生登录时才能读到老师为他设置的参数。
 reminders.post('/settings', async (c) => {
   const user = c.get('user')
   const body = await c.req.json()
@@ -175,40 +190,73 @@ reminders.post('/settings', async (c) => {
     reminderInterval: Math.min(Math.max(body.reminderInterval || 60, 15), 240),
     reminderDaysBefore: Math.min(Math.max(body.reminderDaysBefore || 3, 1), 30),
   }
-
-  // 仅学生角色可以在 deadline_reminders 表中保存设置
-  // （因为 student_id 有外键约束引用 students 表，admin/teacher 的 id 不在 students 表中）
-  if (!user.studentId) {
-    // 非学生用户：直接返回成功（设置存在前端 localStorage 中即可）
-    return c.json({ success: true, message: '提醒设置已保存（本地）', data: settings })
-  }
-
-  const studentId = user.studentId
   const settingsJson = JSON.stringify(settings)
 
-  try {
-    // 使用 event_id = -1 作为设置记录的特殊标识
-    const existing = await db.prepare(`
-      SELECT id FROM deadline_reminders WHERE student_id = ? AND event_id = -1
-    `).bind(studentId).first()
-
-    if (existing) {
-      await db.prepare(`
-        UPDATE deadline_reminders SET event_title = ?, acknowledged_at = datetime('now') WHERE id = ?
-      `).bind(settingsJson, existing.id).run()
-    } else {
-      await db.prepare(`
-        INSERT INTO deadline_reminders (student_id, event_id, event_title, deadline_date, acknowledged, acknowledged_at)
-        VALUES (?, -1, ?, '', 0, datetime('now'))
-      `).bind(studentId, settingsJson).run()
+  // 决定要写入哪些学生 ID
+  let targetIds = []
+  if (user.role === 'student' && user.studentId) {
+    targetIds = [user.studentId]
+  } else if (user.role === 'teacher' || user.role === 'admin') {
+    // 优先用请求体中指定的 targetStudentIds
+    if (Array.isArray(body.targetStudentIds) && body.targetStudentIds.length > 0) {
+      targetIds = body.targetStudentIds.filter(Boolean)
     }
-  } catch (err) {
-    console.error('保存提醒设置到DB失败:', err)
-    // 即使 DB 写入失败，也返回成功（设置可在前端 localStorage 中保存）
-    return c.json({ success: true, message: '提醒设置已保存（本地）', data: settings })
+    // 可选：applyToAllMyStudents=true 时，老师把设置应用给自己名下所有学生
+    else if (body.applyToAllMyStudents === true && user.role === 'teacher' && user.teacherId) {
+      try {
+        const { results } = await db.prepare(`
+          SELECT student_id FROM students WHERE teacher_id = ?
+        `).bind(user.teacherId).all()
+        targetIds = (results || []).map(r => r.student_id).filter(Boolean)
+      } catch (err) {
+        console.error('查询老师名下学生失败:', err)
+      }
+    }
   }
 
-  return c.json({ success: true, message: '提醒设置已保存', data: settings })
+  if (!targetIds || targetIds.length === 0) {
+    // 没有目标学生时仍返回成功但不落库——前端 localStorage 自行保留
+    return c.json({
+      success: true,
+      message: '提醒设置已保存（本地，未关联学生）',
+      data: { ...settings, savedStudentIds: [], failedStudentIds: [] },
+    })
+  }
+
+  const saved = []
+  const failed = []
+  for (const sid of targetIds) {
+    try {
+      const existing = await db.prepare(`
+        SELECT id FROM deadline_reminders WHERE student_id = ? AND event_id = -1
+      `).bind(sid).first()
+
+      if (existing) {
+        await db.prepare(`
+          UPDATE deadline_reminders SET event_title = ?, acknowledged_at = datetime('now') WHERE id = ?
+        `).bind(settingsJson, existing.id).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO deadline_reminders (student_id, event_id, event_title, deadline_date, acknowledged, acknowledged_at)
+          VALUES (?, -1, ?, '', 0, datetime('now'))
+        `).bind(sid, settingsJson).run()
+      }
+      saved.push(sid)
+    } catch (err) {
+      console.error('保存提醒设置到DB失败 (studentId=' + sid + '):', err)
+      failed.push(sid)
+    }
+  }
+
+  return c.json({
+    success: true,
+    message: `提醒设置已保存到 ${saved.length} 个学生账号${failed.length ? `（${failed.length} 个失败）` : ''}`,
+    data: {
+      ...settings,
+      savedStudentIds: saved,
+      failedStudentIds: failed,
+    },
+  })
 })
 
 export default reminders

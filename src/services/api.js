@@ -347,11 +347,12 @@ export const remindersAPI = {
   getAcknowledged: async (studentId) => {
     return await apiRequest(`/reminders/acknowledged/${studentId}`);
   },
-  // 获取提醒设置
-  getSettings: async () => {
-    return await apiRequest('/reminders/settings');
+  // 获取提醒设置（需求56：老师可传 studentId 读取指定学生的设置）
+  getSettings: async (studentId) => {
+    const qs = studentId ? `?studentId=${encodeURIComponent(studentId)}` : '';
+    return await apiRequest(`/reminders/settings${qs}`);
   },
-  // 保存提醒设置
+  // 保存提醒设置（需求56：老师可传 targetStudentIds / applyToAllMyStudents 批量写入）
   saveSettings: async (settings) => {
     return await apiRequest('/reminders/settings', {
       method: 'POST',

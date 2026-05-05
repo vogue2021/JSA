@@ -412,6 +412,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [showReminderSettings, setShowReminderSettings] = useState(false); // 提醒设置弹窗
 const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 });
   const [savingReminderSettings, setSavingReminderSettings] = useState(false);
+  // 需求56：老师/管理员端打开设置弹窗时是否勾选"应用到我的所有学生"
+  const [applyToAllMyStudents, setApplyToAllMyStudents] = useState(false);
   const [acknowledgedEvents, setAcknowledgedEvents] = useState({}); // { eventId: acknowledgedAt }
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [feedbackContent, setFeedbackContent] = useState('');
@@ -557,7 +559,14 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     if (user.role !== 'student') return;
 
     // 读取当日弹窗节流状态：{ date: 'YYYY-MM-DD', shown: 次数, lastShownAt: ISO时间 }
-    const getTodayKey = () => new Date().toISOString().split('T')[0];
+    // 需求56：使用本地日期（避免 UTC 跨日导致的节流误判）
+    const getTodayKey = () => {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
     const getThrottleState = () => {
       try {
         const raw = localStorage.getItem('reminderThrottle');
@@ -649,12 +658,16 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       } catch { /* ignore */ }
     };
 
-    loadReminderSettings();
-    // 首次加载后延迟2秒检查（等待登录完成）
-    const timer = setTimeout(checkDeadlineReminders, 2000);
+    // 需求56：必须先 load settings（写入 localStorage），再触发首次 check，
+    // 否则首次 checkDeadlineReminders 读到的是空 localStorage → 用默认 09:00 判断
+    let timer = null;
+    let interval = null;
+    loadReminderSettings().then(() => {
+      timer = setTimeout(checkDeadlineReminders, 500);
+    });
     // 每 5 分钟检查一次（比旧版 1 小时更及时，配合节流逻辑不会频繁打扰）
-    const interval = setInterval(checkDeadlineReminders, 5 * 60 * 1000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
+    interval = setInterval(checkDeadlineReminders, 5 * 60 * 1000);
+    return () => { if (timer) clearTimeout(timer); if (interval) clearInterval(interval); };
   }, [user.role]);
 
   // 加载事件确认状态（用于时间线卡片显示"学生已确认"）
@@ -702,23 +715,59 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     }
   };
 
-  // 保存提醒设置
+  // 保存提醒设置（需求56：老师/管理员保存时，必须指定为哪个或哪些学生保存）
   const handleSaveReminderSettings = async () => {
     setSavingReminderSettings(true);
     try {
-      const result = await remindersAPI.saveSettings(reminderSettings);
-      if (result && (result.reminderTime || result.reminderCount || result.reminderInterval)) {
-        setReminderSettings(result);
+      // 组装请求体
+      const payload = { ...reminderSettings };
+      if (user.role === 'teacher' || user.role === 'admin') {
+        if (applyToAllMyStudents && user.role === 'teacher') {
+          payload.applyToAllMyStudents = true;
+        } else if (currentStudent?.studentId) {
+          payload.targetStudentIds = [currentStudent.studentId];
+        }
       }
-      // 无论API是否成功，都同时保存到localStorage（确保刷新后不丢失）
-      localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
-      if (showNotification) showNotification('提醒设置已保存');
+
+      const result = await remindersAPI.saveSettings(payload);
+      // apiRequest 已解包 data 字段：result = { reminderTime, ..., savedStudentIds, failedStudentIds }
+      if (result && (result.reminderTime || result.reminderCount || result.reminderInterval)) {
+        // 仅保留设置字段本身
+        setReminderSettings({
+          reminderTime: result.reminderTime,
+          reminderCount: result.reminderCount,
+          reminderInterval: result.reminderInterval,
+          reminderDaysBefore: result.reminderDaysBefore,
+        });
+      }
+      // 学生端保存成功后同步到 localStorage（供节流函数使用）
+      if (user.role === 'student') {
+        localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
+      }
+
+      // 反馈：老师端告知保存到了多少个学生
+      const savedIds = Array.isArray(result?.savedStudentIds) ? result.savedStudentIds : [];
+      if (user.role === 'teacher' || user.role === 'admin') {
+        if (savedIds.length > 0) {
+          if (showNotification) showNotification(`提醒设置已保存到 ${savedIds.length} 个学生账号`);
+        } else {
+          if (showNotification) showNotification('未关联任何学生，请先选中学生再保存', 'warning');
+        }
+      } else {
+        if (showNotification) showNotification('提醒设置已保存');
+      }
+
+      setApplyToAllMyStudents(false);
       setShowReminderSettings(false);
     } catch (err) {
       console.error('保存提醒设置失败:', err);
-      // API失败也保存到localStorage
-      localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
-      if (showNotification) showNotification('设置已保存到本地（服务器同步失败）', 'warning');
+      // API失败时仅学生端保留 localStorage 降级
+      if (user.role === 'student') {
+        localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
+        if (showNotification) showNotification('设置已保存到本地（服务器同步失败）', 'warning');
+      } else {
+        if (showNotification) showNotification('保存失败，请重试', 'error');
+      }
       setShowReminderSettings(false);
     } finally {
       setSavingReminderSettings(false);
@@ -4517,10 +4566,27 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
             {/* 通知按钮 - 需求55：仅老师/管理员显示"截止日提醒设置"入口，学生端不显示 */}
             {/* （需求54 的后端节流 + reminderDaysBefore 对学生仍生效，由老师代为设置） */}
+            {/* 需求56：打开弹窗时按 currentStudent 加载该学生的设置 */}
             {(user.role === 'teacher' || user.role === 'admin') && (
             <button className="p-2 rounded-lg relative transition-all"
               style={{ color: tokens.colors.text.muted }}
-              onClick={() => setShowReminderSettings(true)}
+              onClick={async () => {
+                setApplyToAllMyStudents(false);
+                if (currentStudent?.studentId) {
+                  try {
+                    const data = await remindersAPI.getSettings(currentStudent.studentId);
+                    if (data && (data.reminderTime || data.reminderCount || data.reminderInterval)) {
+                      setReminderSettings({
+                        reminderTime: data.reminderTime || '09:00',
+                        reminderCount: data.reminderCount || 1,
+                        reminderInterval: data.reminderInterval || 60,
+                        reminderDaysBefore: data.reminderDaysBefore || 3,
+                      });
+                    }
+                  } catch (err) { console.warn('加载学生的提醒设置失败:', err); }
+                }
+                setShowReminderSettings(true);
+              }}
               onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               title="截止日提醒设置">
@@ -5580,7 +5646,18 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <Bell size={32} className="text-blue-500" />
               </div>
               <h2 className="text-xl font-bold" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>🔔 截止日提醒设置</h2>
-              <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>设置截止日提醒的时间和频率</p>
+              {/* 需求56：老师端明确展示"为哪个学生设置" */}
+              {(user.role === 'teacher' || user.role === 'admin') ? (
+                applyToAllMyStudents ? (
+                  <p className="text-sm mt-1 font-medium" style={{ color: '#dc2626' }}>⚠️ 将应用到你名下的所有学生</p>
+                ) : currentStudent?.name ? (
+                  <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>正在为学生 <span className="font-semibold" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>{currentStudent.name}</span> 配置提醒</p>
+                ) : (
+                  <p className="text-sm mt-1" style={{ color: '#dc2626' }}>⚠️ 请先从学生列表中选择一个学生，再进行设置</p>
+                )
+              ) : (
+                <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>设置截止日提醒的时间和频率</p>
+              )}
             </div>
             <div className="p-6 space-y-5">
               {/* 提醒时间 */}
@@ -5645,10 +5722,22 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 </div>
                 <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>距离截止日该天数内的事件会被列入提醒（推荐 3~7 天）</p>
               </div>
+              {/* 需求56：老师可以一键应用到所有自己名下的学生 */}
+              {user.role === 'teacher' && (
+                <div className="rounded-xl p-3" style={{ background: isDark ? 'rgba(59,130,246,0.08)' : '#eff6ff', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#bfdbfe'}` }}>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm" style={{ color: tokens.colors.text.primary }}>
+                    <input type="checkbox" checked={applyToAllMyStudents}
+                      onChange={e => setApplyToAllMyStudents(e.target.checked)}
+                      className="w-4 h-4 cursor-pointer accent-blue-500" />
+                    <span>🎯 <strong>应用到我名下的所有学生</strong>（否则仅对 <span className="font-semibold">{currentStudent?.name || '当前选中学生'}</span> 生效）</span>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="p-4 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>
-              <button onClick={handleSaveReminderSettings} disabled={savingReminderSettings}
-                className="flex-1 py-3 rounded-xl font-bold text-white transition text-sm disabled:opacity-50"
+              <button onClick={handleSaveReminderSettings}
+                disabled={savingReminderSettings || ((user.role === 'teacher' || user.role === 'admin') && !applyToAllMyStudents && !currentStudent?.studentId)}
+                className="flex-1 py-3 rounded-xl font-bold text-white transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
                 {savingReminderSettings ? '保存中...' : '💾 保存设置'}
               </button>
