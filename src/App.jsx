@@ -212,24 +212,38 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       })) : [];
 
       // 将 API 返回的 schools 转换为前端格式
-      const schools = Array.isArray(schoolsData) ? schoolsData.map(s => ({
-        id: s.id,
-        name: s.name,
-        nameJa: s.name_ja || '',
-        type: s.type,
-        location: s.location || '',
-        program: s.program,
-        status: s.status,
-        acceptanceRate: s.acceptance_rate || '',
-        requirements: s.requirements || '',
-        applicationStartDate: s.application_start_date,
-        applicationEndDate: s.application_end_date,
-        examDate: s.exam_date,
-        resultDate: s.result_date,
-        requirementsUrl: s.requirements_url || '',
-        teacherNotes: s.teacher_notes || '',
-        materials: Array.isArray(s.materials) ? s.materials : [],
-      })) : [];
+      const schools = Array.isArray(schoolsData) ? schoolsData.map(s => {
+        // 【新需求46 Bug 修复】解析 extra_dates，兼容字符串/对象
+        let extra = s.extra_dates || s.extraDates || {};
+        if (typeof extra === 'string') {
+          try { extra = JSON.parse(extra || '{}'); } catch { extra = {}; }
+        }
+        return {
+          id: s.id,
+          name: s.name,
+          nameJa: s.name_ja || '',
+          type: s.type,
+          location: s.location || '',
+          program: s.program,
+          status: s.status,
+          acceptanceRate: s.acceptance_rate || '',
+          requirements: s.requirements || '',
+          applicationStartDate: s.application_start_date,
+          applicationEndDate: s.application_end_date,
+          examDate: s.exam_date,
+          resultDate: s.result_date,
+          requirementsUrl: s.requirements_url || '',
+          teacherNotes: s.teacher_notes || '',
+          materials: Array.isArray(s.materials) ? s.materials : [],
+          // 【新需求46】携带新字段到前端，保证编辑回显 / 详情展示正常
+          extra_dates: extra,
+          firstExamDate: extra.firstExamDate || '',
+          firstResultDate: extra.firstResultDate || '',
+          secondExamDate: extra.secondExamDate || '',
+          secondResultDate: extra.secondResultDate || '',
+          customDates: Array.isArray(extra.customDates) ? extra.customDates : [],
+        };
+      }) : [];
 
       // 将 API 返回的 materials 转换为前端 checklist 格式
       const general = Array.isArray(materialsData?.general) ? materialsData.general.map(m => ({

@@ -209,6 +209,22 @@ schools.post('/', async (c) => {
   if (exam_date) eventInserts.push(makeEvent(`${name} 入学考试`, exam_date, '考试', false, `${program} 入学考试`))
   if (result_date) eventInserts.push(makeEvent(`${name} 合格发表`, result_date, '合格发表', false, `${program} 合格发表日`))
 
+  // 【新需求46】为 extra_dates 中的一审/二审考试/发表 & 自定义日期生成时间线事件
+  try {
+    const extraObj = typeof extraDatesJson === 'string' ? JSON.parse(extraDatesJson || '{}') : (extraDatesJson || {})
+    if (extraObj.firstExamDate) eventInserts.push(makeEvent(`${name} 一审考试`, extraObj.firstExamDate, '考试', false, `${program} 一审考试`))
+    if (extraObj.firstResultDate) eventInserts.push(makeEvent(`${name} 一审发表`, extraObj.firstResultDate, '合格发表', false, `${program} 一审合格发表`))
+    if (extraObj.secondExamDate) eventInserts.push(makeEvent(`${name} 二审考试`, extraObj.secondExamDate, '考试', false, `${program} 二审考试`))
+    if (extraObj.secondResultDate) eventInserts.push(makeEvent(`${name} 二审发表`, extraObj.secondResultDate, '合格发表', false, `${program} 二审合格发表`))
+    if (Array.isArray(extraObj.customDates)) {
+      extraObj.customDates.forEach(cd => {
+        if (cd && cd.label && cd.date) {
+          eventInserts.push(makeEvent(`${name} ${cd.label}`, cd.date, '自定义', false, `${program} ${cd.label}`))
+        }
+      })
+    }
+  } catch (e) { /* extra_dates 解析失败时忽略事件生成 */ }
+
   eventInserts.forEach(e => {
     batchInserts.push(
       db.prepare(`INSERT INTO events (student_id, school_id, type, title, date, days_left, category, urgent, notes, completed)
@@ -293,6 +309,22 @@ schools.put('/:id', async (c) => {
   if (updated.application_end_date) eventInserts.push(makeEvent(`${updated.name} 出愿截止`, updated.application_end_date, '出愿', true, `${updated.program} 出愿截止，务必在此之前提交`))
   if (updated.exam_date) eventInserts.push(makeEvent(`${updated.name} 入学考试`, updated.exam_date, '考试', false, `${updated.program} 入学考试`))
   if (updated.result_date) eventInserts.push(makeEvent(`${updated.name} 合格发表`, updated.result_date, '合格发表', false, `${updated.program} 合格发表日`))
+
+  // 【新需求46】extra_dates 中的一审/二审/自定义日期也重建为事件
+  try {
+    const extraObj = typeof updated.extra_dates === 'string' ? JSON.parse(updated.extra_dates || '{}') : (updated.extra_dates || {})
+    if (extraObj.firstExamDate) eventInserts.push(makeEvent(`${updated.name} 一审考试`, extraObj.firstExamDate, '考试', false, `${updated.program} 一审考试`))
+    if (extraObj.firstResultDate) eventInserts.push(makeEvent(`${updated.name} 一审发表`, extraObj.firstResultDate, '合格发表', false, `${updated.program} 一审合格发表`))
+    if (extraObj.secondExamDate) eventInserts.push(makeEvent(`${updated.name} 二审考试`, extraObj.secondExamDate, '考试', false, `${updated.program} 二审考试`))
+    if (extraObj.secondResultDate) eventInserts.push(makeEvent(`${updated.name} 二审发表`, extraObj.secondResultDate, '合格发表', false, `${updated.program} 二审合格发表`))
+    if (Array.isArray(extraObj.customDates)) {
+      extraObj.customDates.forEach(cd => {
+        if (cd && cd.label && cd.date) {
+          eventInserts.push(makeEvent(`${updated.name} ${cd.label}`, cd.date, '自定义', false, `${updated.program} ${cd.label}`))
+        }
+      })
+    }
+  } catch (e) { /* extra_dates 解析失败时忽略事件生成 */ }
 
   const batchStatements = [
     // 更新学校主表
