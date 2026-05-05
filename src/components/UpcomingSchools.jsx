@@ -299,6 +299,46 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                     </span>
                                   </div>
                                 )}
+
+                                {/* 【新需求46】卡片上显示重要日期字段（按学部分组，展示本月及后续关键日期） */}
+                                {(() => {
+                                  const dates = school.importantDates || school.important_dates;
+                                  if (!Array.isArray(dates) || dates.length === 0) return null;
+                                  return (
+                                    <div className="mt-2 space-y-1.5">
+                                      {dates.map((dg, gi) => {
+                                        const items = [
+                                          { k: '出愿开始', v: dg.applicationStartDate || dg.application_start_date, c: '#22c55e' },
+                                          { k: '出愿截止', v: dg.applicationEndDate || dg.application_end_date, c: '#ef4444' },
+                                          { k: '一审考试', v: dg.firstExamDate || dg.first_exam_date, c: '#0ea5e9' },
+                                          { k: '一审发表', v: dg.firstResultDate || dg.first_result_date, c: '#14b8a6' },
+                                          { k: '二审考试', v: dg.secondExamDate || dg.second_exam_date, c: '#ec4899' },
+                                          { k: '二审发表', v: dg.secondResultDate || dg.second_result_date, c: '#d946ef' },
+                                          { k: '考试', v: dg.examDate || dg.exam_date, c: '#3b82f6' },
+                                          { k: '合格发表', v: dg.resultDate || dg.result_date, c: '#a855f7' },
+                                          ...(Array.isArray(dg.customDates) ? dg.customDates.filter(cd => cd && cd.label && cd.date).map(cd => ({ k: cd.label, v: cd.date, c: '#8b5cf6' })) : []),
+                                        ].filter(x => x.v);
+                                        if (items.length === 0) return null;
+                                        return (
+                                          <div key={gi} className="rounded-md px-2 py-1"
+                                            style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${tokens.colors.border.hairline}` }}>
+                                            {dg.label && (
+                                              <div className="text-xs font-semibold mb-0.5" style={{ color: tokens.colors.text.secondary }}>{dg.label}</div>
+                                            )}
+                                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                                              {items.map((it, i) => (
+                                                <span key={i} style={{ color: tokens.colors.text.muted }}>
+                                                  <span style={{ color: it.c }}>●</span> {it.k}:{' '}
+                                                  <span style={{ color: tokens.colors.text.secondary, fontWeight: 500 }}>{it.v}</span>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <div className="flex items-center gap-2 ml-2">
                                 {user.role !== 'student' && relatedStudents.length > 0 && (
@@ -403,15 +443,32 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                       const aed = dg.applicationEndDate || dg.application_end_date;
                       const ed = dg.examDate || dg.exam_date;
                       const rd = dg.resultDate || dg.result_date;
-                      if (!asd && !aed && !ed && !rd) return null;
+                      // 【新需求46】一审/二审/自定义日期
+                      const fxd = dg.firstExamDate || dg.first_exam_date;
+                      const frd = dg.firstResultDate || dg.first_result_date;
+                      const sxd = dg.secondExamDate || dg.second_exam_date;
+                      const srd = dg.secondResultDate || dg.second_result_date;
+                      const customDates = Array.isArray(dg.customDates) ? dg.customDates.filter(cd => cd && cd.label && cd.date) : [];
+                      if (!asd && !aed && !ed && !rd && !fxd && !frd && !sxd && !srd && customDates.length === 0) return null;
+                      const cellStyle = { background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' };
                       return (
                         <div key={gi} className="mb-3">
                           <div className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.secondary }}>{dg.label || `第${gi+1}审`}</div>
                           <div className="grid grid-cols-2 gap-2">
-                            {asd && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div><div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{asd}</div></div>}
-                            {aed && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{aed}</div></div>}
-                            {ed && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>考试日期</div><div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{ed}</div></div>}
-                            {rd && <div className="rounded-lg p-2.5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f3f4f6' }}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div><div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{rd}</div></div>}
+                            {asd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div><div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{asd}</div></div>}
+                            {aed && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{aed}</div></div>}
+                            {fxd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>一审考试</div><div className="text-sm font-semibold" style={{ color: '#0ea5e9' }}>{fxd}</div></div>}
+                            {frd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>一审发表</div><div className="text-sm font-semibold" style={{ color: '#14b8a6' }}>{frd}</div></div>}
+                            {sxd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>二审考试</div><div className="text-sm font-semibold" style={{ color: '#ec4899' }}>{sxd}</div></div>}
+                            {srd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>二审发表</div><div className="text-sm font-semibold" style={{ color: '#d946ef' }}>{srd}</div></div>}
+                            {ed && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>考试日期</div><div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{ed}</div></div>}
+                            {rd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div><div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{rd}</div></div>}
+                            {customDates.map((cd, i) => (
+                              <div key={`c-${i}`} className="rounded-lg p-2.5 text-center" style={cellStyle}>
+                                <div className="text-xs" style={{ color: tokens.colors.text.muted }}>{cd.label}</div>
+                                <div className="text-sm font-semibold" style={{ color: '#8b5cf6' }}>{cd.date}</div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       );

@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS schools (
   website TEXT DEFAULT '',
   xuexin_cert TEXT DEFAULT '不确定',
   overseas_cert TEXT DEFAULT '不确定',
+  -- 【新需求45】一审/二审/发表时间 + 自定义日期字段，JSON 存储
+  extra_dates TEXT NOT NULL DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

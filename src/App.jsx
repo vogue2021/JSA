@@ -212,24 +212,44 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       })) : [];
 
       // 将 API 返回的 schools 转换为前端格式
-      const schools = Array.isArray(schoolsData) ? schoolsData.map(s => ({
-        id: s.id,
-        name: s.name,
-        nameJa: s.name_ja || '',
-        type: s.type,
-        location: s.location || '',
-        program: s.program,
-        status: s.status,
-        acceptanceRate: s.acceptance_rate || '',
-        requirements: s.requirements || '',
-        applicationStartDate: s.application_start_date,
-        applicationEndDate: s.application_end_date,
-        examDate: s.exam_date,
-        resultDate: s.result_date,
-        requirementsUrl: s.requirements_url || '',
-        teacherNotes: s.teacher_notes || '',
-        materials: Array.isArray(s.materials) ? s.materials : [],
-      })) : [];
+      const schools = Array.isArray(schoolsData) ? schoolsData.map(s => {
+        // 【新需求46 Bug 修复】解析 extra_dates，兼容字符串/对象
+        let extra = s.extra_dates || s.extraDates || {};
+        if (typeof extra === 'string') {
+          try { extra = JSON.parse(extra || '{}'); } catch { extra = {}; }
+        }
+        // 【新需求49】诊断日志：打印每个学校的 extra_dates 原始值与解包结果
+        if (s.extra_dates !== undefined || s.extraDates !== undefined) {
+          console.log(`[学校加载诊断] "${s.name}" 的 extra_dates 原始值:`, s.extra_dates, '解析后:', extra);
+        } else {
+          console.warn(`[学校加载诊断] "${s.name}" API 返回中没有 extra_dates 字段，请检查数据库是否执行了 migration-needs45.sql`);
+        }
+        return {
+          id: s.id,
+          name: s.name,
+          nameJa: s.name_ja || '',
+          type: s.type,
+          location: s.location || '',
+          program: s.program,
+          status: s.status,
+          acceptanceRate: s.acceptance_rate || '',
+          requirements: s.requirements || '',
+          applicationStartDate: s.application_start_date,
+          applicationEndDate: s.application_end_date,
+          examDate: s.exam_date,
+          resultDate: s.result_date,
+          requirementsUrl: s.requirements_url || '',
+          teacherNotes: s.teacher_notes || '',
+          materials: Array.isArray(s.materials) ? s.materials : [],
+          // 【新需求46】携带新字段到前端，保证编辑回显 / 详情展示正常
+          extra_dates: extra,
+          firstExamDate: extra.firstExamDate || '',
+          firstResultDate: extra.firstResultDate || '',
+          secondExamDate: extra.secondExamDate || '',
+          secondResultDate: extra.secondResultDate || '',
+          customDates: Array.isArray(extra.customDates) ? extra.customDates : [],
+        };
+      }) : [];
 
       // 将 API 返回的 materials 转换为前端 checklist 格式
       const general = Array.isArray(materialsData?.general) ? materialsData.general.map(m => ({
@@ -1127,9 +1147,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         url: m.url || '',
         id: m.id,
       }));
+      // 【新需求45】从 extra_dates 解包新增日期字段（兼容对象/字符串两种输入）
+      let extra = editingSchool.extra_dates || editingSchool.extraDates || {};
+      if (typeof extra === 'string') {
+        try { extra = JSON.parse(extra || '{}'); } catch { extra = {}; }
+      }
       return {
         ...editingSchool,
         materials: materialsForForm.length > 0 ? materialsForForm : (editingSchool.materials || []),
+        firstExamDate: extra.firstExamDate || '',
+        firstResultDate: extra.firstResultDate || '',
+        secondExamDate: extra.secondExamDate || '',
+        secondResultDate: extra.secondResultDate || '',
+        customDates: Array.isArray(extra.customDates) ? extra.customDates : [],
       };
     }
     return {
@@ -1143,6 +1173,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       applicationEndDate: '',
       examDate: '',
       resultDate: '',
+      // 【新需求45】一审/二审考试时间 & 发表时间（从学校信息库对应学部自动填充）
+      firstExamDate: '',
+      firstResultDate: '',
+      secondExamDate: '',
+      secondResultDate: '',
+      // 【新需求45】自定义日期字段（字段名可自由修改）
+      customDates: [],
       requirementsUrl: '',
       requirements: '',
       acceptanceRate: '',
@@ -1154,6 +1191,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [newMaterial, setNewMaterial] = useState({ name: '', deadline: '', url: '' });
   const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
   const [schoolSuggestions, setSchoolSuggestions] = useState([]);
+  // 【新需求45】当前学校在信息库中的 importantDates 列表（按学部/审次组）
+  // 用于"研究科/学部"字段的下拉选择 + 根据学部自动填充时间端
+  const [dbSchoolDateGroups, setDbSchoolDateGroups] = useState([]);
+  const [showProgramDropdown, setShowProgramDropdown] = useState(false);
 
   // 当 editingSchool 变化时重新初始化表单（打开编辑弹窗或切换学校时）
   useEffect(() => {
@@ -1162,6 +1203,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       setNewMaterial({ name: '', deadline: '', url: '' });
       setShowSchoolSuggestions(false);
       setSchoolSuggestions([]);
+      setDbSchoolDateGroups([]);
+      setShowProgramDropdown(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSchoolModal, editingSchool]);
@@ -1220,6 +1263,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       const firstDateGroup = (fullSchool.importantDates && fullSchool.importantDates.length > 0)
         ? fullSchool.importantDates[0] : {};
 
+      // 【新需求45】把该学校的所有日期组缓存起来，供"学部"下拉用
+      setDbSchoolDateGroups(Array.isArray(fullSchool.importantDates) ? fullSchool.importantDates : []);
+
       // 从学校信息库的 requiredMaterials 自动生成材料列表（名称填充，截止时间留空由用户手动设置）
       const autoMaterials = (fullSchool.requiredMaterials || []).map((materialName, idx) => ({
         name: materialName,
@@ -1241,6 +1287,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         applicationEndDate: firstDateGroup.applicationEndDate || firstDateGroup.application_end_date || prev.applicationEndDate,
         examDate: firstDateGroup.examDate || firstDateGroup.exam_date || prev.examDate,
         resultDate: firstDateGroup.resultDate || firstDateGroup.result_date || prev.resultDate,
+        // 【新需求45】一审/二审/发表时间 & 自定义日期，同步首组默认值
+        firstExamDate: firstDateGroup.firstExamDate || firstDateGroup.first_exam_date || prev.firstExamDate || '',
+        firstResultDate: firstDateGroup.firstResultDate || firstDateGroup.first_result_date || prev.firstResultDate || '',
+        secondExamDate: firstDateGroup.secondExamDate || firstDateGroup.second_exam_date || prev.secondExamDate || '',
+        secondResultDate: firstDateGroup.secondResultDate || firstDateGroup.second_result_date || prev.secondResultDate || '',
+        customDates: Array.isArray(firstDateGroup.customDates) ? firstDateGroup.customDates : (prev.customDates || []),
         requirementsUrl: fullSchool.requirementsUrl || fullSchool.requirements_url || fullSchool.website || prev.requirementsUrl,
         // 自动填充材料（仅在当前没有材料时才自动填充，避免覆盖用户已编辑的材料）
         materials: (prev.materials && prev.materials.length > 0) ? prev.materials : autoMaterials,
@@ -1256,6 +1308,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
     const handleSubmit = async (e) => {
       e.preventDefault();
+
+      // 【新需求45】把一审/二审/自定义日期字段打包到 extra_dates JSON 字段
+      const extraDates = {
+        firstExamDate: formData.firstExamDate || '',
+        firstResultDate: formData.firstResultDate || '',
+        secondExamDate: formData.secondExamDate || '',
+        secondResultDate: formData.secondResultDate || '',
+        customDates: Array.isArray(formData.customDates) ? formData.customDates : [],
+      };
 
       const schoolData = {
         student_id: currentStudent?.studentId,
@@ -1273,6 +1334,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         requirements_url: formData.requirementsUrl,
         requirements: formData.requirements,
         teacher_notes: formData.teacherNotes,
+        extra_dates: extraDates,
         materials: (formData.materials || []).map(m => ({ name: m.name, deadline: m.deadline, url: m.url }))
       };
 
@@ -1290,11 +1352,35 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
             body: JSON.stringify(schoolData),
           });
         }
+        // 【新需求49】保存后打印诊断日志，方便排查一审/二审字段是否成功持久化
+        try {
+          const diag = await apiReq('/schools/_debug/schema').catch(() => null);
+          console.log('[学校保存诊断] 提交的 extra_dates:', extraDates);
+          console.log('[学校保存诊断] 数据库 schema:', diag);
+        } catch (e) { /* ignore */ }
         // 重新从 API 加载数据
         await loadStudentDataFromAPI(currentStudent?.studentId);
         setShowSchoolModal(false);
         setEditingSchool(null);
         if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+
+        // 【新需求49】持久化校验：若提交了 extra_dates 但诊断发现数据库列缺失，立即警告
+        try {
+          const hasAnyExtraDate = !!(
+            extraDates.firstExamDate || extraDates.firstResultDate ||
+            extraDates.secondExamDate || extraDates.secondResultDate ||
+            (Array.isArray(extraDates.customDates) && extraDates.customDates.some(cd => cd && cd.date))
+          );
+          if (hasAnyExtraDate) {
+            const diag2 = await apiReq('/schools/_debug/schema').catch(() => null);
+            if (diag2 && diag2.hasExtraDates === false) {
+              if (showNotification) showNotification(
+                '⚠️ 后端数据库 schools 表缺少 extra_dates 列，一审/二审时间未持久化！请联系管理员执行 migration-needs45.sql',
+                'error'
+              );
+            }
+          }
+        } catch (e) { /* ignore */ }
       } catch (err) {
         console.error('保存学校失败:', err);
         if (showNotification) showNotification('保存失败：' + err.message, 'error');
@@ -1407,15 +1493,73 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium mb-2">研究科/学部 *</label>
-                <input
-                  type="text"
-                  value={formData.program}
-                  onChange={(e) => setFormData({...formData, program: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.program}
+                    onChange={(e) => {
+                      setFormData({...formData, program: e.target.value});
+                      if (dbSchoolDateGroups.length > 0) setShowProgramDropdown(true);
+                    }}
+                    onFocus={() => {
+                      if (dbSchoolDateGroups.length > 0) setShowProgramDropdown(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowProgramDropdown(false), 200)}
+                    className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder={dbSchoolDateGroups.length > 0 ? '输入或从下拉选择学部' : '输入研究科/学部'}
+                    required
+                  />
+                  {dbSchoolDateGroups.length > 0 && (
+                    <button type="button" tabIndex={-1}
+                      onMouseDown={(e) => { e.preventDefault(); setShowProgramDropdown(v => !v); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-themed-muted hover:text-themed-primary">
+                      <ChevronDown size={16} />
+                    </button>
+                  )}
+                </div>
+                {/* 【新需求45】学部下拉：来自学校信息库该学校的 importantDates 各组 label，选择后自动填充日期端 */}
+                {showProgramDropdown && dbSchoolDateGroups.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-56 overflow-y-auto"
+                    style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
+                    <div className="px-3 py-1.5 text-xs"
+                      style={{ color: tokens.colors.text.muted, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
+                      从学校信息库选择学部（自动填充时间端）
+                    </div>
+                    {dbSchoolDateGroups.map((dg, idx) => (
+                      <button key={dg.id || idx} type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          // 选中后把该学部对应的日期组自动填充到 formData
+                          setFormData(prev => ({
+                            ...prev,
+                            program: dg.label || prev.program,
+                            applicationStartDate: dg.applicationStartDate || prev.applicationStartDate || '',
+                            applicationEndDate: dg.applicationEndDate || prev.applicationEndDate || '',
+                            examDate: dg.examDate || prev.examDate || '',
+                            resultDate: dg.resultDate || prev.resultDate || '',
+                            firstExamDate: dg.firstExamDate || '',
+                            firstResultDate: dg.firstResultDate || '',
+                            secondExamDate: dg.secondExamDate || '',
+                            secondResultDate: dg.secondResultDate || '',
+                            customDates: Array.isArray(dg.customDates) ? dg.customDates.map(cd => ({ ...cd })) : [],
+                          }));
+                          setShowProgramDropdown(false);
+                          if (showNotification) showNotification(`已自动填充学部「${dg.label || '未命名'}」对应的时间端`);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-0 text-sm">
+                        <div className="font-medium text-themed-primary">{dg.label || '（未命名学部）'}</div>
+                        <div className="text-xs text-themed-muted mt-0.5 flex flex-wrap gap-2">
+                          {dg.applicationStartDate && <span>出愿开始: {dg.applicationStartDate}</span>}
+                          {dg.applicationEndDate && <span>出愿截止: {dg.applicationEndDate}</span>}
+                          {dg.firstExamDate && <span>一审: {dg.firstExamDate}</span>}
+                          {dg.secondExamDate && <span>二审: {dg.secondExamDate}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1497,6 +1641,50 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
                 </div>
               </div>
 
+              {/* 【新需求45】一审考试时间 / 一审发表时间 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">一审考试时间</label>
+                  <input
+                    type="date"
+                    value={formData.firstExamDate || ''}
+                    onChange={(e) => setFormData({...formData, firstExamDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">一审发表时间</label>
+                  <input
+                    type="date"
+                    value={formData.firstResultDate || ''}
+                    onChange={(e) => setFormData({...formData, firstResultDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* 【新需求45】二审考试时间 / 二审发表时间 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">二审考试时间</label>
+                  <input
+                    type="date"
+                    value={formData.secondExamDate || ''}
+                    onChange={(e) => setFormData({...formData, secondExamDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">二审发表时间</label>
+                  <input
+                    type="date"
+                    value={formData.secondResultDate || ''}
+                    onChange={(e) => setFormData({...formData, secondResultDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">考试日期</label>
@@ -1519,6 +1707,48 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
                     required
                   />
                 </div>
+              </div>
+
+              {/* 【新需求45】自定义日期字段（字段名可自由修改） */}
+              <div className="pt-3 border-t" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium" style={{ color: tokens.colors.text.primary }}>自定义日期字段</label>
+                  <button type="button"
+                    onClick={() => {
+                      const list = Array.isArray(formData.customDates) ? [...formData.customDates] : [];
+                      list.push({ id: Date.now(), label: '', date: '' });
+                      setFormData({...formData, customDates: list});
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-purple-100 text-purple-700 hover:bg-purple-200">
+                    <Plus size={12} /> 添加字段
+                  </button>
+                </div>
+                <p className="text-xs mb-2" style={{ color: tokens.colors.text.muted }}>字段名称可任意修改（例：面试时间、书类提出期限等），满足不同学校不同学部的个性化需求</p>
+                {(!formData.customDates || formData.customDates.length === 0) && (
+                  <p className="text-xs text-center py-1" style={{ color: tokens.colors.text.muted }}>暂无自定义字段</p>
+                )}
+                {(formData.customDates || []).map((cd, idx) => (
+                  <div key={cd.id || idx} className="flex items-center gap-2 mb-2">
+                    <input type="text" value={cd.label || ''}
+                      placeholder="字段名（如：面试时间）"
+                      onChange={e => {
+                        const list = [...(formData.customDates || [])];
+                        list[idx] = { ...list[idx], label: e.target.value };
+                        setFormData({...formData, customDates: list});
+                      }}
+                      className="flex-1 px-2 py-1 border rounded text-sm" />
+                    <input type="date" value={cd.date || ''}
+                      onChange={e => {
+                        const list = [...(formData.customDates || [])];
+                        list[idx] = { ...list[idx], date: e.target.value };
+                        setFormData({...formData, customDates: list});
+                      }}
+                      className="w-44 px-2 py-1 border rounded text-sm" />
+                    <button type="button"
+                      onClick={() => setFormData({...formData, customDates: (formData.customDates || []).filter((_, j) => j !== idx)})}
+                      className="p-1 hover:bg-red-50 text-red-500 rounded"><X size={14} /></button>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -3741,6 +3971,37 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>合格发表</div>
                     <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.resultDate}</div>
                   </div>
+                  {/* 【新需求47】一审/二审/自定义日期（仅在有值时显示） */}
+                  {school.firstExamDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#7dd3fc' : '#0284c7' }}>一审考试</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.firstExamDate}</div>
+                    </div>
+                  )}
+                  {school.firstResultDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#5eead4' : '#0d9488' }}>一审发表</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.firstResultDate}</div>
+                    </div>
+                  )}
+                  {school.secondExamDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(236,72,153,0.1)' : 'rgba(236,72,153,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#f9a8d4' : '#db2777' }}>二审考试</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondExamDate}</div>
+                    </div>
+                  )}
+                  {school.secondResultDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(217,70,239,0.1)' : 'rgba(217,70,239,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#f0abfc' : '#c026d3' }}>二审发表</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondResultDate}</div>
+                    </div>
+                  )}
+                  {Array.isArray(school.customDates) && school.customDates.filter(cd => cd && cd.label && cd.date).map((cd, ci) => (
+                    <div key={`cd-${ci}`} className="p-2 rounded" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>{cd.label}</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{cd.date}</div>
+                    </div>
+                  ))}
                 </div>
 
                 {school.teacherNotes && (
@@ -4952,6 +5213,47 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                         <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.resultDate}</div>
                       </div>
                     )}
+                    {/* 【新需求45】一审 / 二审 / 自定义字段展示 */}
+                    {(() => {
+                      let ed = schoolDetailModal.extra_dates || schoolDetailModal.extraDates || {};
+                      if (typeof ed === 'string') {
+                        try { ed = JSON.parse(ed || '{}'); } catch { ed = {}; }
+                      }
+                      return (
+                        <>
+                          {ed.firstExamDate && (
+                            <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)' }}>
+                              <div className="text-xs" style={{ color: isDark ? '#7dd3fc' : '#0284c7' }}>一审考试</div>
+                              <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{ed.firstExamDate}</div>
+                            </div>
+                          )}
+                          {ed.firstResultDate && (
+                            <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.06)' }}>
+                              <div className="text-xs" style={{ color: isDark ? '#5eead4' : '#0d9488' }}>一审发表</div>
+                              <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{ed.firstResultDate}</div>
+                            </div>
+                          )}
+                          {ed.secondExamDate && (
+                            <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(236,72,153,0.1)' : 'rgba(236,72,153,0.06)' }}>
+                              <div className="text-xs" style={{ color: isDark ? '#f9a8d4' : '#db2777' }}>二审考试</div>
+                              <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{ed.secondExamDate}</div>
+                            </div>
+                          )}
+                          {ed.secondResultDate && (
+                            <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(217,70,239,0.1)' : 'rgba(217,70,239,0.06)' }}>
+                              <div className="text-xs" style={{ color: isDark ? '#f0abfc' : '#c026d3' }}>二审发表</div>
+                              <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{ed.secondResultDate}</div>
+                            </div>
+                          )}
+                          {Array.isArray(ed.customDates) && ed.customDates.filter(cd => cd.label && cd.date).map((cd, i) => (
+                            <div key={i} className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
+                              <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>{cd.label}</div>
+                              <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{cd.date}</div>
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

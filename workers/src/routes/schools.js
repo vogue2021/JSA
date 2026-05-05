@@ -3,7 +3,62 @@ import { Hono } from 'hono'
 
 const schools = new Hono()
 
+// ─── 自动迁移工具 ────────────────────────────────────────────────────────────
+// 【新需求48】自动确保 schools 表有 extra_dates 列
+// 背景：需求45 引入 extra_dates 列用于存储一审/二审/自定义日期，
+// 需要手动执行 migration-needs45.sql 才会生效；
+// 为避免用户忘记执行导致保存失败，这里在 POST/PUT 入口自动检测并补列。
+// D1 / SQLite 使用 PRAGMA table_info 判断列是否存在。
+// 使用 Symbol/全局缓存避免每次请求都查询 PRAGMA：同一个 worker 实例只检查一次。
+let _extraDatesEnsured = false
+async function ensureExtraDatesColumn(db) {
+  if (_extraDatesEnsured) return
+  try {
+    const { results } = await db.prepare(`PRAGMA table_info(schools)`).all()
+    const hasColumn = Array.isArray(results) && results.some(r => r && r.name === 'extra_dates')
+    if (!hasColumn) {
+      console.log('[schools] 自动迁移：schools 表缺少 extra_dates 列，正在 ALTER TABLE 添加...')
+      await db.prepare(`ALTER TABLE schools ADD COLUMN extra_dates TEXT NOT NULL DEFAULT '{}'`).run()
+      console.log('[schools] 自动迁移完成：extra_dates 列已添加')
+    }
+    _extraDatesEnsured = true
+  } catch (err) {
+    // ALTER 可能因并发重复执行抛 "duplicate column" 错误，视为成功
+    const msg = String(err && err.message || '')
+    if (/duplicate column name|already exists/i.test(msg)) {
+      _extraDatesEnsured = true
+      return
+    }
+    // 其它错误：打日志但不阻塞请求，后续的降级 SQL 会兜底
+    console.warn('[schools] ensureExtraDatesColumn 失败，将依赖降级逻辑：', msg)
+  }
+}
+
 // ─── 统计接口 ────────────────────────────────────────────────────────────────
+
+// GET /api/schools/_debug/schema - 【新需求49】数据库 schema 诊断端点
+// 返回 schools 表的所有列名，方便前端/用户确认 extra_dates 列是否存在
+// 使用场景：用户反馈一审/二审日期保存失败时，访问此端点即可定位是后端列缺失还是前端字段名错误
+schools.get('/_debug/schema', async (c) => {
+  const db = c.env.DB
+  try {
+    // 主动触发一次自动迁移（即使 _extraDatesEnsured=true，也再做一次保障）
+    await ensureExtraDatesColumn(db)
+    const { results } = await db.prepare(`PRAGMA table_info(schools)`).all()
+    const columns = Array.isArray(results) ? results.map(r => r.name) : []
+    return c.json({
+      success: true,
+      data: {
+        table: 'schools',
+        columns,
+        hasExtraDates: columns.includes('extra_dates'),
+        ensuredInThisInstance: _extraDatesEnsured,
+      }
+    })
+  } catch (err) {
+    return c.json({ success: false, message: String(err && err.message || err) }, 500)
+  }
+})
 
 // GET /api/schools/stats - 全局学校报考统计（仪表盘）
 schools.get('/stats', async (c) => {
@@ -93,6 +148,10 @@ schools.get('/student/:studentId', async (c) => {
   const { studentId } = c.req.param()
   const db = c.env.DB
 
+  // 【新需求49】用户打开学校页面就会触发该 GET，此时立即自动迁移，
+  // 避免要等到下一次 POST/PUT 才补列（之前只在写路由触发，首次查询仍读不到列）
+  await ensureExtraDatesColumn(db)
+
   const { results: schoolList } = await db.prepare(
     'SELECT * FROM schools WHERE student_id = ? ORDER BY created_at DESC'
   ).bind(studentId).all()
@@ -103,6 +162,12 @@ schools.get('/student/:studentId', async (c) => {
       try { school.materials = JSON.parse(school.materials) } catch { school.materials = [] }
     } else {
       school.materials = []
+    }
+    // 【新需求45】解析 extra_dates JSON（一审/二审/自定义日期）
+    if (school.extra_dates) {
+      try { school.extra_dates = JSON.parse(school.extra_dates) } catch { school.extra_dates = {} }
+    } else {
+      school.extra_dates = {}
     }
   })
 
@@ -122,6 +187,12 @@ schools.get('/:id', async (c) => {
   } else {
     school.materials = []
   }
+  // 【新需求45】解析 extra_dates JSON
+  if (school.extra_dates) {
+    try { school.extra_dates = JSON.parse(school.extra_dates) } catch { school.extra_dates = {} }
+  } else {
+    school.extra_dates = {}
+  }
 
   return c.json({ success: true, data: school })
 })
@@ -134,7 +205,7 @@ schools.post('/', async (c) => {
     application_start_date, application_end_date,
     exam_date, result_date, requirements_url, requirements, teacher_notes,
     difficulty, ranking, location, website, xuexin_cert, overseas_cert,
-    materials
+    materials, extra_dates
   } = body
 
   if (!student_id || !name || !type) {
@@ -142,6 +213,9 @@ schools.post('/', async (c) => {
   }
 
   const db = c.env.DB
+
+  // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
+  await ensureExtraDatesColumn(db)
 
   // 验证学生是否存在
   const studentExists = await db.prepare(
@@ -151,21 +225,57 @@ schools.post('/', async (c) => {
     return c.json({ success: false, message: '学生不存在' }, 404)
   }
 
+  // 【新需求45】extra_dates 序列化（兼容字符串/对象两种输入）
+  let extraDatesJson = '{}'
+  if (extra_dates !== undefined && extra_dates !== null) {
+    if (typeof extra_dates === 'string') {
+      try { JSON.parse(extra_dates); extraDatesJson = extra_dates } catch { extraDatesJson = '{}' }
+    } else if (typeof extra_dates === 'object') {
+      try { extraDatesJson = JSON.stringify(extra_dates) } catch { extraDatesJson = '{}' }
+    }
+  }
+
   // 先插入学校获取 ID（需要先获取 ID 才能关联事件/材料）
-  await db.prepare(`
-    INSERT INTO schools (student_id, name, name_ja, type, program, status,
-      application_start_date, application_end_date, exam_date, result_date,
-      requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
-      xuexin_cert, overseas_cert)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    student_id, name, name_ja || '', type, program || '', status || 'not_started',
-    application_start_date || null, application_end_date || null,
-    exam_date || null, result_date || null,
-    requirements_url || '', requirements || '', teacher_notes || '',
-    difficulty || '', ranking || 0, location || '', website || '',
-    xuexin_cert || '不确定', overseas_cert || '不确定'
-  ).run()
+  // 【新需求47】防御性 try/catch：若 extra_dates 列尚未迁移，则回退到不含该列的 INSERT
+  try {
+    await db.prepare(`
+      INSERT INTO schools (student_id, name, name_ja, type, program, status,
+        application_start_date, application_end_date, exam_date, result_date,
+        requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
+        xuexin_cert, overseas_cert, extra_dates)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      student_id, name, name_ja || '', type, program || '', status || 'not_started',
+      application_start_date || null, application_end_date || null,
+      exam_date || null, result_date || null,
+      requirements_url || '', requirements || '', teacher_notes || '',
+      difficulty || '', ranking || 0, location || '', website || '',
+      xuexin_cert || '不确定', overseas_cert || '不确定',
+      extraDatesJson
+    ).run()
+  } catch (err) {
+    const msg = String(err && err.message || '')
+    if (/no column named extra_dates|has no column named extra_dates/i.test(msg)) {
+      // 列不存在：回退到旧表结构 INSERT（迁移脚本未执行场景）
+      console.warn('[schools POST] extra_dates 列不存在，回退到旧表结构 INSERT。请执行 migration-needs45.sql')
+      await db.prepare(`
+        INSERT INTO schools (student_id, name, name_ja, type, program, status,
+          application_start_date, application_end_date, exam_date, result_date,
+          requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
+          xuexin_cert, overseas_cert)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        student_id, name, name_ja || '', type, program || '', status || 'not_started',
+        application_start_date || null, application_end_date || null,
+        exam_date || null, result_date || null,
+        requirements_url || '', requirements || '', teacher_notes || '',
+        difficulty || '', ranking || 0, location || '', website || '',
+        xuexin_cert || '不确定', overseas_cert || '不确定'
+      ).run()
+    } else {
+      throw err
+    }
+  }
 
   const newSchool = await db.prepare(
     'SELECT * FROM schools WHERE student_id = ? ORDER BY id DESC LIMIT 1'
@@ -185,6 +295,22 @@ schools.post('/', async (c) => {
   if (application_end_date) eventInserts.push(makeEvent(`${name} 出愿截止`, application_end_date, '出愿', true, `${program} 出愿截止，务必在此之前提交`))
   if (exam_date) eventInserts.push(makeEvent(`${name} 入学考试`, exam_date, '考试', false, `${program} 入学考试`))
   if (result_date) eventInserts.push(makeEvent(`${name} 合格发表`, result_date, '合格发表', false, `${program} 合格发表日`))
+
+  // 【新需求46】为 extra_dates 中的一审/二审考试/发表 & 自定义日期生成时间线事件
+  try {
+    const extraObj = typeof extraDatesJson === 'string' ? JSON.parse(extraDatesJson || '{}') : (extraDatesJson || {})
+    if (extraObj.firstExamDate) eventInserts.push(makeEvent(`${name} 一审考试`, extraObj.firstExamDate, '考试', false, `${program} 一审考试`))
+    if (extraObj.firstResultDate) eventInserts.push(makeEvent(`${name} 一审发表`, extraObj.firstResultDate, '合格发表', false, `${program} 一审合格发表`))
+    if (extraObj.secondExamDate) eventInserts.push(makeEvent(`${name} 二审考试`, extraObj.secondExamDate, '考试', false, `${program} 二审考试`))
+    if (extraObj.secondResultDate) eventInserts.push(makeEvent(`${name} 二审发表`, extraObj.secondResultDate, '合格发表', false, `${program} 二审合格发表`))
+    if (Array.isArray(extraObj.customDates)) {
+      extraObj.customDates.forEach(cd => {
+        if (cd && cd.label && cd.date) {
+          eventInserts.push(makeEvent(`${name} ${cd.label}`, cd.date, '自定义', false, `${program} ${cd.label}`))
+        }
+      })
+    }
+  } catch (e) { /* extra_dates 解析失败时忽略事件生成 */ }
 
   eventInserts.forEach(e => {
     batchInserts.push(
@@ -219,13 +345,24 @@ schools.post('/', async (c) => {
 
 // PUT /api/schools/:id - 更新学校
 schools.put('/:id', async (c) => {
-  const { id } = c.req.param()
+  const id = c.req.param('id')
   const db = c.env.DB
+
+  // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
+  await ensureExtraDatesColumn(db)
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
-
   const body = await c.req.json()
+  // 【新需求45】处理 extra_dates（JSON 字段）
+  let extraDatesJson = (school.extra_dates || '{}')
+  if (body.extra_dates !== undefined && body.extra_dates !== null) {
+    if (typeof body.extra_dates === 'string') {
+      try { JSON.parse(body.extra_dates); extraDatesJson = body.extra_dates } catch { /* 保持原值 */ }
+    } else if (typeof body.extra_dates === 'object') {
+      try { extraDatesJson = JSON.stringify(body.extra_dates) } catch { /* 保持原值 */ }
+    }
+  }
   const updated = {
     name: body.name || school.name,
     name_ja: body.name_ja !== undefined ? body.name_ja : (school.name_ja || ''),
@@ -245,6 +382,7 @@ schools.put('/:id', async (c) => {
     website: body.website !== undefined ? body.website : (school.website || ''),
     xuexin_cert: body.xuexin_cert !== undefined ? body.xuexin_cert : (school.xuexin_cert || '不确定'),
     overseas_cert: body.overseas_cert !== undefined ? body.overseas_cert : (school.overseas_cert || '不确定'),
+    extra_dates: extraDatesJson,
   }
 
   // 使用 db.batch 原子性执行：更新学校主表 + 删除旧事件 + 重建新事件 + 处理材料
@@ -261,13 +399,30 @@ schools.put('/:id', async (c) => {
   if (updated.exam_date) eventInserts.push(makeEvent(`${updated.name} 入学考试`, updated.exam_date, '考试', false, `${updated.program} 入学考试`))
   if (updated.result_date) eventInserts.push(makeEvent(`${updated.name} 合格发表`, updated.result_date, '合格发表', false, `${updated.program} 合格发表日`))
 
-  const batchStatements = [
-    // 更新学校主表
-    db.prepare(`
+  // 【新需求46】extra_dates 中的一审/二审/自定义日期也重建为事件
+  try {
+    const extraObj = typeof updated.extra_dates === 'string' ? JSON.parse(updated.extra_dates || '{}') : (updated.extra_dates || {})
+    if (extraObj.firstExamDate) eventInserts.push(makeEvent(`${updated.name} 一审考试`, extraObj.firstExamDate, '考试', false, `${updated.program} 一审考试`))
+    if (extraObj.firstResultDate) eventInserts.push(makeEvent(`${updated.name} 一审发表`, extraObj.firstResultDate, '合格发表', false, `${updated.program} 一审合格发表`))
+    if (extraObj.secondExamDate) eventInserts.push(makeEvent(`${updated.name} 二审考试`, extraObj.secondExamDate, '考试', false, `${updated.program} 二审考试`))
+    if (extraObj.secondResultDate) eventInserts.push(makeEvent(`${updated.name} 二审发表`, extraObj.secondResultDate, '合格发表', false, `${updated.program} 二审合格发表`))
+    if (Array.isArray(extraObj.customDates)) {
+      extraObj.customDates.forEach(cd => {
+        if (cd && cd.label && cd.date) {
+          eventInserts.push(makeEvent(`${updated.name} ${cd.label}`, cd.date, '自定义', false, `${updated.program} ${cd.label}`))
+        }
+      })
+    }
+  } catch (e) { /* extra_dates 解析失败时忽略事件生成 */ }
+
+  // 【新需求47】先独立执行主表 UPDATE，并在 extra_dates 列不存在时降级
+  // 原因：db.batch 原子失败会导致事件/材料也回滚，影响用户。拆分后仅主表更新列差异不影响其它操作。
+  try {
+    await db.prepare(`
       UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
         application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
         requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
-        website=?, xuexin_cert=?, overseas_cert=?,
+        website=?, xuexin_cert=?, overseas_cert=?, extra_dates=?,
         updated_at=datetime('now')
       WHERE id=?
     `).bind(
@@ -276,9 +431,34 @@ schools.put('/:id', async (c) => {
       updated.exam_date, updated.result_date,
       updated.requirements_url, updated.requirements, updated.teacher_notes,
       updated.difficulty, updated.ranking, updated.location,
-      updated.website, updated.xuexin_cert, updated.overseas_cert, id
-    ),
-    // 删除旧事件
+      updated.website, updated.xuexin_cert, updated.overseas_cert, updated.extra_dates, id
+    ).run()
+  } catch (err) {
+    const msg = String(err && err.message || '')
+    if (/no column named extra_dates|has no column named extra_dates/i.test(msg)) {
+      console.warn('[schools PUT] extra_dates 列不存在，回退到旧表结构 UPDATE。请执行 migration-needs45.sql')
+      await db.prepare(`
+        UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
+          application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
+          requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
+          website=?, xuexin_cert=?, overseas_cert=?,
+          updated_at=datetime('now')
+        WHERE id=?
+      `).bind(
+        updated.name, updated.name_ja, updated.type, updated.program, updated.status,
+        updated.application_start_date, updated.application_end_date,
+        updated.exam_date, updated.result_date,
+        updated.requirements_url, updated.requirements, updated.teacher_notes,
+        updated.difficulty, updated.ranking, updated.location,
+        updated.website, updated.xuexin_cert, updated.overseas_cert, id
+      ).run()
+    } else {
+      throw err
+    }
+  }
+
+  const batchStatements = [
+    // 删除旧事件（主表 UPDATE 已独立完成）
     db.prepare('DELETE FROM events WHERE school_id = ?').bind(id),
   ]
   // 重建新事件
