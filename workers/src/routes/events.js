@@ -180,7 +180,10 @@ events.delete('/:id', async (c) => {
 })
 
 // ─── 切换事件完成状态 ─────────────────────────────────────────────────────────
-events.patch('/:id/toggle', async (c) => {
+// 需求58：同时支持 PATCH 和 PUT。原因：Cloudflare Pages 的 _redirects 200 代理
+// 在 CDN 层对 OPTIONS 预检自行代答，默认 Access-Control-Allow-Methods 不包含 PATCH，
+// 导致浏览器判定 PATCH 被拒而不发真实请求。PUT 在默认允许列表内，可绕开该限制。
+events.on(['PATCH', 'PUT'], '/:id/toggle', async (c) => {
   const user = c.get('user')
   const { id } = c.req.param()
   const db = c.env.DB

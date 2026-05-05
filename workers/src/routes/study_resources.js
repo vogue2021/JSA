@@ -208,8 +208,9 @@ studyResources.put('/:id', async (c) => {
   return c.json({ success: true, message: '资料已更新', data: serialize(updated) })
 })
 
-// ─── PATCH /:id/visibility ── 快速切换公开/私密 ──────────────────────────────
-studyResources.patch('/:id/visibility', async (c) => {
+// ─── PATCH/PUT /:id/visibility ── 快速切换公开/私密 ──────────────────────────────
+// 需求58：同时支持 PATCH 和 PUT（Pages CDN 默认预检不放 PATCH）
+studyResources.on(['PATCH', 'PUT'], '/:id/visibility', async (c) => {
   const user = c.get('user')
   if (!canEdit(user)) return c.json({ success: false, message: '无权修改资料' }, 403)
 

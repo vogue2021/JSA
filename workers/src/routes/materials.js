@@ -255,7 +255,8 @@ materials.put('/:id/status', async (c) => {
 })
 
 // ─── 切换材料完成状态 ─────────────────────────────────────────────────────────
-materials.patch('/:id/toggle', async (c) => {
+// 需求58：同时支持 PATCH 和 PUT，原因同 events toggle（Pages CDN 默认预检不放 PATCH）
+materials.on(['PATCH', 'PUT'], '/:id/toggle', async (c) => {
   const user = c.get('user')
   const { id } = c.req.param()
   const db = c.env.DB

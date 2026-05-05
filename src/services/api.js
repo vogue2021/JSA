@@ -110,9 +110,10 @@ export const eventsAPI = {
     });
   },
   // 切换事件完成状态（幂等版）
+  // 需求58：使用 PUT 而非 PATCH，避免 Cloudflare Pages CDN 默认预检不放 PATCH 方法导致失败
   toggleComplete: async (eventId) => {
     return await apiRequest(`/events/${eventId}/toggle`, {
-      method: 'PATCH',
+      method: 'PUT',
     });
   },
 };
@@ -145,9 +146,10 @@ export const materialsAPI = {
       body: JSON.stringify({ completed, checked_by: checkedBy }),
     });
   },
+  // 需求58：使用 PUT 而非 PATCH，避免 Cloudflare Pages CDN 默认预检不放 PATCH 方法导致失败
   toggle: async (materialId, checkedBy) => {
     return await apiRequest(`/materials/${materialId}/toggle`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify({ checked_by: checkedBy }),
     });
   },
@@ -318,9 +320,10 @@ export const feedbackAPI = {
     return await apiRequest(`/feedback?${params.toString()}`);
   },
   // 管理员更新反馈状态
+  // 需求58：统一改用 PUT，避免 Cloudflare Pages CDN 默认预检不放 PATCH
   updateStatus: async (id, data) => {
     return await apiRequest(`/feedback/${id}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   },
@@ -404,9 +407,10 @@ export const studyResourcesAPI = {
     });
   },
   // 快速切换公开/私密
+  // 需求58：统一改用 PUT，避免 Cloudflare Pages CDN 默认预检不放 PATCH
   setVisibility: async (id, isPublic) => {
     return await apiRequest(`/study-resources/${id}/visibility`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify({ is_public: !!isPublic }),
     });
   },

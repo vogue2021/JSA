@@ -86,7 +86,8 @@ feedback.get('/', authMiddleware, async (c) => {
 })
 
 // ─── 管理员：更新反馈状态（需鉴权）──────────────────────────────────────────
-feedback.patch('/:id', authMiddleware, async (c) => {
+// 需求58：同时支持 PATCH 和 PUT（Pages CDN 默认预检不放 PATCH）
+feedback.on(['PATCH', 'PUT'], '/:id', authMiddleware, async (c) => {
   const user = c.get('user')
   if (!user || user.role !== 'admin') {
     return c.json({ success: false, message: '无权限操作' }, 403)
