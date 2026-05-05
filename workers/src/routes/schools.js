@@ -174,21 +174,46 @@ schools.post('/', async (c) => {
   }
 
   // 先插入学校获取 ID（需要先获取 ID 才能关联事件/材料）
-  await db.prepare(`
-    INSERT INTO schools (student_id, name, name_ja, type, program, status,
-      application_start_date, application_end_date, exam_date, result_date,
-      requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
-      xuexin_cert, overseas_cert, extra_dates)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    student_id, name, name_ja || '', type, program || '', status || 'not_started',
-    application_start_date || null, application_end_date || null,
-    exam_date || null, result_date || null,
-    requirements_url || '', requirements || '', teacher_notes || '',
-    difficulty || '', ranking || 0, location || '', website || '',
-    xuexin_cert || '不确定', overseas_cert || '不确定',
-    extraDatesJson
-  ).run()
+  // 【新需求47】防御性 try/catch：若 extra_dates 列尚未迁移，则回退到不含该列的 INSERT
+  try {
+    await db.prepare(`
+      INSERT INTO schools (student_id, name, name_ja, type, program, status,
+        application_start_date, application_end_date, exam_date, result_date,
+        requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
+        xuexin_cert, overseas_cert, extra_dates)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      student_id, name, name_ja || '', type, program || '', status || 'not_started',
+      application_start_date || null, application_end_date || null,
+      exam_date || null, result_date || null,
+      requirements_url || '', requirements || '', teacher_notes || '',
+      difficulty || '', ranking || 0, location || '', website || '',
+      xuexin_cert || '不确定', overseas_cert || '不确定',
+      extraDatesJson
+    ).run()
+  } catch (err) {
+    const msg = String(err && err.message || '')
+    if (/no column named extra_dates|has no column named extra_dates/i.test(msg)) {
+      // 列不存在：回退到旧表结构 INSERT（迁移脚本未执行场景）
+      console.warn('[schools POST] extra_dates 列不存在，回退到旧表结构 INSERT。请执行 migration-needs45.sql')
+      await db.prepare(`
+        INSERT INTO schools (student_id, name, name_ja, type, program, status,
+          application_start_date, application_end_date, exam_date, result_date,
+          requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
+          xuexin_cert, overseas_cert)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        student_id, name, name_ja || '', type, program || '', status || 'not_started',
+        application_start_date || null, application_end_date || null,
+        exam_date || null, result_date || null,
+        requirements_url || '', requirements || '', teacher_notes || '',
+        difficulty || '', ranking || 0, location || '', website || '',
+        xuexin_cert || '不确定', overseas_cert || '不确定'
+      ).run()
+    } else {
+      throw err
+    }
+  }
 
   const newSchool = await db.prepare(
     'SELECT * FROM schools WHERE student_id = ? ORDER BY id DESC LIMIT 1'
@@ -326,9 +351,10 @@ schools.put('/:id', async (c) => {
     }
   } catch (e) { /* extra_dates 解析失败时忽略事件生成 */ }
 
-  const batchStatements = [
-    // 更新学校主表
-    db.prepare(`
+  // 【新需求47】先独立执行主表 UPDATE，并在 extra_dates 列不存在时降级
+  // 原因：db.batch 原子失败会导致事件/材料也回滚，影响用户。拆分后仅主表更新列差异不影响其它操作。
+  try {
+    await db.prepare(`
       UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
         application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
         requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
@@ -342,8 +368,33 @@ schools.put('/:id', async (c) => {
       updated.requirements_url, updated.requirements, updated.teacher_notes,
       updated.difficulty, updated.ranking, updated.location,
       updated.website, updated.xuexin_cert, updated.overseas_cert, updated.extra_dates, id
-    ),
-    // 删除旧事件
+    ).run()
+  } catch (err) {
+    const msg = String(err && err.message || '')
+    if (/no column named extra_dates|has no column named extra_dates/i.test(msg)) {
+      console.warn('[schools PUT] extra_dates 列不存在，回退到旧表结构 UPDATE。请执行 migration-needs45.sql')
+      await db.prepare(`
+        UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
+          application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
+          requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
+          website=?, xuexin_cert=?, overseas_cert=?,
+          updated_at=datetime('now')
+        WHERE id=?
+      `).bind(
+        updated.name, updated.name_ja, updated.type, updated.program, updated.status,
+        updated.application_start_date, updated.application_end_date,
+        updated.exam_date, updated.result_date,
+        updated.requirements_url, updated.requirements, updated.teacher_notes,
+        updated.difficulty, updated.ranking, updated.location,
+        updated.website, updated.xuexin_cert, updated.overseas_cert, id
+      ).run()
+    } else {
+      throw err
+    }
+  }
+
+  const batchStatements = [
+    // 删除旧事件（主表 UPDATE 已独立完成）
     db.prepare('DELETE FROM events WHERE school_id = ?').bind(id),
   ]
   // 重建新事件

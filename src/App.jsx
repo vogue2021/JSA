@@ -3941,6 +3941,37 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>合格发表</div>
                     <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.resultDate}</div>
                   </div>
+                  {/* 【新需求47】一审/二审/自定义日期（仅在有值时显示） */}
+                  {school.firstExamDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#7dd3fc' : '#0284c7' }}>一审考试</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.firstExamDate}</div>
+                    </div>
+                  )}
+                  {school.firstResultDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#5eead4' : '#0d9488' }}>一审发表</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.firstResultDate}</div>
+                    </div>
+                  )}
+                  {school.secondExamDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(236,72,153,0.1)' : 'rgba(236,72,153,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#f9a8d4' : '#db2777' }}>二审考试</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondExamDate}</div>
+                    </div>
+                  )}
+                  {school.secondResultDate && (
+                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(217,70,239,0.1)' : 'rgba(217,70,239,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#f0abfc' : '#c026d3' }}>二审发表</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondResultDate}</div>
+                    </div>
+                  )}
+                  {Array.isArray(school.customDates) && school.customDates.filter(cd => cd && cd.label && cd.date).map((cd, ci) => (
+                    <div key={`cd-${ci}`} className="p-2 rounded" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
+                      <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>{cd.label}</div>
+                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{cd.date}</div>
+                    </div>
+                  ))}
                 </div>
 
                 {school.teacherNotes && (
