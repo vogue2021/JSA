@@ -36,6 +36,30 @@ async function ensureExtraDatesColumn(db) {
 
 // ─── 统计接口 ────────────────────────────────────────────────────────────────
 
+// GET /api/schools/_debug/schema - 【新需求49】数据库 schema 诊断端点
+// 返回 schools 表的所有列名，方便前端/用户确认 extra_dates 列是否存在
+// 使用场景：用户反馈一审/二审日期保存失败时，访问此端点即可定位是后端列缺失还是前端字段名错误
+schools.get('/_debug/schema', async (c) => {
+  const db = c.env.DB
+  try {
+    // 主动触发一次自动迁移（即使 _extraDatesEnsured=true，也再做一次保障）
+    await ensureExtraDatesColumn(db)
+    const { results } = await db.prepare(`PRAGMA table_info(schools)`).all()
+    const columns = Array.isArray(results) ? results.map(r => r.name) : []
+    return c.json({
+      success: true,
+      data: {
+        table: 'schools',
+        columns,
+        hasExtraDates: columns.includes('extra_dates'),
+        ensuredInThisInstance: _extraDatesEnsured,
+      }
+    })
+  } catch (err) {
+    return c.json({ success: false, message: String(err && err.message || err) }, 500)
+  }
+})
+
 // GET /api/schools/stats - 全局学校报考统计（仪表盘）
 schools.get('/stats', async (c) => {
   const { teacher_id } = c.req.query()
@@ -123,6 +147,10 @@ schools.get('/stats/events', async (c) => {
 schools.get('/student/:studentId', async (c) => {
   const { studentId } = c.req.param()
   const db = c.env.DB
+
+  // 【新需求49】用户打开学校页面就会触发该 GET，此时立即自动迁移，
+  // 避免要等到下一次 POST/PUT 才补列（之前只在写路由触发，首次查询仍读不到列）
+  await ensureExtraDatesColumn(db)
 
   const { results: schoolList } = await db.prepare(
     'SELECT * FROM schools WHERE student_id = ? ORDER BY created_at DESC'

@@ -218,6 +218,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         if (typeof extra === 'string') {
           try { extra = JSON.parse(extra || '{}'); } catch { extra = {}; }
         }
+        // 【新需求49】诊断日志：打印每个学校的 extra_dates 原始值与解包结果
+        if (s.extra_dates !== undefined || s.extraDates !== undefined) {
+          console.log(`[学校加载诊断] "${s.name}" 的 extra_dates 原始值:`, s.extra_dates, '解析后:', extra);
+        } else {
+          console.warn(`[学校加载诊断] "${s.name}" API 返回中没有 extra_dates 字段，请检查数据库是否执行了 migration-needs45.sql`);
+        }
         return {
           id: s.id,
           name: s.name,
@@ -1346,11 +1352,35 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
             body: JSON.stringify(schoolData),
           });
         }
+        // 【新需求49】保存后打印诊断日志，方便排查一审/二审字段是否成功持久化
+        try {
+          const diag = await apiReq('/schools/_debug/schema').catch(() => null);
+          console.log('[学校保存诊断] 提交的 extra_dates:', extraDates);
+          console.log('[学校保存诊断] 数据库 schema:', diag);
+        } catch (e) { /* ignore */ }
         // 重新从 API 加载数据
         await loadStudentDataFromAPI(currentStudent?.studentId);
         setShowSchoolModal(false);
         setEditingSchool(null);
         if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+
+        // 【新需求49】持久化校验：若提交了 extra_dates 但诊断发现数据库列缺失，立即警告
+        try {
+          const hasAnyExtraDate = !!(
+            extraDates.firstExamDate || extraDates.firstResultDate ||
+            extraDates.secondExamDate || extraDates.secondResultDate ||
+            (Array.isArray(extraDates.customDates) && extraDates.customDates.some(cd => cd && cd.date))
+          );
+          if (hasAnyExtraDate) {
+            const diag2 = await apiReq('/schools/_debug/schema').catch(() => null);
+            if (diag2 && diag2.hasExtraDates === false) {
+              if (showNotification) showNotification(
+                '⚠️ 后端数据库 schools 表缺少 extra_dates 列，一审/二审时间未持久化！请联系管理员执行 migration-needs45.sql',
+                'error'
+              );
+            }
+          }
+        } catch (e) { /* ignore */ }
       } catch (err) {
         console.error('保存学校失败:', err);
         if (showNotification) showNotification('保存失败：' + err.message, 'error');
