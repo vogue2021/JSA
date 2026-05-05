@@ -451,13 +451,17 @@ const SchoolDatabase = () => {
                   </div>
                 </div>
                 {/* 重要日期（多组） */}
-                {school.importantDates && school.importantDates.length > 0 && school.importantDates.some(d => d.applicationStartDate || d.applicationEndDate || d.examDate || d.resultDate) && (
+                {school.importantDates && school.importantDates.length > 0 && school.importantDates.some(d => d.applicationStartDate || d.applicationEndDate || d.examDate || d.resultDate || d.firstExamDate || d.firstResultDate || d.secondExamDate || d.secondResultDate || (Array.isArray(d.customDates) && d.customDates.some(cd => cd.date))) && (
                   <div>
                     <h5 className="text-sm font-medium text-themed-secondary mb-2">重要日期</h5>
-                    {school.importantDates.map((dateGroup, gi) => (
-                      (dateGroup.applicationStartDate || dateGroup.applicationEndDate || dateGroup.examDate || dateGroup.resultDate) && (
+                    {school.importantDates.map((dateGroup, gi) => {
+                      const hasAnything = dateGroup.applicationStartDate || dateGroup.applicationEndDate || dateGroup.examDate || dateGroup.resultDate
+                        || dateGroup.firstExamDate || dateGroup.firstResultDate || dateGroup.secondExamDate || dateGroup.secondResultDate
+                        || (Array.isArray(dateGroup.customDates) && dateGroup.customDates.some(cd => cd.date));
+                      if (!hasAnything) return null;
+                      return (
                         <div key={gi} className="mb-2">
-                          <div className="text-xs font-semibold text-themed-secondary mb-1">{dateGroup.label || `第${gi+1}审`}</div>
+                          <div className="text-xs font-semibold text-themed-secondary mb-1">{dateGroup.label || `第${gi+1}组`}</div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             {dateGroup.applicationStartDate && (
                               <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
@@ -467,6 +471,26 @@ const SchoolDatabase = () => {
                             {dateGroup.applicationEndDate && (
                               <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
                                 <Calendar size={12} /> 出愿截止: {dateGroup.applicationEndDate}
+                              </div>
+                            )}
+                            {dateGroup.firstExamDate && (
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)', color: '#0ea5e9' }}>
+                                <Calendar size={12} /> 一审考试: {dateGroup.firstExamDate}
+                              </div>
+                            )}
+                            {dateGroup.firstResultDate && (
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(20,184,166,0.12)' : 'rgba(20,184,166,0.08)', color: '#14b8a6' }}>
+                                <Calendar size={12} /> 一审发表: {dateGroup.firstResultDate}
+                              </div>
+                            )}
+                            {dateGroup.secondExamDate && (
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(236,72,153,0.12)' : 'rgba(236,72,153,0.08)', color: '#ec4899' }}>
+                                <Calendar size={12} /> 二审考试: {dateGroup.secondExamDate}
+                              </div>
+                            )}
+                            {dateGroup.secondResultDate && (
+                              <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(217,70,239,0.12)' : 'rgba(217,70,239,0.08)', color: '#d946ef' }}>
+                                <Calendar size={12} /> 二审发表: {dateGroup.secondResultDate}
                               </div>
                             )}
                             {dateGroup.examDate && (
@@ -479,10 +503,15 @@ const SchoolDatabase = () => {
                                 <Calendar size={12} /> 合格发表: {dateGroup.resultDate}
                               </div>
                             )}
+                            {Array.isArray(dateGroup.customDates) && dateGroup.customDates.filter(cd => cd.date && cd.label).map((cd, ci) => (
+                              <div key={ci} className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.08)', color: '#a855f7' }}>
+                                <Calendar size={12} /> {cd.label}: {cd.date}
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      )
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {school.requirements && (
@@ -601,28 +630,50 @@ const SchoolDatabase = () => {
                   <h4 className="font-semibold text-sm text-themed-primary flex items-center gap-2"><Calendar size={16} /> 重要日期</h4>
                   <button type="button" onClick={() => {
                     const dates = formData.importantDates || [];
-                    const nextLabel = dates.length === 0 ? '一审' : dates.length === 1 ? '二审' : `第${dates.length + 1}审`;
-                    setFormData({...formData, importantDates: [...dates, { id: Date.now(), label: nextLabel, applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '' }]});
+                    // 【新需求45】label 语义扩展为"学部 / 审次组名"（例：经济学部、工学部一审等）
+                    const nextLabel = dates.length === 0 ? '' : '';
+                    setFormData({...formData, importantDates: [...dates, {
+                      id: Date.now(),
+                      label: nextLabel,
+                      applicationStartDate: '',
+                      applicationEndDate: '',
+                      examDate: '',
+                      resultDate: '',
+                      // 【新需求45】新增一审/二审考试 & 发表时间
+                      firstExamDate: '',
+                      firstResultDate: '',
+                      secondExamDate: '',
+                      secondResultDate: '',
+                      // 【新需求45】自定义日期字段（名称 + 日期），支持自由添加
+                      customDates: [],
+                    }]});
                   }} className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">
-                    <Plus size={14} /> 添加日期组
+                    <Plus size={14} /> 添加日期组（按学部）
                   </button>
                 </div>
+                <p className="text-xs text-themed-muted">
+                  💡 每个日期组对应一个学部（如"经济学部"、"工学部"）。在学校页面【添加新学校】时，
+                  选择对应学部会自动填充这里录入的所有时间节点。
+                </p>
                 {(!formData.importantDates || formData.importantDates.length === 0) && (
-                  <p className="text-xs text-themed-muted text-center py-2">暂无日期组，点击上方按钮添加（如一审、二审等）</p>
+                  <p className="text-xs text-themed-muted text-center py-2">暂无日期组，点击上方按钮添加（按学部录入，如"经济学部"、"工学部"）</p>
                 )}
                 {(formData.importantDates || []).map((dateGroup, gi) => (
                   <div key={dateGroup.id || gi} className="p-3 bg-themed-surface rounded-lg border space-y-3">
-                    <div className="flex items-center justify-between">
-                      <input type="text" value={dateGroup.label || ''}
-                        onChange={e => {
-                          const dates = [...(formData.importantDates || [])];
-                          dates[gi] = { ...dates[gi], label: e.target.value };
-                          setFormData({...formData, importantDates: dates});
-                        }}
-                        className="px-2 py-1 border rounded text-sm font-medium w-32" placeholder="例：一审" />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">学部 / 审次组名</label>
+                        <input type="text" value={dateGroup.label || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], label: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="px-2 py-1 border rounded text-sm font-medium w-32" placeholder="例：经济学部" />
+                      </div>
                       <button type="button" onClick={() => {
                         setFormData({...formData, importantDates: (formData.importantDates || []).filter((_, i) => i !== gi)});
-                      }} className="p-1 hover:bg-red-50 text-red-500 rounded"><X size={16} /></button>
+                      }} className="p-1 hover:bg-red-50 text-red-500 rounded self-end"><X size={16} /></button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -645,8 +696,50 @@ const SchoolDatabase = () => {
                           }}
                           className="w-full px-3 py-2 border rounded-lg text-sm" />
                       </div>
+                      {/* 【新需求45】一审考试 / 发表时间 */}
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-themed-secondary">考试日期</label>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">一审考试时间</label>
+                        <input type="date" value={dateGroup.firstExamDate || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], firstExamDate: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">一审发表时间</label>
+                        <input type="date" value={dateGroup.firstResultDate || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], firstResultDate: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      </div>
+                      {/* 【新需求45】二审考试 / 发表时间 */}
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">二审考试时间</label>
+                        <input type="date" value={dateGroup.secondExamDate || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], secondExamDate: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">二审发表时间</label>
+                        <input type="date" value={dateGroup.secondResultDate || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], secondResultDate: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">考试日期（通用）</label>
                         <input type="date" value={dateGroup.examDate || ''}
                           onChange={e => {
                             const dates = [...(formData.importantDates || [])];
@@ -656,7 +749,7 @@ const SchoolDatabase = () => {
                           className="w-full px-3 py-2 border rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-themed-secondary">合格发表日期</label>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">合格发表日期（通用）</label>
                         <input type="date" value={dateGroup.resultDate || ''}
                           onChange={e => {
                             const dates = [...(formData.importantDates || [])];
@@ -665,6 +758,53 @@ const SchoolDatabase = () => {
                           }}
                           className="w-full px-3 py-2 border rounded-lg text-sm" />
                       </div>
+                    </div>
+                    {/* 【新需求45】自定义日期字段（字段名可自由修改） */}
+                    <div className="pt-3 mt-2 border-t border-themed-subtle">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-themed-secondary">自定义日期字段</span>
+                        <button type="button" onClick={() => {
+                          const dates = [...(formData.importantDates || [])];
+                          const customDates = Array.isArray(dates[gi].customDates) ? [...dates[gi].customDates] : [];
+                          customDates.push({ id: Date.now(), label: '', date: '' });
+                          dates[gi] = { ...dates[gi], customDates };
+                          setFormData({...formData, importantDates: dates});
+                        }} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-purple-100 text-purple-700 hover:bg-purple-200">
+                          <Plus size={12} /> 添加字段
+                        </button>
+                      </div>
+                      {(!dateGroup.customDates || dateGroup.customDates.length === 0) && (
+                        <p className="text-xs text-themed-muted text-center py-1">暂无自定义字段。点击右上"添加字段"新增</p>
+                      )}
+                      {(dateGroup.customDates || []).map((cd, cdi) => (
+                        <div key={cd.id || cdi} className="flex items-center gap-2 mb-2">
+                          <input type="text" value={cd.label || ''}
+                            placeholder="字段名（如：面试日期）"
+                            onChange={e => {
+                              const dates = [...(formData.importantDates || [])];
+                              const customDates = [...(dates[gi].customDates || [])];
+                              customDates[cdi] = { ...customDates[cdi], label: e.target.value };
+                              dates[gi] = { ...dates[gi], customDates };
+                              setFormData({...formData, importantDates: dates});
+                            }}
+                            className="flex-1 px-2 py-1 border rounded text-sm" />
+                          <input type="date" value={cd.date || ''}
+                            onChange={e => {
+                              const dates = [...(formData.importantDates || [])];
+                              const customDates = [...(dates[gi].customDates || [])];
+                              customDates[cdi] = { ...customDates[cdi], date: e.target.value };
+                              dates[gi] = { ...dates[gi], customDates };
+                              setFormData({...formData, importantDates: dates});
+                            }}
+                            className="w-44 px-2 py-1 border rounded text-sm" />
+                          <button type="button" onClick={() => {
+                            const dates = [...(formData.importantDates || [])];
+                            const customDates = (dates[gi].customDates || []).filter((_, j) => j !== cdi);
+                            dates[gi] = { ...dates[gi], customDates };
+                            setFormData({...formData, importantDates: dates});
+                          }} className="p-1 hover:bg-red-50 text-red-500 rounded"><X size={14} /></button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

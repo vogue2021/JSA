@@ -123,6 +123,44 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     setActiveSection('basic');
   }, [student.studentId]);
 
+  // 【新需求45 Bug 1 修复】打开学生资料 / 切换学生 / 切换到"跟进备注"tab 时，
+  // 主动从 API 拉取该学生的最新完整数据（尤其是 follow_up_notes），
+  // 避免"管理员追加的备注要等另一个老师再加备注才能看到"的问题。
+  // 根因：studentList 仅在登录时加载一次，不同账号之间不会实时同步。
+  useEffect(() => {
+    let aborted = false;
+    const refreshLatest = async () => {
+      if (!student?.studentId) return;
+      try {
+        const fresh = await studentsAPI.getById(student.studentId);
+        if (aborted || !fresh) return;
+        // 同步到全局 studentList，触发上面 useEffect 重新初始化 formData
+        setStudentList(prev => {
+          const exists = prev.some(s => s.studentId === fresh.studentId);
+          if (!exists) return [...prev, fresh];
+          return prev.map(s => s.studentId === fresh.studentId ? { ...s, ...fresh } : s);
+        });
+        // 即时把最新备注写进当前 formData（不依赖 studentList 传播时机）
+        if (Array.isArray(fresh.followUpNotes)) {
+          setFormData(prev => ({
+            ...prev,
+            followUpNotes: fresh.followUpNotes.map(n => ({
+              ...n,
+              role: n.role || 'admin',
+              author: n.author || '系统',
+            })),
+          }));
+        }
+      } catch (err) {
+        // 静默失败：若 API 不可用则沿用缓存，避免影响页面
+        console.warn('刷新学生最新资料失败:', err);
+      }
+    };
+    refreshLatest();
+    return () => { aborted = true; };
+    // 切换学生或切换到备注 tab 时都重新拉取
+  }, [student.studentId, activeSection]);
+
   const [newEjuScore, setNewEjuScore] = useState({
     date: '', totalScore: '', japanese: '', math: '', science: '', generalSubjects: ''
   });

@@ -104,6 +104,12 @@ schools.get('/student/:studentId', async (c) => {
     } else {
       school.materials = []
     }
+    // 【新需求45】解析 extra_dates JSON（一审/二审/自定义日期）
+    if (school.extra_dates) {
+      try { school.extra_dates = JSON.parse(school.extra_dates) } catch { school.extra_dates = {} }
+    } else {
+      school.extra_dates = {}
+    }
   })
 
   return c.json({ success: true, data: schoolList })
@@ -122,6 +128,12 @@ schools.get('/:id', async (c) => {
   } else {
     school.materials = []
   }
+  // 【新需求45】解析 extra_dates JSON
+  if (school.extra_dates) {
+    try { school.extra_dates = JSON.parse(school.extra_dates) } catch { school.extra_dates = {} }
+  } else {
+    school.extra_dates = {}
+  }
 
   return c.json({ success: true, data: school })
 })
@@ -134,7 +146,7 @@ schools.post('/', async (c) => {
     application_start_date, application_end_date,
     exam_date, result_date, requirements_url, requirements, teacher_notes,
     difficulty, ranking, location, website, xuexin_cert, overseas_cert,
-    materials
+    materials, extra_dates
   } = body
 
   if (!student_id || !name || !type) {
@@ -151,20 +163,31 @@ schools.post('/', async (c) => {
     return c.json({ success: false, message: '学生不存在' }, 404)
   }
 
+  // 【新需求45】extra_dates 序列化（兼容字符串/对象两种输入）
+  let extraDatesJson = '{}'
+  if (extra_dates !== undefined && extra_dates !== null) {
+    if (typeof extra_dates === 'string') {
+      try { JSON.parse(extra_dates); extraDatesJson = extra_dates } catch { extraDatesJson = '{}' }
+    } else if (typeof extra_dates === 'object') {
+      try { extraDatesJson = JSON.stringify(extra_dates) } catch { extraDatesJson = '{}' }
+    }
+  }
+
   // 先插入学校获取 ID（需要先获取 ID 才能关联事件/材料）
   await db.prepare(`
     INSERT INTO schools (student_id, name, name_ja, type, program, status,
       application_start_date, application_end_date, exam_date, result_date,
       requirements_url, requirements, teacher_notes, difficulty, ranking, location, website,
-      xuexin_cert, overseas_cert)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      xuexin_cert, overseas_cert, extra_dates)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     student_id, name, name_ja || '', type, program || '', status || 'not_started',
     application_start_date || null, application_end_date || null,
     exam_date || null, result_date || null,
     requirements_url || '', requirements || '', teacher_notes || '',
     difficulty || '', ranking || 0, location || '', website || '',
-    xuexin_cert || '不确定', overseas_cert || '不确定'
+    xuexin_cert || '不确定', overseas_cert || '不确定',
+    extraDatesJson
   ).run()
 
   const newSchool = await db.prepare(
@@ -226,6 +249,15 @@ schools.put('/:id', async (c) => {
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
 
   const body = await c.req.json()
+  // 【新需求45】处理 extra_dates（JSON 字段）
+  let extraDatesJson = (school.extra_dates || '{}')
+  if (body.extra_dates !== undefined && body.extra_dates !== null) {
+    if (typeof body.extra_dates === 'string') {
+      try { JSON.parse(body.extra_dates); extraDatesJson = body.extra_dates } catch { /* 保持原值 */ }
+    } else if (typeof body.extra_dates === 'object') {
+      try { extraDatesJson = JSON.stringify(body.extra_dates) } catch { /* 保持原值 */ }
+    }
+  }
   const updated = {
     name: body.name || school.name,
     name_ja: body.name_ja !== undefined ? body.name_ja : (school.name_ja || ''),
@@ -245,6 +277,7 @@ schools.put('/:id', async (c) => {
     website: body.website !== undefined ? body.website : (school.website || ''),
     xuexin_cert: body.xuexin_cert !== undefined ? body.xuexin_cert : (school.xuexin_cert || '不确定'),
     overseas_cert: body.overseas_cert !== undefined ? body.overseas_cert : (school.overseas_cert || '不确定'),
+    extra_dates: extraDatesJson,
   }
 
   // 使用 db.batch 原子性执行：更新学校主表 + 删除旧事件 + 重建新事件 + 处理材料
@@ -267,7 +300,7 @@ schools.put('/:id', async (c) => {
       UPDATE schools SET name=?, name_ja=?, type=?, program=?, status=?,
         application_start_date=?, application_end_date=?, exam_date=?, result_date=?,
         requirements_url=?, requirements=?, teacher_notes=?, difficulty=?, ranking=?, location=?,
-        website=?, xuexin_cert=?, overseas_cert=?,
+        website=?, xuexin_cert=?, overseas_cert=?, extra_dates=?,
         updated_at=datetime('now')
       WHERE id=?
     `).bind(
@@ -276,7 +309,7 @@ schools.put('/:id', async (c) => {
       updated.exam_date, updated.result_date,
       updated.requirements_url, updated.requirements, updated.teacher_notes,
       updated.difficulty, updated.ranking, updated.location,
-      updated.website, updated.xuexin_cert, updated.overseas_cert, id
+      updated.website, updated.xuexin_cert, updated.overseas_cert, updated.extra_dates, id
     ),
     // 删除旧事件
     db.prepare('DELETE FROM events WHERE school_id = ?').bind(id),
