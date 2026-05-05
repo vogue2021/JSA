@@ -8,16 +8,56 @@ import { useTheme } from '../context/ThemeContext';
 import { getDefaultSchools } from '../data/defaultSchools';
 import { schoolDatabaseAPI } from '../services/api';
 
-// CSV 格式说明
-const CSV_FORMAT_HELP = `CSV文件格式说明：
-第一行为表头，字段用逗号分隔。支持的字段：
-name（必填）,type,location,acceptanceRate,requirements,notes,programs,xuexinCert,overseasCert,requirementsUrl
+// CSV 格式说明（需求52：适配全部新字段，包括多组重要日期、募集要项更新状态、所需材料等）
+const CSV_FORMAT_HELP = `CSV文件格式说明（2026 更新）
 
-其中 programs 用分号(;)分隔多个值。xuexinCert 和 overseasCert 可填：是/否/不确定。
-重要日期通过页面录入，CSV暂不支持导入多组日期。
-示例：
-name,type,location,programs,xuexinCert,overseasCert
-東京大学,国立,东京都文京区,工学研究科;理学研究科,是,是`;
+━━ 必填字段 ━━
+• name                     学校中文名（必填）
+
+━━ 基础信息 ━━
+• nameJa                   学校日文名
+• type                     国立 / 公立 / 私立（默认：私立）
+• location                 所在地，例如：东京都文京区
+• ranking                  综合排名（整数，留空即 0）
+• difficulty               难度等级，例如：极难 / 难 / 中等 / 较易
+• acceptanceRate           录取率，例如：约10%
+• requirements             报考要求（纯文本）
+• notes                    备注
+• requirementsUrl          募集要项/官网链接
+
+━━ 数组字段（用英文分号 ; 分隔多个值）━━
+• programs                 招生研究科，例如：工学研究科;理学研究科
+• requiredMaterials        所需材料清单，例如：成绩单;推荐信;研究计划书
+
+━━ 认证字段（可填 是 / 否 / 不确定）━━
+• xuexinCert               学信网认证
+• overseasCert             海外学历认证
+
+━━ 重要日期 · 第一组（round1_，均为可选）━━
+• round1_label             组标签，例如：2025年度 前期募集
+• round1_applicationStartDate   出愿开始，YYYY-MM-DD
+• round1_applicationEndDate     出愿截止，YYYY-MM-DD
+• round1_examDate               考试日期，YYYY-MM-DD
+• round1_resultDate             合格发表，YYYY-MM-DD
+• round1_firstExamDate          一审考试，YYYY-MM-DD
+• round1_firstResultDate        一审发表，YYYY-MM-DD
+• round1_secondExamDate         二审考试，YYYY-MM-DD
+• round1_secondResultDate       二审发表，YYYY-MM-DD
+
+━━ 重要日期 · 第二组（round2_，可选，字段名同上）━━
+（如需更多组或自定义日期，建议通过页面录入）
+
+━━ 募集要项年度状态 ━━
+• requirementsYear         参考年度，例如：2026 / 2025（沿用去年）
+• requirementsUpdated      已更新到最新年度？是 / 否（或 true/false/1/0）
+• requirementsUpdatedAt    最后更新日期，YYYY-MM-DD
+
+━━ 兼容字段（向后兼容，等同于 round1_*） ━━
+• applicationStartDate, applicationEndDate, examDate, resultDate
+
+示例（只填必要列即可，其他列留空）：
+name,nameJa,type,location,programs,xuexinCert,overseasCert,requirementsYear,requirementsUpdated,round1_applicationStartDate,round1_applicationEndDate,round1_examDate
+東京大学,東京大学,国立,东京都文京区,工学研究科;理学研究科,是,是,2026,是,2026-05-01,2026-05-20,2026-07-15`;
 
 const emptyForm = {
   name: '', type: '国立', location: '',
@@ -185,35 +225,132 @@ const SchoolDatabase = () => {
     }
   };
 
-  // CSV 解析
+  // CSV 解析（需求52：支持多组重要日期、募集要项状态、所需材料等新字段）
+  // 策略：
+  //   - 数组字段（programs / requiredMaterials）用英文分号 ; 分隔
+  //   - 重要日期支持扁平化前缀 round1_* / round2_*，在解析时聚合为 importantDates 数组
+  //   - 同时兼容旧表头（applicationStartDate 等），等价 round1_*
+  //   - 布尔字段 requirementsUpdated 接受：是/否 / true/false / 1/0
   const parseCSV = (text) => {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    // 统一换行（兼容 Windows \r\n、Mac \r）
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map(h => h.trim());
-    const results = [];
-    for (let i = 1; i < lines.length; i++) {
+
+    // 解析一行 CSV（支持引号转义）
+    const parseLine = (line) => {
       const values = [];
       let current = '';
       let inQuotes = false;
-      for (const ch of lines[i]) {
-        if (ch === '"') { inQuotes = !inQuotes; }
-        else if (ch === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-        else { current += ch; }
+      for (let j = 0; j < line.length; j++) {
+        const ch = line[j];
+        if (ch === '"') {
+          // 双引号转义："" → "
+          if (inQuotes && line[j + 1] === '"') { current += '"'; j++; }
+          else { inQuotes = !inQuotes; }
+        } else if (ch === ',' && !inQuotes) {
+          values.push(current.trim()); current = '';
+        } else {
+          current += ch;
+        }
       }
       values.push(current.trim());
+      return values;
+    };
+
+    const headers = parseLine(lines[0]).map(h => h.trim());
+
+    // 布尔解析
+    const parseBool = (v) => {
+      const s = String(v || '').trim().toLowerCase();
+      return s === '是' || s === 'true' || s === '1' || s === 'yes' || s === 'y';
+    };
+
+    // 数组字段分号分隔
+    const splitArray = (v) => (v ? String(v).split(';').map(x => x.trim()).filter(Boolean) : []);
+
+    // 整数字段
+    const parseInteger = (v) => {
+      if (v === '' || v === null || v === undefined) return 0;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // 一组 importantDates 包含的所有子字段
+    const DATE_SUBFIELDS = [
+      'label',
+      'applicationStartDate', 'applicationEndDate',
+      'examDate', 'resultDate',
+      'firstExamDate', 'firstResultDate',
+      'secondExamDate', 'secondResultDate',
+    ];
+
+    const results = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseLine(lines[i]);
+
+      // 把每列放入 raw 字典，便于后续分组聚合
+      const raw = {};
+      headers.forEach((h, idx) => { raw[h] = (values[idx] || '').trim(); });
+
+      // 只要没有 name 就跳过整行
+      if (!raw.name) continue;
 
       const obj = { ...emptyForm, id: Date.now() + i };
-      headers.forEach((h, idx) => {
-        const val = values[idx] || '';
-        if (h === 'programs') {
-          obj[h] = val ? val.split(';').map(v => v.trim()).filter(v => v) : [];
-        } else if (h === 'ranking') {
-          obj[h] = val ? parseInt(val) || '' : '';
-        } else {
-          obj[h] = val;
+
+      // 基础字段直接拷贝
+      const directStringFields = [
+        'name', 'nameJa', 'type', 'location', 'difficulty', 'acceptanceRate',
+        'requirements', 'notes', 'xuexinCert', 'overseasCert', 'requirementsUrl',
+        'requirementsYear', 'requirementsUpdatedAt',
+      ];
+      directStringFields.forEach(f => {
+        if (raw[f] !== undefined && raw[f] !== '') obj[f] = raw[f];
+      });
+
+      // 数组字段（分号分隔）
+      if (raw.programs !== undefined) obj.programs = splitArray(raw.programs);
+      if (raw.requiredMaterials !== undefined) obj.requiredMaterials = splitArray(raw.requiredMaterials);
+
+      // 整数字段
+      if (raw.ranking !== undefined && raw.ranking !== '') obj.ranking = parseInteger(raw.ranking);
+
+      // 布尔字段
+      if (raw.requirementsUpdated !== undefined && raw.requirementsUpdated !== '') {
+        obj.requirementsUpdated = parseBool(raw.requirementsUpdated);
+      }
+
+      // 重要日期聚合：支持 round1_*、round2_* 前缀；兼容无前缀（等价 round1_*）
+      const groups = {};
+      DATE_SUBFIELDS.forEach(sub => {
+        // round1_ / round2_ / round3_ 等前缀
+        Object.keys(raw).forEach(k => {
+          const m = k.match(/^round(\d+)_(.+)$/);
+          if (m && m[2] === sub && raw[k]) {
+            const gi = parseInt(m[1], 10);
+            if (!groups[gi]) groups[gi] = {};
+            groups[gi][sub] = raw[k];
+          }
+        });
+        // 无前缀（向后兼容）→ 归入第 1 组
+        if (sub !== 'label' && raw[sub]) {
+          if (!groups[1]) groups[1] = {};
+          if (!groups[1][sub]) groups[1][sub] = raw[sub];
         }
       });
-      if (obj.name) results.push(obj);
+
+      const importantDates = Object.keys(groups)
+        .map(k => parseInt(k, 10))
+        .sort((a, b) => a - b)
+        .map(gi => {
+          const g = groups[gi];
+          if (!g.label) g.label = `第${gi}组`;
+          // 只要组里有任一日期字段就保留
+          return g;
+        });
+      if (importantDates.length > 0) obj.importantDates = importantDates;
+
+      results.push(obj);
     }
     return results;
   };
@@ -249,11 +386,72 @@ const SchoolDatabase = () => {
     e.target.value = '';
   };
 
-  // 导出 CSV 模板
+  // 导出 CSV 模板（需求52：覆盖所有新字段 + 多组重要日期 + 募集要项状态）
   const downloadTemplate = () => {
-    const headers = 'name,nameJa,type,location,website,ranking,difficulty,acceptanceRate,requirements,notes,programs,xuexinCert,overseasCert,applicationStartDate,applicationEndDate,examDate,resultDate,requirementsUrl';
-    const example = '东京大学,東京大学,国立,东京都文京区,https://www.u-tokyo.ac.jp/,1,极难,约10%,日语N1 + EJU高分,顶级院校,工学研究科;理学研究科,是,是,,,,https://www.u-tokyo.ac.jp/ja/admissions/index.html';
-    const csv = '\uFEFF' + headers + '\n' + example;
+    const headers = [
+      // 基础
+      'name', 'nameJa', 'type', 'location', 'ranking', 'difficulty', 'acceptanceRate',
+      'requirements', 'notes', 'programs', 'requiredMaterials',
+      'xuexinCert', 'overseasCert', 'requirementsUrl',
+      // 募集要项年度更新状态
+      'requirementsYear', 'requirementsUpdated', 'requirementsUpdatedAt',
+      // 第一组重要日期
+      'round1_label',
+      'round1_applicationStartDate', 'round1_applicationEndDate',
+      'round1_firstExamDate', 'round1_firstResultDate',
+      'round1_secondExamDate', 'round1_secondResultDate',
+      'round1_examDate', 'round1_resultDate',
+      // 第二组重要日期（可留空）
+      'round2_label',
+      'round2_applicationStartDate', 'round2_applicationEndDate',
+      'round2_firstExamDate', 'round2_firstResultDate',
+      'round2_secondExamDate', 'round2_secondResultDate',
+      'round2_examDate', 'round2_resultDate',
+    ];
+
+    // 示例行：一所有完整信息的学校 + 一所只填必填的学校，演示字段留空方式
+    const exampleFull = [
+      '东京大学', '東京大学', '国立', '东京都文京区', '1', '极难', '约10%',
+      '日语N1 + EJU高分 + 校内考', '顶级国立院校，竞争激烈',
+      '工学研究科;理学研究科;情报理工学系研究科',
+      '成绩单;毕业证明;推荐信;研究计划书;日语成绩证明',
+      '是', '是', 'https://www.u-tokyo.ac.jp/ja/admissions/index.html',
+      '2026', '是', '2026-04-15',
+      // round1
+      '2025年度 前期募集',
+      '2026-05-01', '2026-05-20',
+      '2026-07-01', '2026-07-15',
+      '2026-08-10', '2026-08-25',
+      '', '',
+      // round2
+      '2025年度 后期募集',
+      '2026-09-01', '2026-09-20',
+      '', '',
+      '', '',
+      '2026-11-10', '2026-11-25',
+    ];
+
+    const exampleMin = [
+      '早稲田大学', '早稲田大学', '私立', '东京都新宿区', '5', '难', '约15%',
+      '', '',
+      '基幹理工学研究科',
+      '',
+      '否', '是', '',
+      '2025（沿用去年）', '否', '',
+      '', '', '', '', '', '', '', '', '',
+      '', '', '', '', '', '', '', '', '',
+    ];
+
+    const toCsvRow = (arr) => arr.map(v => {
+      const s = String(v ?? '');
+      // 包含逗号/双引号/换行时加引号转义
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }).join(',');
+
+    const csv = '\uFEFF' + headers.join(',') + '\n'
+      + toCsvRow(exampleFull) + '\n'
+      + toCsvRow(exampleMin);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
