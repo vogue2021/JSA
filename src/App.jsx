@@ -410,7 +410,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [deadlineReminders, setDeadlineReminders] = useState([]); // 截止日提醒列表
   const [showDeadlineReminder, setShowDeadlineReminder] = useState(false); // 是否显示截止日提醒弹窗
   const [showReminderSettings, setShowReminderSettings] = useState(false); // 提醒设置弹窗
-  const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00', reminderCount: 1, reminderInterval: 60 });
+const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 });
   const [savingReminderSettings, setSavingReminderSettings] = useState(false);
   const [acknowledgedEvents, setAcknowledgedEvents] = useState({}); // { eventId: acknowledgedAt }
   const [feedbackType, setFeedbackType] = useState('suggestion');
@@ -551,45 +551,109 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     }
   }, [studentList, user.role]);
 
-  // 截止日提醒检查（仅学生端）——每次加载和每小时检查一次
+  // 截止日提醒检查（仅学生端）——按提醒设置（每日时间/次数/间隔/提前天数）控制弹窗
+  // 需求54：修复"截止日提醒设置"按钮无效的问题——以前只要有数据就弹，现在按设置节流
   useEffect(() => {
     if (user.role !== 'student') return;
+
+    // 读取当日弹窗节流状态：{ date: 'YYYY-MM-DD', shown: 次数, lastShownAt: ISO时间 }
+    const getTodayKey = () => new Date().toISOString().split('T')[0];
+    const getThrottleState = () => {
+      try {
+        const raw = localStorage.getItem('reminderThrottle');
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s || s.date !== getTodayKey()) return null;
+        return s;
+      } catch { return null; }
+    };
+    const setThrottleState = (shown) => {
+      try {
+        localStorage.setItem('reminderThrottle', JSON.stringify({
+          date: getTodayKey(), shown, lastShownAt: new Date().toISOString()
+        }));
+      } catch { /* ignore */ }
+    };
+
+    // 判断当前是否应该弹出提醒（读取最新 reminderSettings）
+    const shouldShowNow = (settings) => {
+      const now = new Date();
+      // 1. 解析 reminderTime（每日首次提醒时间）
+      const [rh, rm] = (settings.reminderTime || '09:00').split(':').map(n => parseInt(n, 10));
+      const firstShow = new Date();
+      firstShow.setHours(rh || 9, rm || 0, 0, 0);
+      // 当前时刻必须晚于每日首次提醒时间
+      if (now < firstShow) return false;
+
+      const throttle = getThrottleState();
+      const maxCount = Math.min(Math.max(parseInt(settings.reminderCount, 10) || 1, 1), 5);
+      const intervalMin = Math.min(Math.max(parseInt(settings.reminderInterval, 10) || 60, 15), 240);
+
+      // 2. 今日还没弹过 → 弹
+      if (!throttle) return { shown: 1 };
+
+      // 3. 已达今日次数上限 → 不弹
+      if (throttle.shown >= maxCount) return false;
+
+      // 4. 距离上次弹窗不足 interval 分钟 → 不弹
+      const lastMs = new Date(throttle.lastShownAt).getTime();
+      const diffMin = (now.getTime() - lastMs) / 60000;
+      if (diffMin < intervalMin) return false;
+
+      // 5. 可以弹，累计次数 +1
+      return { shown: throttle.shown + 1 };
+    };
+
     const checkDeadlineReminders = async () => {
       try {
         const data = await remindersAPI.getToday();
-        if (data && data.length > 0) {
-          setDeadlineReminders(data);
+        if (!data || data.length === 0) return;
+
+        // 读取最新设置（state 可能还没刷新，localStorage 最可靠）
+        let settings;
+        try {
+          const saved = localStorage.getItem('reminderSettings');
+          settings = saved ? JSON.parse(saved) : { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 };
+        } catch { settings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 }; }
+
+        setDeadlineReminders(data); // 红点数字始终更新
+
+        const decision = shouldShowNow(settings);
+        if (decision) {
           setShowDeadlineReminder(true);
+          setThrottleState(decision.shown);
         }
       } catch (err) {
         console.error('获取截止日提醒失败:', err);
       }
     };
+
     // 加载提醒设置（优先从API加载，降级从localStorage读取）
     const loadReminderSettings = async () => {
       try {
         const data = await remindersAPI.getSettings();
         if (data && (data.reminderTime || data.reminderCount || data.reminderInterval)) {
-          setReminderSettings(data);
-          // 同步写入localStorage作为备份
-          localStorage.setItem('reminderSettings', JSON.stringify(data));
+          // 确保 reminderDaysBefore 有值（旧数据兼容）
+          const normalized = { reminderDaysBefore: 3, ...data };
+          setReminderSettings(normalized);
+          localStorage.setItem('reminderSettings', JSON.stringify(normalized));
           return;
         }
       } catch (err) { console.warn('从API加载提醒设置失败，尝试localStorage:', err); }
-      // 降级从localStorage读取
       try {
         const saved = localStorage.getItem('reminderSettings');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed) setReminderSettings(parsed);
+          if (parsed) setReminderSettings({ reminderDaysBefore: 3, ...parsed });
         }
       } catch { /* ignore */ }
     };
+
     loadReminderSettings();
     // 首次加载后延迟2秒检查（等待登录完成）
     const timer = setTimeout(checkDeadlineReminders, 2000);
-    // 每小时检查一次
-    const interval = setInterval(checkDeadlineReminders, 3600000);
+    // 每 5 分钟检查一次（比旧版 1 小时更及时，配合节流逻辑不会频繁打扰）
+    const interval = setInterval(checkDeadlineReminders, 5 * 60 * 1000);
     return () => { clearTimeout(timer); clearInterval(interval); };
   }, [user.role]);
 
@@ -3642,9 +3706,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           </div>
           <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
             <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
-              {filteredEvents.filter(e => e.daysLeft <= 7).length}
+              {filteredEvents.filter(e => e.daysLeft <= (reminderSettings.reminderDaysBefore || 7)).length}
             </div>
-            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>本周任务</div>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>近期任务</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
             <div className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
@@ -3697,7 +3761,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <div className="text-right">
                 <div className={`text-3xl font-bold ${
                   event.daysLeft <= 0 ? (isDark ? 'text-gray-400' : 'text-gray-600') :
-                  event.daysLeft <= 7 ? 'text-red-500' :
+                  event.daysLeft <= (reminderSettings.reminderDaysBefore || 7) ? 'text-red-500' :
                   event.daysLeft <= 30 ? 'text-orange-500' : (isDark ? 'text-gray-300' : 'text-gray-700')
                 }`}>
                   {event.daysLeft <= 0 ? '已过期' : event.daysLeft}
@@ -4451,8 +4515,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </button>
             )}
 
-            {/* 通知按钮 - 仅老师和管理员显示提醒设置；学生只显示提醒数量（不可设置） */}
-            {(user.role === 'teacher' || user.role === 'admin') && (
+            {/* 通知按钮 - 所有角色均可打开提醒设置（需求54：学生可自定义提醒时间/次数/间隔/提前天数） */}
             <button className="p-2 rounded-lg relative transition-all"
               style={{ color: tokens.colors.text.muted }}
               onClick={() => setShowReminderSettings(true)}
@@ -4464,7 +4527,6 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{deadlineReminders.length}</span>
               )}
             </button>
-            )}
 
             {(user.role === 'teacher' || user.role === 'admin') && (
               <button
@@ -5561,6 +5623,24 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   ))}
                 </div>
                 <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>多次提醒时，每次提醒之间的间隔时间</p>
+              </div>
+              {/* 提前多少天开始提醒（需求54核心） */}
+              <div>
+                <label className="block text-sm font-semibold mb-2" style={{ color: tokens.colors.text.primary }}>📆 提前多少天开始提醒</label>
+                <div className="flex gap-2">
+                  {[1, 3, 7, 14, 30].map(d => (
+                    <button key={d} onClick={() => setReminderSettings(prev => ({ ...prev, reminderDaysBefore: d }))}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{
+                        background: (reminderSettings.reminderDaysBefore || 3) === d ? (isDark ? 'rgba(59,130,246,0.25)' : '#dbeafe') : (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'),
+                        color: (reminderSettings.reminderDaysBefore || 3) === d ? '#3b82f6' : tokens.colors.text.secondary,
+                        border: `1px solid ${(reminderSettings.reminderDaysBefore || 3) === d ? (isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd') : 'transparent'}`,
+                      }}>
+                      {d}天
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>距离截止日该天数内的事件会被列入提醒（推荐 3~7 天）</p>
               </div>
             </div>
             <div className="p-4 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>

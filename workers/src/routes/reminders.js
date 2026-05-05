@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 const reminders = new Hono()
 
 // ─── 获取近期需要提醒的截止事项（学生端）───────────────────────────────────────
-// 查询范围：今天 + 未来3天内截止的未完成事件
+// 查询范围：今天 + 未来 N 天内截止的未完成事件（N 读自学生的提醒设置 reminderDaysBefore，默认 3）
 reminders.get('/today', async (c) => {
   const user = c.get('user')
   if (user.role !== 'student' || !user.studentId) {
@@ -14,12 +14,27 @@ reminders.get('/today', async (c) => {
 
   const db = c.env.DB
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-  // 未来3天
+
+  // 读取学生的提醒设置，取出 reminderDaysBefore（提前多少天开始提醒）
+  let daysBefore = 3
+  try {
+    const settingsRow = await db.prepare(`
+      SELECT event_title as settings_json FROM deadline_reminders
+      WHERE student_id = ? AND event_id = -1
+    `).bind(user.studentId).first()
+    if (settingsRow && settingsRow.settings_json) {
+      const s = JSON.parse(settingsRow.settings_json)
+      const n = parseInt(s.reminderDaysBefore, 10)
+      if (Number.isFinite(n) && n >= 1 && n <= 30) daysBefore = n
+    }
+  } catch { /* 保持默认 3 天 */ }
+
+  // 未来 daysBefore 天
   const future = new Date()
-  future.setDate(future.getDate() + 3)
+  future.setDate(future.getDate() + daysBefore)
   const futureDate = future.toISOString().split('T')[0]
 
-  // 查询今天到未来3天内截止的事件（未完成 + 未确认）
+  // 查询今天到未来 daysBefore 天内截止的事件（未完成 + 未确认）
   const { results: events } = await db.prepare(`
     SELECT e.id, e.title, e.date, e.type, e.category, e.notes, e.school_id,
            s.name as school_name
@@ -126,7 +141,7 @@ reminders.get('/settings', async (c) => {
   const user = c.get('user')
   const db = c.env.DB
 
-  const defaultSettings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60 }
+  const defaultSettings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 }
 
   // 非学生用户直接返回默认设置
   if (!user.studentId) {
@@ -158,6 +173,7 @@ reminders.post('/settings', async (c) => {
     reminderTime: body.reminderTime || '09:00',
     reminderCount: Math.min(Math.max(body.reminderCount || 1, 1), 5),
     reminderInterval: Math.min(Math.max(body.reminderInterval || 60, 15), 240),
+    reminderDaysBefore: Math.min(Math.max(body.reminderDaysBefore || 3, 1), 30),
   }
 
   // 仅学生角色可以在 deadline_reminders 表中保存设置
