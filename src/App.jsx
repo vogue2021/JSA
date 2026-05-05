@@ -1824,24 +1824,24 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">考试日期</label>
+                  {/* 【新需求59】考试日期不再强制必填（部分学校无固定考试日期） */}
+                  <label className="block text-sm font-medium mb-2">考试日期 <span className="text-xs text-themed-muted font-normal">（可选）</span></label>
                   <input
                     type="date"
                     value={formData.examDate}
                     onChange={(e) => setFormData({...formData, examDate: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">合格发表日期</label>
+                  {/* 【新需求59】合格发表日期不再强制必填（部分学校无固定发表日期） */}
+                  <label className="block text-sm font-medium mb-2">合格发表日期 <span className="text-xs text-themed-muted font-normal">（可选）</span></label>
                   <input
                     type="date"
                     value={formData.resultDate}
                     onChange={(e) => setFormData({...formData, resultDate: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
                   />
                 </div>
               </div>
