@@ -4,6 +4,21 @@ import { Hono } from 'hono'
 
 const reminders = new Hono()
 
+// ─── 工具函数：从查询参数或请求方推断"客户端本地日期 YYYY-MM-DD" ────────────
+// 需求57：Worker 默认 UTC 时区，直接 new Date().toISOString() 在东八区的凌晨 0~8 点
+// 会返回"昨天"的日期，导致今天截止的事件查不出来。因此由前端携带本地日期过来。
+function resolveClientDate(c) {
+  const q = c.req.query('clientDate')
+  if (q && /^\d{4}-\d{2}-\d{2}$/.test(q)) return q
+  // 降级：尝试 Header X-Client-Date
+  const h = c.req.header('X-Client-Date')
+  if (h && /^\d{4}-\d{2}-\d{2}$/.test(h)) return h
+  // 最终降级：使用 UTC+8（大多数用户在中国/日本时区），避免 Worker UTC 日期偏差
+  const now = new Date()
+  const shifted = new Date(now.getTime() + 8 * 3600 * 1000)
+  return shifted.toISOString().split('T')[0]
+}
+
 // ─── 获取近期需要提醒的截止事项（学生端）───────────────────────────────────────
 // 查询范围：今天 + 未来 N 天内截止的未完成事件（N 读自学生的提醒设置 reminderDaysBefore，默认 3）
 reminders.get('/today', async (c) => {
@@ -13,7 +28,8 @@ reminders.get('/today', async (c) => {
   }
 
   const db = c.env.DB
-  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+  // 需求57修复：使用客户端本地日期，避免 UTC 时区偏差
+  const today = resolveClientDate(c)
 
   // 读取学生的提醒设置，取出 reminderDaysBefore（提前多少天开始提醒）
   let daysBefore = 3
@@ -29,9 +45,9 @@ reminders.get('/today', async (c) => {
     }
   } catch { /* 保持默认 3 天 */ }
 
-  // 未来 daysBefore 天
-  const future = new Date()
-  future.setDate(future.getDate() + daysBefore)
+  // 未来 daysBefore 天（以 today 为基准加天数，避免再引入时区问题）
+  const todayDt = new Date(today + 'T00:00:00Z')
+  const future = new Date(todayDt.getTime() + daysBefore * 86400000)
   const futureDate = future.toISOString().split('T')[0]
 
   // 查询今天到未来 daysBefore 天内截止的事件（未完成 + 未确认）
@@ -48,20 +64,21 @@ reminders.get('/today', async (c) => {
     return c.json({ success: true, data: [] })
   }
 
-  // 检查哪些已经确认过了（按 event_id 查询，不限定日期）
+  // 需求57修复：仅排除"今天已确认"的事件——过去日期的确认不该影响今天的提醒
   const eventIds = events.map(e => e.id)
   const placeholders = eventIds.map(() => '?').join(',')
   const { results: acknowledged } = await db.prepare(`
     SELECT event_id FROM deadline_reminders
     WHERE student_id = ? AND acknowledged = 1 AND event_id IN (${placeholders})
-  `).bind(user.studentId, ...eventIds).all()
+      AND deadline_date = ?
+  `).bind(user.studentId, ...eventIds, today).all()
 
   const ackedIds = new Set(acknowledged.map(a => a.event_id))
 
   // 过滤出未确认的，附带剩余天数
-  const todayMs = new Date(today).getTime()
+  const todayMs = todayDt.getTime()
   const unacknowledged = events.filter(e => !ackedIds.has(e.id)).map(e => {
-    const eventMs = new Date(e.date).getTime()
+    const eventMs = new Date(e.date + 'T00:00:00Z').getTime()
     const daysLeft = Math.round((eventMs - todayMs) / (1000 * 60 * 60 * 24))
     return {
       id: e.id,
@@ -92,12 +109,26 @@ reminders.post('/acknowledge', async (c) => {
   }
 
   const db = c.env.DB
-  const today = new Date().toISOString().split('T')[0]
+  // 需求57修复：使用客户端本地日期
+  const today = resolveClientDate(c)
 
-  await db.prepare(`
-    INSERT INTO deadline_reminders (student_id, event_id, event_title, deadline_date, acknowledged, acknowledged_at)
-    VALUES (?, ?, ?, ?, 1, datetime('now'))
-  `).bind(user.studentId, eventId, eventTitle || '', today).run()
+  // 需求57修复：同 student + event + date 只保留一条记录（防止表膨胀）
+  const existing = await db.prepare(`
+    SELECT id FROM deadline_reminders
+    WHERE student_id = ? AND event_id = ? AND deadline_date = ?
+  `).bind(user.studentId, eventId, today).first()
+
+  if (existing) {
+    await db.prepare(`
+      UPDATE deadline_reminders SET acknowledged = 1, acknowledged_at = datetime('now'),
+             event_title = ? WHERE id = ?
+    `).bind(eventTitle || '', existing.id).run()
+  } else {
+    await db.prepare(`
+      INSERT INTO deadline_reminders (student_id, event_id, event_title, deadline_date, acknowledged, acknowledged_at)
+      VALUES (?, ?, ?, ?, 1, datetime('now'))
+    `).bind(user.studentId, eventId, eventTitle || '', today).run()
+  }
 
   return c.json({ success: true, message: '提醒已确认' })
 })
@@ -124,9 +155,10 @@ reminders.get('/acknowledged/:studentId', async (c) => {
   const { studentId } = c.req.param()
   const db = c.env.DB
 
+  // 需求57修复：排除 event_id = -1（是设置行，不是真实事件）
   const { results } = await db.prepare(`
     SELECT event_id, acknowledged_at FROM deadline_reminders
-    WHERE student_id = ? AND acknowledged = 1
+    WHERE student_id = ? AND acknowledged = 1 AND event_id <> -1
   `).bind(studentId).all()
 
   // 返回 { eventId: acknowledgedAt } 的映射
@@ -184,11 +216,24 @@ reminders.post('/settings', async (c) => {
   const body = await c.req.json()
   const db = c.env.DB
 
+  // 需求57修复：严格校验 reminderTime 格式 HH:MM（0-23:0-59）
+  let reminderTime = body.reminderTime || '09:00'
+  const m = /^(\d{1,2}):(\d{2})$/.exec(reminderTime)
+  if (!m) {
+    return c.json({ success: false, message: 'reminderTime 格式错误，应为 HH:MM' }, 400)
+  }
+  const hh = parseInt(m[1], 10)
+  const mm = parseInt(m[2], 10)
+  if (!(hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59)) {
+    return c.json({ success: false, message: 'reminderTime 范围错误（时0-23，分0-59）' }, 400)
+  }
+  reminderTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+
   const settings = {
-    reminderTime: body.reminderTime || '09:00',
-    reminderCount: Math.min(Math.max(body.reminderCount || 1, 1), 5),
-    reminderInterval: Math.min(Math.max(body.reminderInterval || 60, 15), 240),
-    reminderDaysBefore: Math.min(Math.max(body.reminderDaysBefore || 3, 1), 30),
+    reminderTime,
+    reminderCount: Math.min(Math.max(parseInt(body.reminderCount, 10) || 1, 1), 5),
+    reminderInterval: Math.min(Math.max(parseInt(body.reminderInterval, 10) || 60, 15), 240),
+    reminderDaysBefore: Math.min(Math.max(parseInt(body.reminderDaysBefore, 10) || 3, 1), 30),
   }
   const settingsJson = JSON.stringify(settings)
 

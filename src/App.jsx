@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, School, FileText, CheckSquare, Plus,
@@ -409,6 +409,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const [deadlineReminders, setDeadlineReminders] = useState([]); // 截止日提醒列表
   const [showDeadlineReminder, setShowDeadlineReminder] = useState(false); // 是否显示截止日提醒弹窗
+  // 需求57：用 ref 同步弹窗显示状态，供 setInterval 回调读取最新值而不需要加入 useEffect 依赖
+  const showDeadlineReminderRef = useRef(false);
+  useEffect(() => { showDeadlineReminderRef.current = showDeadlineReminder; }, [showDeadlineReminder]);
   const [showReminderSettings, setShowReminderSettings] = useState(false); // 提醒设置弹窗
 const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 });
   const [savingReminderSettings, setSavingReminderSettings] = useState(false);
@@ -567,9 +570,10 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       const day = String(d.getDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
     };
+    const getThrottleKey = () => `reminderThrottle_${user.studentId || 'default'}`;
     const getThrottleState = () => {
       try {
-        const raw = localStorage.getItem('reminderThrottle');
+        const raw = localStorage.getItem(getThrottleKey());
         if (!raw) return null;
         const s = JSON.parse(raw);
         if (!s || s.date !== getTodayKey()) return null;
@@ -578,19 +582,21 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     };
     const setThrottleState = (shown) => {
       try {
-        localStorage.setItem('reminderThrottle', JSON.stringify({
+        localStorage.setItem(getThrottleKey(), JSON.stringify({
           date: getTodayKey(), shown, lastShownAt: new Date().toISOString()
         }));
       } catch { /* ignore */ }
     };
 
     // 判断当前是否应该弹出提醒（读取最新 reminderSettings）
+    // 需求57：如果弹窗已在显示，不重复触发，避免重复计数、01 秒容错：避免同一分钟多次命中
     const shouldShowNow = (settings) => {
       const now = new Date();
       // 1. 解析 reminderTime（每日首次提醒时间）
       const [rh, rm] = (settings.reminderTime || '09:00').split(':').map(n => parseInt(n, 10));
       const firstShow = new Date();
-      firstShow.setHours(rh || 9, rm || 0, 0, 0);
+      firstShow.setHours(Number.isFinite(rh) ? Math.min(Math.max(rh, 0), 23) : 9,
+                         Number.isFinite(rm) ? Math.min(Math.max(rm, 0), 59) : 0, 0, 0);
       // 当前时刻必须晚于每日首次提醒时间
       if (now < firstShow) return false;
 
@@ -607,25 +613,42 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       // 4. 距离上次弹窗不足 interval 分钟 → 不弹
       const lastMs = new Date(throttle.lastShownAt).getTime();
       const diffMin = (now.getTime() - lastMs) / 60000;
-      if (diffMin < intervalMin) return false;
+      // 1 秒容错：防止相同分钟内因 setInterval 漂移反复触发
+      if (diffMin + (1 / 60) < intervalMin) return false;
 
       // 5. 可以弹，累计次数 +1
       return { shown: throttle.shown + 1 };
     };
 
+    // 用 ref 读取最新的弹窗状态，避免把 showDeadlineReminder 加入 useEffect 依赖后重建 interval
     const checkDeadlineReminders = async () => {
       try {
-        const data = await remindersAPI.getToday();
+        // 需求57：每次检查前先重拉最新的提醒设置（应对老师在另一端修改设置的场景）
+        // 读取 settings、data 并行，减少延迟
+        const [latestSettings, data] = await Promise.all([
+          remindersAPI.getSettings().catch(() => null),
+          remindersAPI.getToday(),
+        ]);
+
+        let settings;
+        if (latestSettings && (latestSettings.reminderTime || latestSettings.reminderCount)) {
+          settings = { reminderDaysBefore: 3, ...latestSettings };
+          // 同步到 state 和 localStorage，让 UI 和后续调用看到最新值
+          setReminderSettings(settings);
+          try { localStorage.setItem('reminderSettings', JSON.stringify(settings)); } catch { /* ignore */ }
+        } else {
+          // 降级读 localStorage
+          try {
+            const saved = localStorage.getItem('reminderSettings');
+            settings = saved ? JSON.parse(saved) : { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 };
+          } catch { settings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 }; }
+        }
+
+        setDeadlineReminders(data || []); // 红点数字始终更新
         if (!data || data.length === 0) return;
 
-        // 读取最新设置（state 可能还没刷新，localStorage 最可靠）
-        let settings;
-        try {
-          const saved = localStorage.getItem('reminderSettings');
-          settings = saved ? JSON.parse(saved) : { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 };
-        } catch { settings = { reminderTime: '09:00', reminderCount: 1, reminderInterval: 60, reminderDaysBefore: 3 }; }
-
-        setDeadlineReminders(data); // 红点数字始终更新
+        // 需求57：如果弹窗已在显示，跳过计数避免重复（用 ref，避免加入 useEffect 依赖）
+        if (showDeadlineReminderRef.current) return;
 
         const decision = shouldShowNow(settings);
         if (decision) {
@@ -660,15 +683,16 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
     // 需求56：必须先 load settings（写入 localStorage），再触发首次 check，
     // 否则首次 checkDeadlineReminders 读到的是空 localStorage → 用默认 09:00 判断
+    // 需求57：轮询频率从 5 分钟 → 1 分钟，让老师测试时更快看到提醒（背后有节流限制不会担心打扰）
     let timer = null;
     let interval = null;
     loadReminderSettings().then(() => {
       timer = setTimeout(checkDeadlineReminders, 500);
     });
-    // 每 5 分钟检查一次（比旧版 1 小时更及时，配合节流逻辑不会频繁打扰）
-    interval = setInterval(checkDeadlineReminders, 5 * 60 * 1000);
+    // 每 1 分钟检查一次（配合节流逻辑不会频繁打扰，同时在设置 reminderTime 后进入窗口时能迅速弹出）
+    interval = setInterval(checkDeadlineReminders, 60 * 1000);
     return () => { if (timer) clearTimeout(timer); if (interval) clearInterval(interval); };
-  }, [user.role]);
+  }, [user.role, user.studentId]);
 
   // 加载事件确认状态（用于时间线卡片显示"学生已确认"）
   useEffect(() => {
@@ -5732,6 +5756,36 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     <span>🎯 <strong>应用到我名下的所有学生</strong>（否则仅对 <span className="font-semibold">{currentStudent?.name || '当前选中学生'}</span> 生效）</span>
                   </label>
                 </div>
+              )}
+              {/* 需求57：展示"下次预计提醒时间"与"立即测试"按钮 */}
+              <div className="rounded-xl p-3 text-xs" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, color: tokens.colors.text.muted }}>
+                <div className="flex items-start gap-2">
+                  <span>ℹ️</span>
+                  <div className="flex-1 space-y-1">
+                    <div>📅 <strong>每日首次提醒时间</strong>：{reminderSettings.reminderTime || '09:00'}（需页面打开状态）</div>
+                    <div>🔁 最多提醒 <strong>{reminderSettings.reminderCount || 1}</strong> 次，每次间隔 <strong>{reminderSettings.reminderInterval || 60}</strong> 分钟</div>
+                    <div>📆 对距截止 <strong>≤ {reminderSettings.reminderDaysBefore || 3}</strong> 天的未完成事件生效</div>
+                    <div className="text-[11px]" style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>⚡ 学生端每 1 分钟轮询一次，保存后学生刷新或等 1 分钟即生效</div>
+                  </div>
+                </div>
+              </div>
+              {/* 需求57：学生端（仅本账号是学生时）提供"立即测试"按钮，帮助验证链路 */}
+              {user.role === 'student' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 清空今日节流，强制下次 check 弹窗
+                    try {
+                      const key = `reminderThrottle_${user.studentId || 'default'}`;
+                      localStorage.removeItem(key);
+                    } catch { /* ignore */ }
+                    if (showNotification) showNotification('已重置今日节流，下次提醒将立即弹出', 'success');
+                    setShowReminderSettings(false);
+                  }}
+                  className="w-full py-2 rounded-xl text-sm font-medium transition"
+                  style={{ background: isDark ? 'rgba(234,179,8,0.12)' : '#fef3c7', color: isDark ? '#fbbf24' : '#92400e', border: `1px solid ${isDark ? 'rgba(234,179,8,0.3)' : '#fde68a'}` }}>
+                  🧪 重置今日节流（立即测试提醒）
+                </button>
               )}
             </div>
             <div className="p-4 flex gap-3" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}` }}>

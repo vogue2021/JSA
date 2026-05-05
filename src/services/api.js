@@ -328,26 +328,29 @@ export const feedbackAPI = {
 
 // ─── 截止日提醒 API ──────────────────────────────────────────────────────────
 export const remindersAPI = {
-  // 获取今天需要提醒的截止事项
+  // 获取截止日提醒（需求57：携带本地日期避免 Worker UTC 时区偏差）
   getToday: async () => {
-    return await apiRequest('/reminders/today');
+    const now = new Date();
+    const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return await apiRequest(`/reminders/today?clientDate=${clientDate}`);
   },
-  // 确认提醒
+  // 确认单个提醒（需求57：携带本地日期，服务端用于唯一键去重）
   acknowledge: async (eventId, eventTitle) => {
-    return await apiRequest('/reminders/acknowledge', {
+    const now = new Date();
+    const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return await apiRequest(`/reminders/acknowledge?clientDate=${clientDate}`, {
       method: 'POST',
       body: JSON.stringify({ eventId, eventTitle }),
     });
   },
-  // 获取学生的提醒确认历史
+  // 获取提醒历史
   getHistory: async (studentId) => {
     return await apiRequest(`/reminders/history/${studentId}`);
   },
-  // 获取事件确认状态（用于时间线卡片显示"学生已确认"）
+  // 获取事件的确认状态（用于时间线卡片显示"已确认"）
   getAcknowledged: async (studentId) => {
     return await apiRequest(`/reminders/acknowledged/${studentId}`);
-  },
-  // 获取提醒设置（需求56：老师可传 studentId 读取指定学生的设置）
+  },  // 获取提醒设置（需求56：老师可传 studentId 读取指定学生的设置）
   getSettings: async (studentId) => {
     const qs = studentId ? `?studentId=${encodeURIComponent(studentId)}` : '';
     return await apiRequest(`/reminders/settings${qs}`);
