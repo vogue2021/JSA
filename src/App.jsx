@@ -4515,7 +4515,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </button>
             )}
 
-            {/* 通知按钮 - 所有角色均可打开提醒设置（需求54：学生可自定义提醒时间/次数/间隔/提前天数） */}
+            {/* 通知按钮 - 需求55：仅老师/管理员显示"截止日提醒设置"入口，学生端不显示 */}
+            {/* （需求54 的后端节流 + reminderDaysBefore 对学生仍生效，由老师代为设置） */}
+            {(user.role === 'teacher' || user.role === 'admin') && (
             <button className="p-2 rounded-lg relative transition-all"
               style={{ color: tokens.colors.text.muted }}
               onClick={() => setShowReminderSettings(true)}
@@ -4527,6 +4529,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{deadlineReminders.length}</span>
               )}
             </button>
+            )}
 
             {(user.role === 'teacher' || user.role === 'admin') && (
               <button
