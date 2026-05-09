@@ -162,7 +162,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   }, [student.studentId, activeSection]);
 
   const [newEjuScore, setNewEjuScore] = useState({
-    date: '', totalScore: '', japanese: '', math: '', science: '', generalSubjects: ''
+    date: '', totalScore: '', japanese: '', descriptive: '', math: '', science: '', generalSubjects: ''
   });
 
   // 新备注输入
@@ -253,7 +253,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     if (newEjuScore.date && newEjuScore.totalScore) {
       const updated = [...formData.ejuScores, { ...newEjuScore, id: Date.now() }];
       setFormData({ ...formData, ejuScores: updated });
-      setNewEjuScore({ date: '', totalScore: '', japanese: '', math: '', science: '', generalSubjects: '' });
+      setNewEjuScore({ date: '', totalScore: '', japanese: '', descriptive: '', math: '', science: '', generalSubjects: '' });
     }
   };
 
@@ -703,6 +703,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>日语</span><span style={{ color: tokens.colors.text.primary }}>{score.japanese || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>日语记述</span><span style={{ color: tokens.colors.text.primary }}>{score.descriptive || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>数学</span><span style={{ color: tokens.colors.text.primary }}>{score.math || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>理科</span><span style={{ color: tokens.colors.text.primary }}>{score.science || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>文综</span><span style={{ color: tokens.colors.text.primary }}>{score.generalSubjects || '-'}</span></div>
@@ -719,6 +720,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">总分</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语记述</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">数学</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">理科/综合</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">文综</th>
@@ -731,6 +733,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                           <td className="px-3 py-2">{score.date}</td>
                           <td className="px-3 py-2 font-semibold text-blue-600">{score.totalScore}</td>
                           <td className="px-3 py-2">{score.japanese || '-'}</td>
+                          <td className="px-3 py-2">{score.descriptive || '-'}</td>
                           <td className="px-3 py-2">{score.math || '-'}</td>
                           <td className="px-3 py-2">{score.science || '-'}</td>
                           <td className="px-3 py-2">{score.generalSubjects || '-'}</td>
@@ -765,7 +768,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="总分" />
                   <input type="number" value={newEjuScore.japanese}
                     onChange={e => setNewEjuScore({...newEjuScore, japanese: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="日语" />
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="日语(读解/听力)" />
+                  <input type="number" value={newEjuScore.descriptive}
+                    onChange={e => setNewEjuScore({...newEjuScore, descriptive: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="日语记述" />
                   <input type="number" value={newEjuScore.math}
                     onChange={e => setNewEjuScore({...newEjuScore, math: e.target.value})}
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="数学" />

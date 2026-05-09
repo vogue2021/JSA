@@ -7,7 +7,8 @@ import {
   Menu, ChevronDown, Eye, EyeOff, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
-  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw
+  LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw,
+  Copy
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
@@ -28,7 +29,7 @@ import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
 import AuthPage from './components/AuthPage';
 import OnboardingTour from './components/common/OnboardingTour';
-import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF } from './utils/exportUtils';
+import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF, exportTimelineToPDF, copyTimelineToText, copyChecklistToText } from './utils/exportUtils';
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
 
@@ -3689,7 +3690,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 </button>
                 <button
                   onClick={() => {
-                    exportChecklistToPDF(currentStudent, checklist, schools);
+                    // 需求 61-①：时间线页面的 PDF 导出应该导出时间线事件而非材料清单
+                    exportTimelineToPDF(currentStudent, upcomingEvents, schools);
                     setShowExportMenu(false);
                   }}
                   className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
@@ -3697,7 +3699,21 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <Download size={16} /> 导出材料清单 (PDF)
+                  <Download size={16} /> 导出时间线 (PDF)
+                </button>
+                <button
+                  onClick={async () => {
+                    // 需求 61-②：一键复制时间线为纯文本，方便微信转发
+                    const { ok } = await copyTimelineToText(currentStudent, upcomingEvents);
+                    if (showNotification) showNotification(ok ? '已复制时间线文字，可直接粘贴到微信' : '复制失败，请手动选择文本', ok ? 'success' : 'error');
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition"
+                  style={{ color: tokens.colors.text.primary }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Copy size={16} /> 复制时间线文字（微信）
                 </button>
                 <div style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, margin: '2px 0' }} />
                 <button
@@ -4213,6 +4229,19 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               <Download size={14} />
               导出清单
             </button>
+            <button
+              onClick={async () => {
+                // 需求 61-②：一键复制材料清单为纯文本，方便微信转发
+                const { ok } = await copyChecklistToText(currentStudent, checklist, schools);
+                if (showNotification) showNotification(ok ? '已复制清单文字，可直接粘贴到微信' : '复制失败，请手动选择文本', ok ? 'success' : 'error');
+              }}
+              className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+              style={{ background: isDark ? 'rgba(20,184,166,0.15)' : 'rgba(20,184,166,0.1)', color: isDark ? '#5eead4' : '#0d9488' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(20,184,166,0.25)' : 'rgba(20,184,166,0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(20,184,166,0.15)' : 'rgba(20,184,166,0.1)'}>
+              <Copy size={14} />
+              复制清单文字
+            </button>
             {(user.role === 'teacher' || user.role === 'admin') && (
               <>
                 <button className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
@@ -4250,6 +4279,19 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}>
               <Download size={14} />
               导出清单
+            </button>
+            <button
+              onClick={async () => {
+                // 需求 61-②：学生端一键复制材料清单为纯文本，方便微信转发
+                const { ok } = await copyChecklistToText(currentStudent, checklist, schools);
+                if (showNotification) showNotification(ok ? '已复制清单文字，可直接粘贴到微信' : '复制失败，请手动选择文本', ok ? 'success' : 'error');
+              }}
+              className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+              style={{ background: isDark ? 'rgba(20,184,166,0.15)' : 'rgba(20,184,166,0.1)', color: isDark ? '#5eead4' : '#0d9488' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(20,184,166,0.25)' : 'rgba(20,184,166,0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(20,184,166,0.15)' : 'rgba(20,184,166,0.1)'}>
+              <Copy size={14} />
+              复制清单文字
             </button>
           </div>
         </div>

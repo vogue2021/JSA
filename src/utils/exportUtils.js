@@ -34,9 +34,9 @@ export const exportStudentToCSV = (student, studentData) => {
 
   if (student.ejuScores && student.ejuScores.length > 0) {
     rows.push(['EJU成绩记录']);
-    rows.push(['考试日期', '总分', '日语', '数学', '理科', '综合科目']);
+    rows.push(['考试日期', '总分', '日语', '日语记述', '数学', '理科', '综合科目']);
     student.ejuScores.forEach(s => {
-      rows.push([s.date, s.totalScore, s.japanese || '', s.math || '', s.science || '', s.generalSubjects || '']);
+      rows.push([s.date, s.totalScore, s.japanese || '', s.descriptive || '', s.math || '', s.science || '', s.generalSubjects || '']);
     });
     rows.push(['']);
   }
@@ -93,6 +93,247 @@ export const exportChecklistToPDF = (student, checklist, schools) => {
   printWindow.onload = () => {
     printWindow.print();
   };
+};
+
+// 时间线（事件）导出为可打印 HTML/PDF
+// 需求 61-①：时间线页面原来的"导出材料清单 (PDF)"错误地导出了材料清单内容，
+// 这里新增真正导出"时间线事件列表"的函数，供时间线导出菜单调用。
+export const exportTimelineToPDF = (student, events, schools) => {
+  const html = generateTimelineHTML(student, events, schools);
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.print();
+  };
+};
+
+const generateTimelineHTML = (student, events, schools) => {
+  // 按日期升序排序
+  const sorted = Array.isArray(events)
+    ? [...events].sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0;
+        const db = b.date ? new Date(b.date).getTime() : 0;
+        return da - db;
+      })
+    : [];
+
+  // 按"category"分组（考试 / 出愿 / 合格发表 / 其他）
+  const groups = {};
+  sorted.forEach(ev => {
+    const key = ev.category || getEventTypeText(ev.type) || '其他';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(ev);
+  });
+
+  const categoryIcon = {
+    '考试': '📝',
+    '出愿': '📨',
+    '合格发表': '🎉',
+    '面试': '💬',
+    '其他': '📌',
+  };
+
+  let groupsHTML = '';
+  Object.entries(groups).forEach(([cat, list]) => {
+    groupsHTML += `
+      <h2>${categoryIcon[cat] || '📌'} ${cat} <span class="count">(${list.length})</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:110px">日期</th>
+            <th>事项</th>
+            <th style="width:90px">距今</th>
+            <th style="width:70px">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(ev => {
+            const daysLeft = Number.isFinite(ev.daysLeft) ? ev.daysLeft : '-';
+            const daysText = daysLeft === '-' ? '-' :
+              daysLeft === 0 ? '今天' :
+              daysLeft > 0 ? `剩 ${daysLeft} 天` : `过期 ${Math.abs(daysLeft)} 天`;
+            const daysClass = daysLeft !== '-' && daysLeft <= 7 && daysLeft >= 0 ? 'urgent' : '';
+            const status = ev.completed ? '✓ 完成' : (ev.urgent ? '紧急' : '待办');
+            const notesHTML = ev.notes ? `<div class="notes">${escapeHTML(ev.notes)}</div>` : '';
+            return `
+              <tr class="${ev.completed ? 'done' : ''}">
+                <td>${ev.date || '-'}</td>
+                <td><strong>${escapeHTML(ev.title || '-')}</strong>${notesHTML}</td>
+                <td class="${daysClass}">${daysText}</td>
+                <td>${status}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  });
+
+  if (!groupsHTML) {
+    groupsHTML = '<p class="empty">暂无时间线事项</p>';
+  }
+
+  return `<!DOCTYPE html>
+<html lang="zh"><head><meta charset="UTF-8">
+<title>考学时间线 - ${student.name}</title>
+<style>
+  body { font-family: "Microsoft YaHei", "Helvetica Neue", sans-serif; max-width: 860px; margin: 0 auto; padding: 20px; color: #333; }
+  h1 { text-align: center; color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 16px; }
+  h2 { color: #4b5563; margin-top: 26px; border-left: 4px solid #3b82f6; padding-left: 10px; }
+  h2 .count { font-size: 13px; color: #9ca3af; font-weight: normal; }
+  .info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; background: #f9fafb; padding: 16px; border-radius: 8px; }
+  .info span { font-size: 14px; }
+  .info strong { color: #374151; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; }
+  th, td { border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; font-size: 13px; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  tr.done td { color: #9ca3af; text-decoration: line-through; }
+  td.urgent { color: #dc2626; font-weight: 600; }
+  .notes { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .empty { text-align: center; padding: 40px; color: #9ca3af; }
+  .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 10px; }
+  @media print { body { padding: 0; } .no-print { display: none; } h2 { break-after: avoid; } tr { break-inside: avoid; } }
+</style></head><body>
+  <h1>考学时间线</h1>
+  <div class="info">
+    <span><strong>学生姓名:</strong> ${escapeHTML(student.name || '')}</span>
+    <span><strong>学号:</strong> ${escapeHTML(String(student.studentId || ''))}</span>
+    <span><strong>打印日期:</strong> ${new Date().toLocaleDateString('zh-CN')}</span>
+    <span><strong>目标学校数:</strong> ${schools?.length || 0}</span>
+    <span><strong>事件总数:</strong> ${sorted.length}</span>
+    <span><strong>未完成:</strong> ${sorted.filter(e => !e.completed).length}</span>
+  </div>
+  ${groupsHTML}
+  <div class="footer">明学义塾升学系统 | 打印时间: ${new Date().toLocaleString('zh-CN')}</div>
+</body></html>`;
+};
+
+// HTML 转义（防止备注里含 <、& 等字符破坏模板）
+const escapeHTML = (s) => {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+// 将文本写入剪贴板（navigator.clipboard 优先，降级到 textarea+execCommand）
+const writeToClipboard = async (text) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {
+    // fall through
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+};
+
+// 需求 61-②-A：时间线页面内容 → 纯文本，方便微信转发
+export const copyTimelineToText = async (student, events) => {
+  const sorted = Array.isArray(events)
+    ? [...events].sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0;
+        const db = b.date ? new Date(b.date).getTime() : 0;
+        return da - db;
+      })
+    : [];
+
+  const lines = [];
+  lines.push(`📅 ${student.name || ''} 的考学时间线`);
+  lines.push(`打印日期: ${new Date().toLocaleDateString('zh-CN')}`);
+  lines.push(`共 ${sorted.length} 项，未完成 ${sorted.filter(e => !e.completed).length} 项`);
+  lines.push('');
+
+  const groups = {};
+  sorted.forEach(ev => {
+    const key = ev.category || getEventTypeText(ev.type) || '其他';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(ev);
+  });
+
+  const icon = {
+    '考试': '📝',
+    '出愿': '📨',
+    '合格发表': '🎉',
+    '面试': '💬',
+    '其他': '📌',
+  };
+
+  Object.entries(groups).forEach(([cat, list]) => {
+    lines.push(`${icon[cat] || '📌'} 【${cat}】`);
+    list.forEach(ev => {
+      const daysLeft = Number.isFinite(ev.daysLeft) ? ev.daysLeft : null;
+      const daysText = daysLeft === null ? '' :
+        daysLeft === 0 ? '（今天）' :
+        daysLeft > 0 ? `（剩 ${daysLeft} 天）` : `（已过 ${Math.abs(daysLeft)} 天）`;
+      const mark = ev.completed ? '✅' : (ev.urgent ? '⚠️' : '•');
+      lines.push(`  ${mark} ${ev.date || '待定'} ${ev.title || ''} ${daysText}`);
+      if (ev.notes) lines.push(`      备注: ${ev.notes}`);
+    });
+    lines.push('');
+  });
+
+  lines.push('—— 明学义塾升学系统');
+  const text = lines.join('\n');
+  const ok = await writeToClipboard(text);
+  return { ok, text };
+};
+
+// 需求 61-②-B：材料清单内容 → 纯文本，方便微信转发
+export const copyChecklistToText = async (student, checklist, schools) => {
+  const lines = [];
+  lines.push(`📋 ${student.name || ''} 的材料准备清单`);
+  lines.push(`打印日期: ${new Date().toLocaleDateString('zh-CN')}`);
+  if (schools?.length) lines.push(`目标学校数: ${schools.length}`);
+  lines.push('');
+
+  const renderGroup = (title, items) => {
+    lines.push(`【${title}】(${items.filter(i => i.completed).length}/${items.length})`);
+    if (!items.length) {
+      lines.push('  （无）');
+    } else {
+      items.forEach(m => {
+        const mark = m.completed ? '☑' : '☐';
+        const deadline = m.deadline ? ` — 截止 ${m.deadline}` : '';
+        lines.push(`  ${mark} ${m.item || m.name || ''}${deadline}`);
+      });
+    }
+    lines.push('');
+  };
+
+  if (checklist?.general?.length) {
+    renderGroup('通用材料', checklist.general);
+  }
+  if (checklist?.schoolSpecific) {
+    Object.entries(checklist.schoolSpecific).forEach(([name, mats]) => {
+      if (mats && mats.length) renderGroup(`${name} - 专用材料`, mats);
+    });
+  }
+
+  if (lines.length === 4) {
+    lines.push('（暂无材料清单内容）');
+  }
+  lines.push('—— 明学义塾升学系统');
+  const text = lines.join('\n');
+  const ok = await writeToClipboard(text);
+  return { ok, text };
 };
 
 const generateChecklistHTML = (student, checklist, schools) => {
