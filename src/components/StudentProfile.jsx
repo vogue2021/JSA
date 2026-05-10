@@ -276,6 +276,75 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const events = studentData?.events || [];
   const checklist = studentData?.checklist || { general: [], schoolSpecific: {} };
 
+  // 【新需求63 任务3】合并 events + schools 所有日期端 → 近期事项
+  //   背景：用户反馈"近期事项数据同步不全"。
+  //   原因：旧学校在需求 45/46 之前创建，后端 events 表只生成了出愿/考试/合格发表 4 条，
+  //         一审/二审/自定义日期未被同步进 events 表；即使后端已升级，旧学校
+  //         也需要"再次保存"才会触发 PUT 重建 events，否则永久缺失。
+  //   兜底策略：在前端从 schools 字段(及 extra_dates)按 7 个日期端拼出虚拟事件，
+  //             与后端 events 合并后按 (title+date) 去重。已 completed 的 event 优先生效。
+  const calcDaysLeft = (dateStr) => {
+    if (!dateStr) return Number.POSITIVE_INFINITY;
+    const diff = new Date(dateStr) - new Date();
+    return Math.ceil(diff / 86400000);
+  };
+  const mergedUpcomingEvents = (() => {
+    // 1) 后端 events（携带 completed 状态）
+    const map = new Map();
+    const keyOf = (title, date) => `${title}__${date}`;
+    (events || []).forEach(e => {
+      if (!e || !e.title || !e.date) return;
+      map.set(keyOf(e.title, e.date), {
+        id: e.id,
+        type: e.type || 'deadline',
+        title: e.title,
+        date: e.date,
+        daysLeft: typeof e.daysLeft === 'number' ? e.daysLeft : calcDaysLeft(e.date),
+        completed: !!e.completed,
+        urgent: !!e.urgent,
+      });
+    });
+    // 2) schools 派生事件（virtual，未 completed）
+    (schools || []).forEach(s => {
+      if (!s || !s.name) return;
+      const extra = (typeof s.extra_dates === 'string')
+        ? (() => { try { return JSON.parse(s.extra_dates || '{}'); } catch { return {}; } })()
+        : (s.extra_dates || s.extraDates || {});
+      const pushIfMissing = (title, date, type = 'deadline') => {
+        if (!date) return;
+        const k = keyOf(title, date);
+        if (!map.has(k)) {
+          map.set(k, {
+            id: `virtual-${k}`,
+            type,
+            title,
+            date,
+            daysLeft: calcDaysLeft(date),
+            completed: false,
+            urgent: false,
+          });
+        }
+      };
+      pushIfMissing(`${s.name} 出愿开始`, s.applicationStartDate || s.application_start_date);
+      pushIfMissing(`${s.name} 出愿截止`, s.applicationEndDate || s.application_end_date);
+      pushIfMissing(`${s.name} 入学考试`, s.examDate || s.exam_date, 'exam');
+      pushIfMissing(`${s.name} 合格发表`, s.resultDate || s.result_date);
+      pushIfMissing(`${s.name} 一审考试`, s.firstExamDate || extra.firstExamDate, 'exam');
+      pushIfMissing(`${s.name} 一审发表`, s.firstResultDate || extra.firstResultDate);
+      pushIfMissing(`${s.name} 二审考试`, s.secondExamDate || extra.secondExamDate, 'exam');
+      pushIfMissing(`${s.name} 二审发表`, s.secondResultDate || extra.secondResultDate);
+      const customs = Array.isArray(s.customDates) && s.customDates.length > 0
+        ? s.customDates
+        : (Array.isArray(extra.customDates) ? extra.customDates : []);
+      customs.forEach(cd => {
+        if (cd && cd.label && cd.date) {
+          pushIfMissing(`${s.name} ${cd.label}`, cd.date);
+        }
+      });
+    });
+    return Array.from(map.values());
+  })();
+
   const totalMaterials = (checklist.general?.length || 0) +
     Object.values(checklist.schoolSpecific || {}).reduce((sum, arr) => sum + arr.length, 0);
   const completedMaterials = (checklist.general?.filter(i => i.completed).length || 0) +
@@ -324,7 +393,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>志愿学校</div>
             </div>
             <div className="glass-card p-2 sm:p-3 text-center">
-              <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{events.filter(e => !e.completed).length}</div>
+              <div className="text-xl sm:text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>{mergedUpcomingEvents.filter(e => !e.completed).length}</div>
               <div className="text-xs" style={{ color: tokens.colors.text.muted }}>待办事项</div>
             </div>
             <div className="glass-card p-2 sm:p-3 text-center">
@@ -843,10 +912,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
           <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Clock size={20} /> 近期事项</h4>
-            {events.filter(e => !e.completed).slice(0, 5).length > 0 ? (
+            {mergedUpcomingEvents.filter(e => !e.completed).length > 0 ? (
               <div className="space-y-2">
-                {events.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5).map(event => (
-                    <div className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg gap-2" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
+                {mergedUpcomingEvents.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5).map(event => (
+                    <div key={event.id} className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg gap-2" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       <span className="text-base sm:text-lg flex-shrink-0">{event.type === 'exam' ? '📝' : event.type === 'deadline' ? '⏰' : '✉️'}</span>
                       <div className="min-w-0">

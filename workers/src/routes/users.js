@@ -53,11 +53,18 @@ users.delete('/:id', async (c) => {
     batch.push(db.prepare('DELETE FROM teachers WHERE teacher_id = ?').bind(target.teacher_id))
   }
   if (target.student_id) {
-    batch.push(db.prepare('UPDATE students SET has_account = 0, user_id = NULL WHERE student_id = ?').bind(target.student_id))
+    // 【新需求63 任务1 修复】学生账号被删除后，学生信息页仍能看到该学生 → 体验不符合预期。
+    //   原逻辑：仅解绑账号（has_account=0、user_id=NULL），保留学生记录。
+    //   新逻辑：账号被管理员主动删除时，将学生记录也软删（is_active=0），
+    //         以便学生信息页（按 is_active=1 过滤）立即不再显示该学生。
+    //         同时清空账号关联字段，便于将来重新绑定/恢复。
+    batch.push(db.prepare(
+      "UPDATE students SET has_account = 0, user_id = NULL, is_active = 0, updated_at = datetime('now') WHERE student_id = ?"
+    ).bind(target.student_id))
   }
 
   await db.batch(batch)
-  return c.json({ success: true, message: '用户已删除' })
+  return c.json({ success: true, message: '用户已删除（学生账号同时从学生列表移除）' })
 })
 
 // ─── 更新用户信息（管理员更新自己或管理其他用户）─────────────────────────

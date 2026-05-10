@@ -1322,7 +1322,12 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       requirements: '',
       acceptanceRate: '',
       teacherNotes: '',
-      materials: []
+      materials: [],
+      // 【新需求63 任务2】併願开关（同一学校多个学部一次登录）
+      joint: false,
+      // 【新需求63 任务2】併願学部列表，每项包含一个学部的所有日期端
+      // 提交时第一个学部使用主表单数据，jointPrograms 中每条额外创建一条 schools 记录（共享 name/type/location）
+      jointPrograms: []
     };
   };
   const [formData, setFormData] = useState(getInitialSchoolFormData());
@@ -1484,11 +1489,53 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
             body: JSON.stringify(schoolData),
           });
         } else {
-          // 添加新学校
+          // 添加新学校（主学部）
           await apiReq('/schools', {
             method: 'POST',
             body: JSON.stringify(schoolData),
           });
+
+          // 【新需求63 任务2】併願开关开启时，为 jointPrograms 中每个学部额外创建一条学校记录
+          // 共享：name / name_ja / type / location / acceptance_rate / requirements_url / requirements / teacher_notes
+          // 独立：program + 全部日期端 + extra_dates
+          if (formData.joint && Array.isArray(formData.jointPrograms) && formData.jointPrograms.length > 0) {
+            const validJointPrograms = formData.jointPrograms.filter(jp => jp && (jp.program || '').trim());
+            for (const jp of validJointPrograms) {
+              const jpExtraDates = {
+                firstExamDate: jp.firstExamDate || '',
+                firstResultDate: jp.firstResultDate || '',
+                secondExamDate: jp.secondExamDate || '',
+                secondResultDate: jp.secondResultDate || '',
+                customDates: Array.isArray(jp.customDates) ? jp.customDates : [],
+              };
+              const jointSchoolData = {
+                student_id: currentStudent?.studentId,
+                name: formData.name,
+                name_ja: formData.nameJa,
+                type: formData.type,
+                location: formData.location,
+                acceptance_rate: formData.acceptanceRate,
+                program: jp.program,
+                status: jp.status || 'preparing',
+                application_start_date: jp.applicationStartDate || '',
+                application_end_date: jp.applicationEndDate || '',
+                exam_date: jp.examDate || '',
+                result_date: jp.resultDate || '',
+                requirements_url: formData.requirementsUrl,
+                requirements: formData.requirements,
+                teacher_notes: formData.teacherNotes,
+                extra_dates: jpExtraDates,
+                materials: [], // 併願子学部默认不复制材料，避免重复；用户可单独编辑该学部添加材料
+              };
+              try {
+                await apiReq('/schools', { method: 'POST', body: JSON.stringify(jointSchoolData) });
+              } catch (subErr) {
+                console.error(`併願学部「${jp.program}」创建失败:`, subErr);
+                if (showNotification) showNotification(`併願学部「${jp.program}」创建失败：${subErr.message}`, 'error');
+              }
+            }
+            if (showNotification) showNotification(`已併願登录 ${1 + validJointPrograms.length} 个学部`);
+          }
         }
         // 【新需求49】保存后打印诊断日志，方便排查一审/二审字段是否成功持久化
         try {
@@ -1500,7 +1547,9 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
         await loadStudentDataFromAPI(currentStudent?.studentId);
         setShowSchoolModal(false);
         setEditingSchool(null);
-        if (showNotification) showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+        if (showNotification && !(formData.joint && (formData.jointPrograms || []).some(jp => jp && (jp.program || '').trim()))) {
+          showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+        }
 
         // 【新需求49】持久化校验：若提交了 extra_dates 但诊断发现数据库列缺失，立即警告
         try {
@@ -1889,6 +1938,166 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                 ))}
               </div>
             </div>
+
+            {/* 【新需求63 任务2】併願开关 + 多学部表单（仅在"新增学校"时可见，编辑学校不显示） */}
+            {!editingSchool && (
+              <div className="space-y-3 p-4 rounded-lg" style={{ background: isDark ? 'rgba(168,85,247,0.06)' : '#faf5ff', border: `1px solid ${isDark ? 'rgba(168,85,247,0.2)' : '#e9d5ff'}` }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="font-semibold text-sm flex items-center gap-2" style={{ color: tokens.colors.text.primary }}>
+                      <span style={{ color: '#a855f7' }}>併願（同一学校多个学部）</span>
+                    </label>
+                    <p className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>
+                      打开后可一次登录该学校的多个学部信息，各学部的重要日期可分别设置
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={!!formData.joint}
+                      onChange={(e) => setFormData({...formData, joint: e.target.checked, jointPrograms: e.target.checked && (!formData.jointPrograms || formData.jointPrograms.length === 0) ? [{ id: Date.now(), program: '', status: 'preparing', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '', firstExamDate: '', firstResultDate: '', secondExamDate: '', secondResultDate: '', customDates: [] }] : (formData.jointPrograms || [])})}
+                      className="sr-only peer" />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                  </label>
+                </div>
+
+                {formData.joint && (
+                  <div className="space-y-3">
+                    <div className="text-xs px-3 py-2 rounded" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', color: tokens.colors.text.muted }}>
+                      💡 上方"研究科/学部 *"和"重要日期"为<strong>第 1 个学部</strong>的信息。下面可继续追加更多学部，每个学部独立一条学校记录。
+                    </div>
+                    {(formData.jointPrograms || []).map((jp, idx) => (
+                      <div key={jp.id || idx} className="p-3 rounded-lg space-y-3" style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold" style={{ color: '#a855f7' }}>第 {idx + 2} 个学部</span>
+                          <button type="button"
+                            onClick={() => setFormData({...formData, jointPrograms: (formData.jointPrograms || []).filter((_, j) => j !== idx)})}
+                            className="p-1 hover:bg-red-50 text-red-500 rounded text-xs flex items-center gap-1"><X size={12} /> 移除</button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium mb-1">研究科/学部 *</label>
+                            <input type="text" value={jp.program || ''}
+                              placeholder="例：工学研究科 / 経済学部"
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], program: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium mb-1">申请状态</label>
+                            <select value={jp.status || 'preparing'}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], status: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm">
+                              <option value="preparing">准备中</option>
+                              <option value="submitted">已出愿</option>
+                              <option value="closed">出愿结束</option>
+                              <option value="admitted">已合格</option>
+                              <option value="rejected">未合格</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">出愿开始</label>
+                            <input type="date" value={jp.applicationStartDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], applicationStartDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">出愿截止</label>
+                            <input type="date" value={jp.applicationEndDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], applicationEndDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">考试日期</label>
+                            <input type="date" value={jp.examDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], examDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">合格发表</label>
+                            <input type="date" value={jp.resultDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], resultDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">一审考试</label>
+                            <input type="date" value={jp.firstExamDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], firstExamDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">一审发表</label>
+                            <input type="date" value={jp.firstResultDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], firstResultDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">二审考试</label>
+                            <input type="date" value={jp.secondExamDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], secondExamDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1">二审发表</label>
+                            <input type="date" value={jp.secondResultDate || ''}
+                              onChange={e => {
+                                const list = [...(formData.jointPrograms || [])];
+                                list[idx] = { ...list[idx], secondResultDate: e.target.value };
+                                setFormData({...formData, jointPrograms: list});
+                              }}
+                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button"
+                      onClick={() => {
+                        const list = Array.isArray(formData.jointPrograms) ? [...formData.jointPrograms] : [];
+                        list.push({ id: Date.now(), program: '', status: 'preparing', applicationStartDate: '', applicationEndDate: '', examDate: '', resultDate: '', firstExamDate: '', firstResultDate: '', secondExamDate: '', secondResultDate: '', customDates: [] });
+                        setFormData({...formData, jointPrograms: list});
+                      }}
+                      className="w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1 transition"
+                      style={{ background: isDark ? 'rgba(168,85,247,0.12)' : '#f3e8ff', color: '#a855f7' }}>
+                      <Plus size={14} /> 添加学部
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-2">所需材料（将同步到材料清单）</label>
