@@ -913,8 +913,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
           <div className="glass-panel p-4 sm:p-6">
             <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Clock size={20} /> 近期事项</h4>
             {mergedUpcomingEvents.filter(e => !e.completed).length > 0 ? (
-              <div className="space-y-2">
-                {mergedUpcomingEvents.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5).map(event => (
+              // 【新需求64 任务3】"近期事项"与时间线页面对齐：展示全部未完成事件（不再只显示前 5 条），
+              //   带滚动条避免列表过长占满屏幕。这样旧学校的所有日期端 + 时间线手动新增事件都能在这里看到。
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {mergedUpcomingEvents.filter(e => !e.completed).sort((a, b) => a.daysLeft - b.daysLeft).map(event => (
                     <div key={event.id} className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg gap-2" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'transparent'}` }}>
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       <span className="text-base sm:text-lg flex-shrink-0">{event.type === 'exam' ? '📝' : event.type === 'deadline' ? '⏰' : '✉️'}</span>

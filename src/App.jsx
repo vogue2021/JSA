@@ -38,7 +38,8 @@ import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService
 
 // 主应用组件
 const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStudentList }) => {
-  const { hasPermission, showNotification } = useApp();
+  // 【新需求64 任务1】删除学生账号后需要刷新全局 studentList，避免学生信息页仍显示已删账号对应的学生
+  const { hasPermission, showNotification, loadStudentList } = useApp();
   // 先初始化 currentStudent - 从 localStorage 恢复或使用默认值
   const [currentStudent, setCurrentStudent] = useState(() => {
     // 尝试从 localStorage 恢复上次选择的学生
@@ -1338,6 +1339,9 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
   // 用于"研究科/学部"字段的下拉选择 + 根据学部自动填充时间端
   const [dbSchoolDateGroups, setDbSchoolDateGroups] = useState([]);
   const [showProgramDropdown, setShowProgramDropdown] = useState(false);
+  // 【新需求64 任务2】併願表单：第 2+ 个学部"研究科/学部"也支持从学校信息库下拉选择
+  // 用 idx 记录当前打开下拉的 jointProgram 行（-1 表示全部关闭）
+  const [showJointProgramDropdownIdx, setShowJointProgramDropdownIdx] = useState(-1);
 
   // 当 editingSchool 变化时重新初始化表单（打开编辑弹窗或切换学校时）
   useEffect(() => {
@@ -1348,6 +1352,7 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       setSchoolSuggestions([]);
       setDbSchoolDateGroups([]);
       setShowProgramDropdown(false);
+      setShowJointProgramDropdownIdx(-1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSchoolModal, editingSchool]);
@@ -1973,17 +1978,71 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                             className="p-1 hover:bg-red-50 text-red-500 rounded text-xs flex items-center gap-1"><X size={12} /> 移除</button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
                           <div className="col-span-2">
                             <label className="block text-xs font-medium mb-1">研究科/学部 *</label>
-                            <input type="text" value={jp.program || ''}
-                              placeholder="例：工学研究科 / 経済学部"
-                              onChange={e => {
-                                const list = [...(formData.jointPrograms || [])];
-                                list[idx] = { ...list[idx], program: e.target.value };
-                                setFormData({...formData, jointPrograms: list});
-                              }}
-                              className="w-full px-2 py-1.5 border rounded text-sm" />
+                            {/* 【新需求64 任务2】第 2+ 个学部支持从学校信息库下拉选择，并自动填充当前学部的全部日期端 */}
+                            <div className="relative">
+                              <input type="text" value={jp.program || ''}
+                                placeholder={dbSchoolDateGroups.length > 0 ? '输入或从下拉选择学部（自动填充时间端）' : '例：工学研究科 / 経済学部'}
+                                onFocus={() => { if (dbSchoolDateGroups.length > 0) setShowJointProgramDropdownIdx(idx); }}
+                                onClick={() => { if (dbSchoolDateGroups.length > 0) setShowJointProgramDropdownIdx(idx); }}
+                                onBlur={() => setTimeout(() => setShowJointProgramDropdownIdx(prev => (prev === idx ? -1 : prev)), 150)}
+                                onChange={e => {
+                                  const list = [...(formData.jointPrograms || [])];
+                                  list[idx] = { ...list[idx], program: e.target.value };
+                                  setFormData({...formData, jointPrograms: list});
+                                }}
+                                className="w-full px-2 py-1.5 pr-7 border rounded text-sm" />
+                              {dbSchoolDateGroups.length > 0 && (
+                                <button type="button" tabIndex={-1}
+                                  onMouseDown={(e) => { e.preventDefault(); setShowJointProgramDropdownIdx(prev => (prev === idx ? -1 : idx)); }}
+                                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-themed-muted hover:text-themed-primary">
+                                  <ChevronDown size={14} />
+                                </button>
+                              )}
+                              {showJointProgramDropdownIdx === idx && dbSchoolDateGroups.length > 0 && (
+                                <div className="absolute z-30 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-56 overflow-y-auto"
+                                  style={{ background: isDark ? tokens.colors.surface.solid : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}` }}>
+                                  <div className="px-3 py-1.5 text-xs"
+                                    style={{ color: tokens.colors.text.muted, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb' }}>
+                                    从学校信息库选择学部（自动填充时间端）
+                                  </div>
+                                  {dbSchoolDateGroups.map((dg, dgIdx) => (
+                                    <button key={dg.id || dgIdx} type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        const list = [...(formData.jointPrograms || [])];
+                                        list[idx] = {
+                                          ...list[idx],
+                                          program: dg.label || list[idx].program,
+                                          applicationStartDate: dg.applicationStartDate || list[idx].applicationStartDate || '',
+                                          applicationEndDate: dg.applicationEndDate || list[idx].applicationEndDate || '',
+                                          examDate: dg.examDate || list[idx].examDate || '',
+                                          resultDate: dg.resultDate || list[idx].resultDate || '',
+                                          firstExamDate: dg.firstExamDate || '',
+                                          firstResultDate: dg.firstResultDate || '',
+                                          secondExamDate: dg.secondExamDate || '',
+                                          secondResultDate: dg.secondResultDate || '',
+                                          customDates: Array.isArray(dg.customDates) ? dg.customDates.map(cd => ({ ...cd })) : [],
+                                        };
+                                        setFormData({...formData, jointPrograms: list});
+                                        setShowJointProgramDropdownIdx(-1);
+                                        if (showNotification) showNotification(`已为第 ${idx + 2} 个学部自动填充「${dg.label || '未命名'}」的时间端`);
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-0 text-sm">
+                                      <div className="font-medium text-themed-primary">{dg.label || '（未命名学部）'}</div>
+                                      <div className="text-xs text-themed-muted mt-0.5 flex flex-wrap gap-2">
+                                        {dg.applicationStartDate && <span>出愿开始: {dg.applicationStartDate}</span>}
+                                        {dg.applicationEndDate && <span>出愿截止: {dg.applicationEndDate}</span>}
+                                        {dg.firstExamDate && <span>一审: {dg.firstExamDate}</span>}
+                                        {dg.secondExamDate && <span>二审: {dg.secondExamDate}</span>}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="col-span-2">
                             <label className="block text-xs font-medium mb-1">申请状态</label>
@@ -3687,6 +3746,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                                   try {
                                     await usersAPI.delete(account.id);
                                     setAccountList(prev => prev.filter(u => u.id !== account.id));
+                                    // 【新需求64 任务1】学生账号被删除后，后端已把 students.is_active 置 0，
+                                    // 但前端 studentList 仍是旧快照 → 学生信息页仍显示该学生。
+                                    // 这里主动刷新全局学生列表，使删除立即在"学生信息"页生效。
+                                    if (account.role === 'student' && loadStudentList) {
+                                      try { await loadStudentList(); } catch (_) { /* ignore */ }
+                                    }
                                     if (showNotification) showNotification(`已删除账号: ${account.name}`);
                                   } catch (err) {
                                     if (showNotification) showNotification(err.message || '删除失败');
