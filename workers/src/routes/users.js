@@ -66,11 +66,21 @@ users.delete('/:id', async (c) => {
     batch.push(db.prepare('DELETE FROM deadline_reminders WHERE student_id = ?').bind(sid))
     batch.push(db.prepare('DELETE FROM students WHERE student_id = ?').bind(sid))
   }
-  // 同步清理用户层面的反馈与同步日志（user_id 维度），避免"账号已注销但记录仍在"
+  // feedbacks 表是必有的（schema.sql 第 8 节定义），直接放进事务
   batch.push(db.prepare('DELETE FROM feedbacks WHERE user_id = ?').bind(id))
-  batch.push(db.prepare('DELETE FROM xuebang_sync_logs WHERE user_id = ?').bind(id))
 
   await db.batch(batch)
+
+  // 【新需求66】xuebang_sync_logs 是可选/后加的表，部分环境（如 staging）尚未创建。
+  //   若放进 db.batch 里，"no such table" 会让整个事务回滚 → 接口 500。
+  //   方案：拆出 batch，单独执行并 try/catch 吞掉"表不存在"错误，保证主流程已经成功提交。
+  try {
+    await db.prepare('DELETE FROM xuebang_sync_logs WHERE user_id = ?').bind(id).run()
+  } catch (e) {
+    // 表不存在或其他非阻塞错误 → 仅记录，不影响主流程
+    console.warn('[users.delete] cleanup xuebang_sync_logs skipped:', e?.message || e)
+  }
+
   return c.json({ success: true, message: '账号及关联数据已全部抹除' })
 })
 
