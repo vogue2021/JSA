@@ -53,18 +53,25 @@ users.delete('/:id', async (c) => {
     batch.push(db.prepare('DELETE FROM teachers WHERE teacher_id = ?').bind(target.teacher_id))
   }
   if (target.student_id) {
-    // 【新需求63 任务1 修复】学生账号被删除后，学生信息页仍能看到该学生 → 体验不符合预期。
-    //   原逻辑：仅解绑账号（has_account=0、user_id=NULL），保留学生记录。
-    //   新逻辑：账号被管理员主动删除时，将学生记录也软删（is_active=0），
-    //         以便学生信息页（按 is_active=1 过滤）立即不再显示该学生。
-    //         同时清空账号关联字段，便于将来重新绑定/恢复。
-    batch.push(db.prepare(
-      "UPDATE students SET has_account = 0, user_id = NULL, is_active = 0, updated_at = datetime('now') WHERE student_id = ?"
-    ).bind(target.student_id))
+    // 【新需求65】管理员注销学生账号 → 完全抹除该学生及其所有关联数据。
+    //   背景：需求 63/64 仅做软删（is_active=0）+ 前端刷新，但用户反馈"还是会显示"。
+    //   决定：直接物理删除 students 行 + 手动级联删除所有以 student_id 为外键的表，
+    //         确保学生信息页 / 学生列表 / 时间线 / 学校 / 材料 等任何入口都看不到该学生。
+    //   注意：Cloudflare D1 默认不强制 FK 约束，因此即使 schema 写了 ON DELETE CASCADE
+    //         也必须手动 DELETE。
+    const sid = target.student_id
+    batch.push(db.prepare('DELETE FROM events WHERE student_id = ?').bind(sid))
+    batch.push(db.prepare('DELETE FROM materials WHERE student_id = ?').bind(sid))
+    batch.push(db.prepare('DELETE FROM schools WHERE student_id = ?').bind(sid))
+    batch.push(db.prepare('DELETE FROM deadline_reminders WHERE student_id = ?').bind(sid))
+    batch.push(db.prepare('DELETE FROM students WHERE student_id = ?').bind(sid))
   }
+  // 同步清理用户层面的反馈与同步日志（user_id 维度），避免"账号已注销但记录仍在"
+  batch.push(db.prepare('DELETE FROM feedbacks WHERE user_id = ?').bind(id))
+  batch.push(db.prepare('DELETE FROM xuebang_sync_logs WHERE user_id = ?').bind(id))
 
   await db.batch(batch)
-  return c.json({ success: true, message: '用户已删除（学生账号同时从学生列表移除）' })
+  return c.json({ success: true, message: '账号及关联数据已全部抹除' })
 })
 
 // ─── 更新用户信息（管理员更新自己或管理其他用户）─────────────────────────

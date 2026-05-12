@@ -540,7 +540,18 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
   // 当 studentList 加载完成后，验证 currentStudent 是否有效
   // 如果 currentStudent 不在 studentList 中（如切换账号后），自动重置到列表第一个学生
   useEffect(() => {
-    if (user.role === 'student' || studentList.length === 0) return;
+    if (user.role === 'student' || studentList.length === 0) {
+      // 【新需求65】学生账号注销后已被硬删 → 当列表清空且 currentStudent 仍指向被删学生时，
+      // 必须主动把 currentStudent 清掉并清理 localStorage，否则刷新后旧值会再次回填，
+      // 导致"学生信息页"里还能看到已注销学生的姓名/邮箱等残留。
+      if (user.role !== 'student' && studentList.length === 0 && currentStudent && currentStudent.studentId) {
+        setCurrentStudent({
+          id: 0, name: '请先添加学生', studentId: '', email: '', avatar: '👨‍🎓', teacherId: '', subject: ''
+        });
+        localStorage.removeItem('currentStudent');
+      }
+      return;
+    }
     const isValid = studentList.some(s => s.studentId === currentStudent.studentId);
     if (!isValid && studentList.length > 0) {
       const first = studentList[0];
@@ -3742,17 +3753,43 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                           {account.role !== 'admin' && (
                             <button
                               onClick={async () => {
-                                if (window.confirm(`确定要删除账号 ${account.name} 吗？`)) {
+                                if (window.confirm(`确定要删除账号 ${account.name} 吗？该账号及其学生信息、学校、材料、时间线等所有相关数据将被彻底抹除，且无法恢复。`)) {
                                   try {
                                     await usersAPI.delete(account.id);
                                     setAccountList(prev => prev.filter(u => u.id !== account.id));
-                                    // 【新需求64 任务1】学生账号被删除后，后端已把 students.is_active 置 0，
-                                    // 但前端 studentList 仍是旧快照 → 学生信息页仍显示该学生。
-                                    // 这里主动刷新全局学生列表，使删除立即在"学生信息"页生效。
-                                    if (account.role === 'student' && loadStudentList) {
-                                      try { await loadStudentList(); } catch (_) { /* ignore */ }
+                                    // 【新需求65】学生账号注销 → 抹除前端残留缓存，避免 Dashboard 等组件
+                                    // 仍从 localStorage 读到该学生的旧数据。
+                                    if (account.role === 'student') {
+                                      try {
+                                        // 1) 清掉与该学生绑定的本地缓存（accountList 里字段是驼峰 studentId）
+                                        const sid = account.studentId;
+                                        if (sid) {
+                                          localStorage.removeItem(`studentData_${sid}`);
+                                        }
+                                        // 2) 清掉 Dashboard 用的 studentData 大对象里的该学生 key
+                                        const raw = localStorage.getItem('studentData');
+                                        if (raw && sid) {
+                                          const obj = JSON.parse(raw);
+                                          if (obj && typeof obj === 'object' && obj[sid]) {
+                                            delete obj[sid];
+                                            localStorage.setItem('studentData', JSON.stringify(obj));
+                                          }
+                                        }
+                                        // 3) 如果当前选中的就是被删学生，清掉 currentStudent 持久化
+                                        const curRaw = localStorage.getItem('currentStudent');
+                                        if (curRaw) {
+                                          const cur = JSON.parse(curRaw);
+                                          if (cur && cur.studentId && sid && String(cur.studentId) === String(sid)) {
+                                            localStorage.removeItem('currentStudent');
+                                          }
+                                        }
+                                      } catch (_) { /* ignore */ }
+                                      // 4) 重新从后端拉学生列表（后端已硬删 + 关联数据级联删）
+                                      if (loadStudentList) {
+                                        try { await loadStudentList(); } catch (_) { /* ignore */ }
+                                      }
                                     }
-                                    if (showNotification) showNotification(`已删除账号: ${account.name}`);
+                                    if (showNotification) showNotification(`已彻底注销账号: ${account.name}`);
                                   } catch (err) {
                                     if (showNotification) showNotification(err.message || '删除失败');
                                   }
