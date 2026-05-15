@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS students (
   email TEXT DEFAULT '',
   teacher_id TEXT DEFAULT '',
   academic_advisor_id TEXT DEFAULT '',
+  -- 【新需求68】顾问老师 ID（与升学/学管老师并列的第三个老师身份）
+  consultant_id TEXT DEFAULT '',
   has_account INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   birthday TEXT DEFAULT '',
@@ -223,6 +225,7 @@ CREATE TABLE IF NOT EXISTS xuebang_sync_logs (
 CREATE INDEX IF NOT EXISTS idx_students_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_students_teacher_id ON students(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
+CREATE INDEX IF NOT EXISTS idx_students_consultant_id ON students(consultant_id);
 CREATE INDEX IF NOT EXISTS idx_teachers_user_id ON teachers(user_id);
 CREATE INDEX IF NOT EXISTS idx_schools_student_id ON schools(student_id);
 CREATE INDEX IF NOT EXISTS idx_schools_status ON schools(status);

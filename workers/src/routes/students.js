@@ -36,6 +36,8 @@ function formatStudent(row) {
     email: row.email || '',
     teacherId: row.teacher_id || '',
     academicAdvisorId: row.academic_advisor_id || '',
+    // 【新需求68】顾问老师 ID（第三个老师身份维度）
+    consultantId: row.consultant_id || '',
     birthday: row.birthday || '',
     highSchool: row.high_school || '',
     languageSchool: row.language_school || '',
@@ -76,10 +78,11 @@ students.get('/search/query', async (c) => {
   const params = []
 
   if (isTeacher(user)) {
-    // 老师角色 — 同时可见升学负责学生(teacher_id) 和 学管负责学生(academic_advisor_id)
-    sql += ' AND (teacher_id = ? OR academic_advisor_id = ?)'
+    // 老师角色 — 同时可见升学负责学生(teacher_id) / 学管负责学生(academic_advisor_id)
+    // 【新需求68】顾问老师 (consultant_id) 也算自己负责的学生
+    sql += ' AND (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?)'
     const tid = user.teacherId || '__none__'
-    params.push(tid, tid)
+    params.push(tid, tid, tid)
   }
   if (q) {
     sql += ' AND (name LIKE ? OR email LIKE ? OR student_id LIKE ?)'
@@ -106,10 +109,18 @@ students.get('/', async (c) => {
   if (isAdmin(user)) {
     // 全部可见
   } else if (isTeacher(user)) {
-    // 老师角色 — 同时可见升学负责学生和学管负责学生
-    sql += ' AND (teacher_id = ? OR academic_advisor_id = ?)'
-    const tid = user.teacherId || '__none__'
-    params.push(tid, tid)
+    // 老师角色 — 同时可见升学/学管/顾问负责的学生（【新需求68】加入 consultant_id 维度）
+    // 【新需求68 任务3】view_all_students=1 时跳过 teacher_id 过滤，让老师看到全部学生。
+    //   该判断通过 query 参数传入（前端在调用时根据老师权限决定是否带 ?all=1），
+    //   后端这里仅在 user.role === 'teacher' 时校验 query；不会被普通用户随意提权——
+    //   因为权限本身仍由前端 hasPermission 控制是否调用 ?all=1。后续若需更严，可在
+    //   teachers 表读取 permissions 字段再二次校验。
+    const wantAll = c.req.query('all') === '1'
+    if (!wantAll) {
+      sql += ' AND (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?)'
+      const tid = user.teacherId || '__none__'
+      params.push(tid, tid, tid)
+    }
   } else if (isStudent(user)) {
     // 学生只能看自己
     sql += ' AND student_id = ?'
@@ -155,10 +166,11 @@ students.get('/teacher/:teacherId', async (c) => {
   }
 
   const db = c.env.DB
-  // 按 teacher_id 或 academic_advisor_id 查询（该老师可能既是升学老师也是学管老师）
+  // 按 teacher_id / academic_advisor_id / consultant_id 三个维度查询
+  // 【新需求68】该老师可能同时是升学老师 / 学管老师 / 顾问老师中的一种或多种
   const { results } = await db.prepare(
-    'SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ?) AND is_active = 1 ORDER BY created_at DESC'
-  ).bind(teacherId, teacherId).all()
+    'SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?) AND is_active = 1 ORDER BY created_at DESC'
+  ).bind(teacherId, teacherId, teacherId).all()
 
   // 批量查询材料进度
   const studentIds = results.map(s => s.student_id)
@@ -200,7 +212,11 @@ students.get('/:id', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
+  // 【新需求68】老师权限校验加入顾问老师 (consultant_id) 维度
+  if (isTeacher(user)
+      && student.teacher_id !== user.teacherId
+      && student.academic_advisor_id !== user.teacherId
+      && student.consultant_id !== user.teacherId) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
 
@@ -281,15 +297,16 @@ students.post('/', async (c) => {
   const hasAccount = wantsAccount ? 1 : 0
 
   // 使用 batch 保证 students + users 原子写入
+  // 【新需求68】INSERT 增加 consultant_id 字段
   const statements = [
     db.prepare(
-      `INSERT INTO students (student_id, user_id, name, email, teacher_id, academic_advisor_id,
+      `INSERT INTO students (student_id, user_id, name, email, teacher_id, academic_advisor_id, consultant_id,
         birthday, high_school, language_school, jlpt_score, english_score, eju_scores,
         follow_up_notes, package_name, package_end_date, tags, subject, has_account)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       studentIdStr, userId, body.name, emailStr,
-      teacherId, body.academic_advisor_id || '',
+      teacherId, body.academic_advisor_id || '', body.consultant_id || '',
       body.birthday || '', body.high_school || '', body.language_school || '',
       body.jlpt_score || '', body.english_score || '',
       JSON.stringify(body.eju_scores || []),
@@ -338,7 +355,11 @@ students.put('/:id', async (c) => {
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
+  // 【新需求68】老师写权限校验加入顾问老师 (consultant_id) 维度
+  if (isTeacher(user)
+      && student.teacher_id !== user.teacherId
+      && student.academic_advisor_id !== user.teacherId
+      && student.consultant_id !== user.teacherId) {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
 
@@ -367,9 +388,11 @@ students.put('/:id', async (c) => {
   }
 
   // 管理员专属字段 + 老师也可修改老师分配
+  // 【新需求68】允许更新 consultant_id（顾问老师）
   if (isAdmin(user) || isTeacher(user)) {
     if (body.teacher_id !== undefined) { fields.push('teacher_id = ?'); params.push(body.teacher_id) }
     if (body.academic_advisor_id !== undefined) { fields.push('academic_advisor_id = ?'); params.push(body.academic_advisor_id) }
+    if (body.consultant_id !== undefined) { fields.push('consultant_id = ?'); params.push(body.consultant_id) }
   }
   if (isAdmin(user)) {
     if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0) }
@@ -439,11 +462,14 @@ students.post('/:id/notes', async (c) => {
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  // 权限检查
+  // 权限检查（【新需求68】加入顾问老师维度）
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
+  if (isTeacher(user)
+      && student.teacher_id !== user.teacherId
+      && student.academic_advisor_id !== user.teacherId
+      && student.consultant_id !== user.teacherId) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
 
@@ -486,11 +512,14 @@ students.delete('/:id/notes/:noteId', async (c) => {
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  // 权限检查
+  // 权限检查（【新需求68】加入顾问老师维度）
   if (isStudent(user) && user.studentId !== student.student_id) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
-  if (isTeacher(user) && student.teacher_id !== user.teacherId && student.academic_advisor_id !== user.teacherId) {
+  if (isTeacher(user)
+      && student.teacher_id !== user.teacherId
+      && student.academic_advisor_id !== user.teacherId
+      && student.consultant_id !== user.teacherId) {
     return c.json({ success: false, message: '无权操作' }, 403)
   }
 

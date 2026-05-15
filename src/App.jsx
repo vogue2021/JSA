@@ -522,8 +522,9 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     if (user.role === 'admin') {
       return allStudents; // 管理员看到所有学生
     } else if (user.role === 'teacher') {
-      // 老师看到自己作为升学老师或学管老师负责的学生
-      return allStudents.filter(s => s.teacherId === user.teacherId || s.academicAdvisorId === user.teacherId);
+    // 老师看到自己作为升学老师/学管老师/顾问老师负责的学生
+    // 【新需求68 任务1+2】加入 consultantId 维度
+    return allStudents.filter(s => s.teacherId === user.teacherId || s.academicAdvisorId === user.teacherId || s.consultantId === user.teacherId);
     }
     return []; // 学生不需要看到学生列表
   };
@@ -2660,6 +2661,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                                 {student.academicAdvisorId && (
                                   <span> · 学管: {getTeacherList().find(t => t.id === student.academicAdvisorId)?.name || '-'}</span>
                                 )}
+                                {/* 【新需求68】顾问老师信息 */}
+                                {student.consultantId && (
+                                  <span> · 顾问: {getTeacherList().find(t => t.id === student.consultantId)?.name || '-'}</span>
+                                )}
                               </div>
                             )}
                             {student.packageName && (
@@ -2953,7 +2958,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       password: '',           // 新需求43：可选设置初始密码
       confirmPassword: '',
       teacherId: user.role === 'admin' ? '' : (user.teacherId || 'teacher_1'),
-      academicAdvisorId: '',
+    academicAdvisorId: '',
+    // 【新需求68 任务1+2】顾问老师
+    consultantId: '',
       subject: '',
       tags: [],
     });
@@ -2990,7 +2997,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           name: newStudent.name.trim(),
           email: newStudent.email.trim(),
           teacher_id: newStudent.teacherId || '',
-          academic_advisor_id: newStudent.academicAdvisorId || '',
+        academic_advisor_id: newStudent.academicAdvisorId || '',
+        // 【新需求68 任务1+2】同时提交顾问老师
+        consultant_id: newStudent.consultantId || '',
           subject: newStudent.subject || '',
           tags: newStudent.tags || [],
           ...(wantsAccount ? { password: newStudent.password } : {}),
@@ -3013,7 +3022,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             urgentTasks: 0,
             avatar: '👨‍🎓',
             teacherId: d.teacherId || d.teacher_id || newStudent.teacherId || 'unassigned',
-            academicAdvisorId: d.academicAdvisorId || d.academic_advisor_id || newStudent.academicAdvisorId || '',
+          academicAdvisorId: d.academicAdvisorId || d.academic_advisor_id || newStudent.academicAdvisorId || '',
+          // 【新需求68】同步顾问老师字段到本地状态
+          consultantId: d.consultantId || d.consultant_id || newStudent.consultantId || '',
             targetCountry: '日本',
             targetLevel: '修士',
             subject: d.subject || newStudent.subject,
@@ -3140,6 +3151,21 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                 <option value="">待分配学管老师</option>
+                {getTeacherList().map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name} ({teacher.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* 【新需求68 任务1+2】分配顾问老师 */}
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: tokens.colors.text.secondary }}>顾问老师</label>
+              <select value={newStudent.consultantId || ''}
+                onChange={(e) => setNewStudent({ ...newStudent, consultantId: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                <option value="">待分配顾问老师</option>
                 {getTeacherList().map(teacher => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.name} ({teacher.email})
@@ -4825,8 +4851,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_events') ? [{ id: 'timeline', label: '时间线', icon: Clock }] : []),
     ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_schools') ? [{ id: 'schools', label: '学校', icon: School }] : []),
     ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_materials') ? [{ id: 'checklist', label: '材料', icon: CheckSquare }] : []),
-    // 学生列表 - 老师需要学生管理权限
-    ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_students')) ? [{ id: 'students', label: '学生列表', icon: Users }] : []),
+    // 学生列表 - 【新需求68 任务4】老师默认就应该能看到自己负责的学生列表，不再依赖 manage_students 权限。
+    //   manage_students 现在仅控制"控制台·学生管理"菜单是否显示（已交由 manage_school_db 等管理类菜单），
+    //   "学生列表"作为老师工作的基础入口，对所有老师角色无条件显示。
+    ...(user.role === 'admin' || user.role === 'teacher' ? [{ id: 'students', label: '学生列表', icon: Users }] : []),
     ...(user.role !== 'student' ? [{ id: 'profile', label: '学生信息', icon: UserCircle }] : []),
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
     // 学校信息库 - 学生不显示，老师需权限

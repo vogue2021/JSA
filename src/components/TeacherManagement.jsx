@@ -114,14 +114,25 @@ const TeacherManagement = () => {
   });
 
   // 权限选项列表
+  // 【新需求68 任务4】将老师权限理顺为三大类：
+  //  1）控制台菜单可见性（manage_*）—控制老师侧边菜单是否显示该页，不再决定“学生列表”可见性。
+  //  2）页面内编辑权限（edit_*）—控制能否在时间线/学校/材料页面进行增/改/删。默认拥有。
+  //  3）数据范围（view_all_students/edit_all_students）—默认不拥有，管理员显式下发。
   const permissionOptions = [
-    { id: 'manage_students', label: '学生管理', desc: '添加、编辑、转移学生' },
-    { id: 'manage_events', label: '事件管理', desc: '添加、编辑、删除时间线事件' },
-    { id: 'manage_schools', label: '学校管理', desc: '添加、编辑学校信息' },
-    { id: 'manage_materials', label: '材料管理', desc: '管理材料清单' },
-    { id: 'manage_school_db', label: '学校信息库录入', desc: '录入和编辑学校信息数据库' },
-    { id: 'export_data', label: '数据导出', desc: '导出学生数据和报表' },
-    { id: 'view_all_students', label: '查看所有学生', desc: '查看所有学生（不限于自己负责的）' },
+    // 控制台菜单可见性
+    { id: 'manage_students', label: '控制台·学生管理', desc: '控制台侧边是否显示“学生管理”菜单（老师默认始终能看到自己负责的学生列表）', group: 'menu' },
+    { id: 'manage_events', label: '控制台·时间线菜单', desc: '控制台侧边是否显示“时间线”菜单', group: 'menu' },
+    { id: 'manage_schools', label: '控制台·学校菜单', desc: '控制台侧边是否显示“学校”菜单', group: 'menu' },
+    { id: 'manage_materials', label: '控制台·材料菜单', desc: '控制台侧边是否显示“材料”菜单', group: 'menu' },
+    { id: 'manage_school_db', label: '学校信息库录入', desc: '录入和编辑学校信息数据库', group: 'menu' },
+    { id: 'export_data', label: '数据导出', desc: '导出学生数据和报表', group: 'menu' },
+    // 页面内编辑权限（【新需求68】新增）
+    { id: 'edit_events', label: '时间线·可编辑', desc: '是否可以增/改/删负责学生的时间线事件（取消后仅可查看）', group: 'edit' },
+    { id: 'edit_schools', label: '学校·可编辑', desc: '是否可以增/改/删负责学生的学校信息（取消后仅可查看）', group: 'edit' },
+    { id: 'edit_materials', label: '材料·可编辑', desc: '是否可以增/改/删负责学生的材料清单（取消后仅可查看）', group: 'edit' },
+    // 数据范围（【新需求68】“查看所有学生”与“编辑所有学生”拆分）
+    { id: 'view_all_students', label: '查看所有学生', desc: '可以查看所有学生（不限于自己负责的）', group: 'scope' },
+    { id: 'edit_all_students', label: '编辑所有学生', desc: '可以修改所有学生信息（需同时勾选“查看所有学生”）', group: 'scope' },
   ];
 
   const [editForm, setEditForm] = useState({});
@@ -145,7 +156,7 @@ const TeacherManagement = () => {
       address: detail.address || '',
       subject: detail.subject || '文科',
       employmentType: detail.employmentType || '正社员',
-      permissions: detail.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'],
+      permissions: detail.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials', 'edit_events', 'edit_schools', 'edit_materials'],
     });
     setIsEditing(false);
     if (isMobile) setMobileShowDetail(true);
@@ -310,7 +321,7 @@ const TeacherManagement = () => {
           [newTeacher.teacherId]: {
             department: addForm.department,
             subject: addForm.subject,
-            permissions: created?.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'],
+      permissions: created?.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials', 'edit_events', 'edit_schools', 'edit_materials'],
           }
         };
         saveTeacherDetails(newDetails);
@@ -525,27 +536,38 @@ const TeacherManagement = () => {
                 </div>
 
                 {/* 权限管理 */}
+                {/* 【新需求68 任务4】权限按"控制台菜单"/"页面内编辑"/"数据范围"三组展示，让职责更清晰 */}
                 <div>
                   <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} /> 权限分配</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {permissionOptions.map(perm => (
-                      <label key={perm.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition cursor-pointer ${
-                        (editForm.permissions || []).includes(perm.id) ? (isDark ? 'border-purple-400 bg-[rgba(168,85,247,0.12)]' : 'border-purple-300 bg-[rgba(168,85,247,0.06)]') : (isDark ? 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]' : 'border-gray-200 hover:border-gray-300')
-                      } ${!isEditing ? 'pointer-events-none' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={(editForm.permissions || []).includes(perm.id)}
-                          onChange={() => isEditing && togglePermission(perm.id)}
-                          className="w-5 h-5 mt-0.5 text-purple-600 rounded"
-                          disabled={!isEditing}
-                        />
-                        <div>
-                          <div className="font-medium text-sm">{perm.label}</div>
-                          <div className="text-xs text-themed-secondary">{perm.desc}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  {[
+                    { key: 'menu', title: '控制台菜单可见性', hint: '控制老师左侧导航是否显示对应菜单（不影响是否能访问数据）' },
+                    { key: 'edit', title: '页面内编辑权限', hint: '控制老师能否在对应页面进行新增/修改/删除操作（取消后仅可查看）' },
+                    { key: 'scope', title: '数据范围（管理员授权）', hint: '是否允许跨越自己负责的学生范围；默认仅可见自己负责的学生' },
+                  ].map(grp => (
+                    <div key={grp.key} className="mb-4">
+                      <div className="text-xs font-semibold text-themed-muted mb-1">{grp.title}</div>
+                      <div className="text-xs text-themed-secondary mb-2">{grp.hint}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {permissionOptions.filter(p => (p.group || 'menu') === grp.key).map(perm => (
+                          <label key={perm.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition cursor-pointer ${
+                            (editForm.permissions || []).includes(perm.id) ? (isDark ? 'border-purple-400 bg-[rgba(168,85,247,0.12)]' : 'border-purple-300 bg-[rgba(168,85,247,0.06)]') : (isDark ? 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]' : 'border-gray-200 hover:border-gray-300')
+                          } ${!isEditing ? 'pointer-events-none' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={(editForm.permissions || []).includes(perm.id)}
+                              onChange={() => isEditing && togglePermission(perm.id)}
+                              className="w-5 h-5 mt-0.5 text-purple-600 rounded"
+                              disabled={!isEditing}
+                            />
+                            <div>
+                              <div className="font-medium text-sm">{perm.label}</div>
+                              <div className="text-xs text-themed-secondary">{perm.desc}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

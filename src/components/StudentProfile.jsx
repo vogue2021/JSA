@@ -70,6 +70,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     packageName: studentInfo.packageName || '',
     packageEndDate: studentInfo.packageEndDate || '',
     academicAdvisorId: studentInfo.academicAdvisorId || '',
+    // 【新需求68 任务1+2】顾问老师
+    consultantId: studentInfo.consultantId || '',
     teacherId: studentInfo.teacherId || '',
     subject: studentInfo.subject || '',
     hasChinaHighSchoolRecord: studentInfo.hasChinaHighSchoolRecord || '',
@@ -114,6 +116,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       packageName: info.packageName || '',
       packageEndDate: info.packageEndDate || '',
       academicAdvisorId: info.academicAdvisorId || '',
+      // 【新需求68】顾问老师同步初始化
+      consultantId: info.consultantId || '',
       teacherId: info.teacherId || '',
       subject: info.subject || '',
       hasChinaHighSchoolRecord: info.hasChinaHighSchoolRecord || '',
@@ -193,6 +197,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         subject: formData.subject,
         teacher_id: formData.teacherId,
         academic_advisor_id: formData.academicAdvisorId,
+        // 【新需求68】保存顾问老师
+        consultant_id: formData.consultantId,
         has_china_high_school_record: formData.hasChinaHighSchoolRecord,
         overseas_certifications: formData.overseasCertifications,
       });
@@ -605,6 +611,25 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                   <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>学管老师</label>
                   <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
                     {teachers.find(t => (t.teacher_id || t.teacherId) === formData.academicAdvisorId)?.name || '待分配'}
+                  </div>
+                </div>
+              )}
+              {/* 【新需求68 任务1+2】顾问老师选择 */}
+              {isEditing ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>顾问老师</label>
+                  <select value={formData.consultantId || ''} onChange={e => setFormData({...formData, consultantId: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
+                    <option value="">请选择顾问老师</option>
+                    {teachers.map(t => <option key={t.teacher_id || t.teacherId} value={t.teacher_id || t.teacherId}>{t.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>顾问老师</label>
+                  <div className="font-medium" style={{ color: tokens.colors.text.primary }}>
+                    {teachers.find(t => (t.teacher_id || t.teacherId) === formData.consultantId)?.name || '待分配'}
                   </div>
                 </div>
               )}

@@ -130,7 +130,29 @@ export const AppProvider = ({ children }) => {
       if (user?.role === 'admin') {
         data = await apiRequest('/students');
       } else if (user?.role === 'teacher' && user?.teacherId) {
-        data = await apiRequest(`/students/teacher/${user.teacherId}`);
+        // 【新需求68 任务3】拥有 view_all_students 权限的老师点全量接口，
+        // 让“查看所有学生”权限真正生效。
+        // 默认仍走 /students/teacher/:teacherId，仅看自己负责的学生。
+        let useAll = false;
+        try {
+          const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
+          if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
+            useAll = teacherInfo.permissions.includes('view_all_students');
+          } else {
+            const saved = localStorage.getItem('teacherDetails');
+            if (saved) {
+              const details = JSON.parse(saved);
+              const detail = details[user.teacherId];
+              if (detail && Array.isArray(detail.permissions)) {
+                useAll = detail.permissions.includes('view_all_students');
+              }
+            }
+          }
+        } catch (_) { /* ignore */ }
+        // ?all=1 仅在 view_all_students 生效，后端不检查权限但返回全量。
+        data = useAll
+          ? await apiRequest('/students?all=1')
+          : await apiRequest(`/students/teacher/${user.teacherId}`);
       } else if (user?.role === 'student') {
         // 学生只能看自己
         const self = await apiRequest(`/students/${user.id}`);
@@ -143,7 +165,7 @@ export const AppProvider = ({ children }) => {
       console.error('加载学生列表失败:', e);
       setStudentList([]);
     }
-  }, [user]);
+  }, [user, teacherList]);
 
   const showNotification = useCallback((message, type = 'success') => {
     setNotification({ message, type });
@@ -210,8 +232,14 @@ export const AppProvider = ({ children }) => {
           }
         }
       } catch (e) { /* ignore */ }
-      // 默认老师有基本权限
-      return ['manage_students', 'manage_events', 'manage_schools', 'manage_materials'].includes(permissionId);
+      // 默认老师有基本控制台菜单权限（manage_*）+ 编辑权限（edit_*）。
+      // 【新需求68 任务4】manage_* 只控制“菜单是否显示在老师控制台”，
+      //   edit_events / edit_schools / edit_materials 控制“页面内是否可增/改/删”（默认拥有以保持旧体验）。
+      //   view_all_students 需要管理员显式开启，默认不拥有。
+      return [
+        'manage_students', 'manage_events', 'manage_schools', 'manage_materials',
+        'edit_events', 'edit_schools', 'edit_materials',
+      ].includes(permissionId);
     }
     return false;
   }, [user, teacherList, permissionVersion]);

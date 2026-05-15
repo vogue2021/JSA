@@ -24,6 +24,12 @@ const StudentListPage = ({
     return teachers.find(t => (t.id || t.teacherId) === student.academicAdvisorId)?.name || null;
   };
 
+  // 【新需求68 任务1+2】获取顾问老师名称
+  const getConsultantName = (student) => {
+    if (!student.consultantId) return null;
+    return teachers.find(t => (t.id || t.teacherId) === student.consultantId)?.name || null;
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('all');
   const [filterSubject, setFilterSubject] = useState('all');
@@ -65,11 +71,11 @@ const StudentListPage = ({
       // 按老师筛选（不再区分升学/学管，一个老师可能同时是升学和学管，只要 OR 匹配两个字段即可）
       if (filterTeacher !== 'all') {
         if (filterTeacher === 'unassigned') {
-          // 待分配 = 既没有升学老师也没有学管老师
-          if ((s.teacherId && s.teacherId !== 'unassigned') || s.academicAdvisorId) return false;
+      // 待分配 = 既没有升学老师也没有学管老师也没有顾问老师
+      if ((s.teacherId && s.teacherId !== 'unassigned') || s.academicAdvisorId || s.consultantId) return false;
         } else {
-          // 匹配该老师作为升学老师 或 学管老师
-          if (s.teacherId !== filterTeacher && s.academicAdvisorId !== filterTeacher) return false;
+      // 匹配该老师作为升学老师 / 学管老师 / 顾问老师
+      if (s.teacherId !== filterTeacher && s.academicAdvisorId !== filterTeacher && s.consultantId !== filterTeacher) return false;
         }
       }
       // 按文理科筛选
@@ -379,6 +385,8 @@ const StudentListPage = ({
                     <th className="text-center py-3 px-4 font-medium text-themed-secondary">升学老师</th>
                   )}
                   <th className="text-center py-3 px-4 font-medium text-themed-secondary">学管老师</th>
+                  {/* 【新需求68】顾问老师列 */}
+                  <th className="text-center py-3 px-4 font-medium text-themed-secondary">顾问老师</th>
                   <th className="text-center py-3 px-4 font-medium text-themed-secondary cursor-pointer hover:text-themed-primary"
                     onClick={() => toggleSort('urgentTasks')}>
                     <div className="flex items-center justify-center gap-1">紧急 <SortIcon field="urgentTasks" /></div>
@@ -463,6 +471,14 @@ const StudentListPage = ({
                       <td className="py-3 px-4 text-center text-xs">
                         {getAdvisorName(student) ? (
                           <span style={{ color: isDark ? '#86efac' : '#16a34a' }}>{getAdvisorName(student)}</span>
+                        ) : (
+                          <span className="text-themed-muted">-</span>
+                        )}
+                      </td>
+                      {/* 【新需求68】顾问老师单元格 */}
+                      <td className="py-3 px-4 text-center text-xs">
+                        {getConsultantName(student) ? (
+                          <span style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>{getConsultantName(student)}</span>
                         ) : (
                           <span className="text-themed-muted">-</span>
                         )}
