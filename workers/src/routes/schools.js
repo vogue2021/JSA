@@ -237,8 +237,6 @@ schools.post('/', async (c) => {
     return c.json({ success: false, message: '缺少必填字段（student_id、name、type）' }, 400)
   }
 
-  const db = c.env.DB
-
   // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
   await ensureExtraDatesColumn(db)
 
