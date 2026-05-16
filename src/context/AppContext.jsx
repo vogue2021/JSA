@@ -242,13 +242,11 @@ export const AppProvider = ({ children }) => {
       //   1) 管理员勾选 view_all_students 后，老师下次刷新即生效；
       //   2) 管理员去掉某权限后也立刻生效，不再被 localStorage 旧值"复活"。
       //   仅当 user.permissions 不是数组（异常/旧 token）时，才走 teacherList / localStorage / 默认菜单兜底。
+      // 【新需求73】严格按 user.permissions 数组判断，移除原先 edit_events/edit_schools/edit_materials
+      //   的"legacyDefault 兜底" —— 该兜底导致管理员取消勾选"页面内编辑权限"后前端依旧放行，
+      //   形成了 "数据范围权限生效、页面内编辑权限失效" 的 bug。修复后：未在数组里 = 没权限。
       if (Array.isArray(user.permissions)) {
-        if (user.permissions.includes(permissionId)) return true;
-        // 兼容旧 seed 数据：老师默认拥有 edit_events / edit_schools / edit_materials（与新需求68 任务4 行为一致），
-        //   即使 seed 的 permissions 列表里没显式写。view_all_students 必须显式开启，不在此白名单内。
-        const legacyDefault = ['edit_events', 'edit_schools', 'edit_materials'];
-        if (legacyDefault.includes(permissionId)) return true;
-        return false;
+        return user.permissions.includes(permissionId);
       }
       // 降级 1：从 teacherList (API 数据) 中读取权限
       const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
@@ -266,11 +264,13 @@ export const AppProvider = ({ children }) => {
           }
         }
       } catch (e) { /* ignore */ }      // 【新需求68 任务4】manage_* 只控制"菜单是否显示在老师的控制台上"，
-      //   edit_events / edit_schools / edit_materials 控制"页面内是否可增/改/删"（默认拥有以保持旧体验）。
-      //   view_all_students 需要管理员显式开启，默认不拥有。
+      //   edit_events / edit_schools / edit_materials 控制"页面内是否可增/改/删"。
+      // 【新需求73】此处是"完全没有 permissions 数据"时的最终兜底，仅保留 manage_*（菜单可见性，
+      //   缺失会导致所有菜单消失、体验损失大）；edit_* 必须由管理员显式授权，移除其兜底，
+      //   避免老旧 token / 异常状态下"页面内编辑权限"被默默打开。
+      //   view_all_students / edit_all_students 同样需要显式开启，不在此白名单内。
       return [
         'manage_students', 'manage_events', 'manage_schools', 'manage_materials',
-        'edit_events', 'edit_schools', 'edit_materials',
       ].includes(permissionId);
     }
     return false;

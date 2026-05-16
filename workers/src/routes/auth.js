@@ -639,14 +639,16 @@ auth.post('/init-seed', async (c) => {
     )
 
     // 老师详情表（含部门信息，用于区分升学老师和学管老师）
+    // 【新需求73】seed 老师默认带上"页面内编辑权限"（edit_events/edit_schools/edit_materials），
+    //   与 UI 表单默认勾选 + 新增老师后端默认值保持一致；scope 类 view_all/edit_all 仍需管理员显式授权。
     const teachersToCreate = [
-      { teacherId: 'teacher_1', userId: 'teacher1', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
-      { teacherId: 'teacher_2', userId: 'teacher2', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
-      { teacherId: 'teacher_3', userId: 'teacher3', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
-      { teacherId: 'teacher_4', userId: 'teacher4', department: '教务', subject: '', permissions: '["manage_students","manage_events"]' },
-      { teacherId: 'teacher_5', userId: 'teacher5', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials"]' },
-      { teacherId: 'teacher_6', userId: 'teacher6', department: '学管', subject: '', permissions: '["manage_students","manage_events"]' },
-      { teacherId: 'teacher_7', userId: 'teacher7', department: '学管', subject: '', permissions: '["manage_students","manage_events"]' },
+      { teacherId: 'teacher_1', userId: 'teacher1', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials","edit_events","edit_schools","edit_materials"]' },
+      { teacherId: 'teacher_2', userId: 'teacher2', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials","edit_events","edit_schools","edit_materials"]' },
+      { teacherId: 'teacher_3', userId: 'teacher3', department: '学部升学组', subject: '理科', permissions: '["manage_students","manage_events","manage_schools","manage_materials","edit_events","edit_schools","edit_materials"]' },
+      { teacherId: 'teacher_4', userId: 'teacher4', department: '教务', subject: '', permissions: '["manage_students","manage_events","edit_events"]' },
+      { teacherId: 'teacher_5', userId: 'teacher5', department: '学部升学组', subject: '文科', permissions: '["manage_students","manage_events","manage_schools","manage_materials","edit_events","edit_schools","edit_materials"]' },
+      { teacherId: 'teacher_6', userId: 'teacher6', department: '学管', subject: '', permissions: '["manage_students","manage_events","edit_events"]' },
+      { teacherId: 'teacher_7', userId: 'teacher7', department: '学管', subject: '', permissions: '["manage_students","manage_events","edit_events"]' },
     ]
 
     const teacherInserts = teachersToCreate.map(t =>

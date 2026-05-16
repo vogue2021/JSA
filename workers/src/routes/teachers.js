@@ -158,7 +158,14 @@ teachers.post('/', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       teacherId, userId,
-      body.department || '', body.subject || '', JSON.stringify(body.permissions || ['manage_students', 'manage_events', 'manage_schools', 'manage_materials']),
+      body.department || '', body.subject || '',
+      // 【新需求73】新增老师默认带上"页面内编辑权限"（edit_events/edit_schools/edit_materials），
+      //   与 UI 表单的默认勾选保持一致，避免新建老师立刻失去编辑能力。
+      //   menu 类 manage_* 也保留默认；scope 类 view_all_students/edit_all_students 不默认拥有，由管理员显式开启。
+      JSON.stringify(body.permissions || [
+        'manage_students', 'manage_events', 'manage_schools', 'manage_materials',
+        'edit_events', 'edit_schools', 'edit_materials',
+      ]),
       '', '', '', '', '', '', '', '', ''
     )
   ])
