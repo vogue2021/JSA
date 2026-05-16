@@ -4029,7 +4029,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </button>
           </div>
           {/* 导出按钮 - 学生也可以导出自己的数据 */}
-          {(user.role === 'student' || hasPermission('export_data')) && (
+          {/* 【新需求74 任务2 + 任务3】管理员是最高权限角色，必须能看到"导出"按钮；
+                老师按 export_data 权限决定（保持需求68 行为）；学生导出自己数据（保持需求61 行为）。
+                这里同时显式判断 admin，与 hasPermission 修复形成双保险，避免任何权限链条变动影响现有导出功能。 */}
+          {(user.role === 'student' || user.role === 'admin' || hasPermission('export_data')) && (
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
@@ -4242,9 +4245,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 {event.notes && <p className="text-sm mb-3" style={{ color: tokens.colors.text.secondary }}>{event.notes}</p>}
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-2">
+                    {/* 【新需求74 任务1】行内"标记完成 / 编辑 / 删除"按钮严格按 canEdit('events') 判定：
+                          - 管理员：永远可用（hasPermission 已对管理员返回 true，canEdit 也直接 true）；
+                          - 老师无 edit_events：按钮置灰 + cursor:not-allowed + 点击弹"您没有时间线编辑权限，请联系管理员开通"。 */}
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
+                        if (!requireEditPermission('events', { student: currentStudent })) return;
                         try {
                           await eventsAPI.toggleComplete(event.id);
                           const newEvents = upcomingEvents.map(ev =>
@@ -4256,9 +4263,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                           if (showNotification) showNotification('状态更新失败，请重试');
                         }
                       }}
+                      disabled={!canEdit('events')}
+                      title={!canEdit('events') ? '您没有时间线的编辑权限，请联系管理员开通' : ''}
                       className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
-                      style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
-                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.18)'}
+                      style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a', opacity: canEdit('events') ? 1 : 0.5, cursor: canEdit('events') ? 'pointer' : 'not-allowed' }}
+                      onMouseEnter={e => { if (canEdit('events')) e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.18)' }}
                       onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
                     >
                       <Check size={16} />
@@ -4267,12 +4276,15 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (!requireEditPermission('events', { student: currentStudent })) return;
                         setEditingEvent(event);
                         setShowEventModal(true);
                       }}
+                      disabled={!canEdit('events')}
+                      title={!canEdit('events') ? '您没有时间线的编辑权限，请联系管理员开通' : ''}
                       className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
-                      style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb' }}
-                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.18)'}
+                      style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: isDark ? '#93c5fd' : '#2563eb', opacity: canEdit('events') ? 1 : 0.5, cursor: canEdit('events') ? 'pointer' : 'not-allowed' }}
+                      onMouseEnter={e => { if (canEdit('events')) e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.18)' }}
                       onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'}
                     >
                       <Edit size={16} />
@@ -4283,9 +4295,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                         e.stopPropagation();
                         handleDeleteEvent(event.id);
                       }}
+                      disabled={!canEdit('events')}
+                      title={!canEdit('events') ? '您没有时间线的编辑权限，请联系管理员开通' : ''}
                       className="flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition"
-                      style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: isDark ? '#fca5a5' : '#dc2626' }}
-                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.18)'}
+                      style={{ background: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)', color: isDark ? '#fca5a5' : '#dc2626', opacity: canEdit('events') ? 1 : 0.5, cursor: canEdit('events') ? 'pointer' : 'not-allowed' }}
+                      onMouseEnter={e => { if (canEdit('events')) e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.18)' }}
                       onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'}
                     >
                       <Trash2 size={16} />
@@ -4449,23 +4463,29 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 </div>
                 {(user.role === 'teacher' || user.role === 'admin') && (
                   <div className="flex gap-1">
+                    {/* 【新需求74 任务1】学校行内"编辑/删除"严格按 canEdit('schools') 判定。 */}
                     <button
                       onClick={() => {
+                        if (!requireEditPermission('schools', { student: currentStudent })) return;
                         setEditingSchool(school);
                         setShowSchoolModal(true);
                       }}
+                      disabled={!canEdit('schools')}
+                      title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '编辑'}
                       className="p-2 rounded-lg transition"
-                      style={{ color: tokens.colors.text.secondary }}
-                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                      style={{ color: tokens.colors.text.secondary, opacity: canEdit('schools') ? 1 : 0.4, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+                      onMouseEnter={e => { if (canEdit('schools')) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <Edit size={18} />
                     </button>
                     <button
                       onClick={() => handleDeleteSchool(school.id)}
+                      disabled={!canEdit('schools')}
+                      title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '删除'}
                       className="p-2 rounded-lg transition"
-                      style={{ color: '#ef4444' }}
-                      onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)'}
+                      style={{ color: '#ef4444', opacity: canEdit('schools') ? 1 : 0.4, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+                      onMouseEnter={e => { if (canEdit('schools')) e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' }}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <Trash2 size={18} />
@@ -4628,9 +4648,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </button>
             {(user.role === 'teacher' || user.role === 'admin') && (
               <>
-                <button className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
-                  style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
-                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)'}
+                <button
+                  onClick={() => {
+                    // 【新需求74 任务1】上传材料也属于编辑材料行为，需 edit_materials 权限。
+                    if (!requireEditPermission('materials', { student: currentStudent })) return;
+                    // 上传逻辑预留（与"添加材料"分开，由后续上传弹窗实现）
+                  }}
+                  disabled={!canEdit('materials')}
+                  title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '上传材料'}
+                  className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
+                  style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('materials') ? 1 : 0.5, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
+                  onMouseEnter={e => { if (canEdit('materials')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)' }}
                   onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}>
                   <Upload size={14} />
                   上传材料
@@ -4786,18 +4814,26 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               )}
               {(user.role === 'teacher' || user.role === 'admin') && (
                 <div className="flex gap-1">
+                  {/* 【新需求74 任务1】通用材料行内"编辑/删除"严格按 canEdit('materials') 判定。 */}
                   <button
                     onClick={() => {
+                      if (!requireEditPermission('materials', { student: currentStudent })) return;
                       setEditingMaterial({...item, type: 'general'});
                       setShowMaterialModal(true);
                     }}
+                    disabled={!canEdit('materials')}
+                    title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '编辑'}
                     className="p-1 hover:bg-blue-100 rounded"
+                    style={{ opacity: canEdit('materials') ? 1 : 0.4, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
                   >
                     <Edit2 size={16} className="text-blue-600" />
                   </button>
                   <button
                     onClick={() => handleDeleteMaterial('general', item.id)}
+                    disabled={!canEdit('materials')}
+                    title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '删除'}
                     className="p-1 hover:bg-red-100 rounded"
+                    style={{ opacity: canEdit('materials') ? 1 : 0.4, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
                   >
                     <Trash2 size={16} className="text-red-600" />
                   </button>
@@ -4869,18 +4905,26 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   )}
                   {(user.role === 'teacher' || user.role === 'admin') && (
                     <div className="flex gap-1">
+                      {/* 【新需求74 任务1】学校专用材料行内"编辑/删除"严格按 canEdit('materials') 判定。 */}
                       <button
                         onClick={() => {
+                          if (!requireEditPermission('materials', { student: currentStudent })) return;
                           setEditingMaterial({...item, type: 'school', school: schoolName});
                           setShowMaterialModal(true);
                         }}
+                        disabled={!canEdit('materials')}
+                        title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '编辑'}
                         className="p-1 hover:bg-blue-100 rounded"
+                        style={{ opacity: canEdit('materials') ? 1 : 0.4, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
                       >
                         <Edit2 size={16} className="text-blue-600" />
                       </button>
                       <button
                         onClick={() => handleDeleteMaterial('school', item.id, schoolName)}
+                        disabled={!canEdit('materials')}
+                        title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '删除'}
                         className="p-1 hover:bg-red-100 rounded"
+                        style={{ opacity: canEdit('materials') ? 1 : 0.4, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
                       >
                         <Trash2 size={16} className="text-red-600" />
                       </button>

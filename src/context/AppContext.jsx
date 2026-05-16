@@ -236,6 +236,10 @@ export const AppProvider = ({ children }) => {
   // 权限检查：admin 拥有全部权限，teacher 根据 API 返回的权限列表判断
   const hasPermission = useCallback((permissionId) => {
     if (!user) return false;
+    // 【新需求74 任务2】管理员是系统最高权限角色，必须对所有权限检查返回 true。
+    //   原先 hasPermission 在非 teacher 角色一律返回 false，导致 hasPermission('export_data') 对
+    //   管理员也返回 false，时间线"导出"按钮对管理员不可见。修复后管理员对任何 permissionId 都判定为有权。
+    if (user.role === 'admin') return true;
     if (user.role === 'teacher') {
       // 【新需求71】最权威来源：后端登录/verify 注入的 user.permissions（数组）。
       //   只要 user.permissions 是数组，就以它为唯一依据 —— 这样：

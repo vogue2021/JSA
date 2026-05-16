@@ -1,9 +1,14 @@
 import React from 'react';
 import { AlertCircle, Check, Edit, Trash2, Clock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useApp } from '../context/AppContext';
 
 const TimelineLinear = ({ events, user, onToggleComplete, onEdit, onDelete }) => {
   const { isDark, tokens, glassEnabled } = useTheme();
+  // 【新需求74 任务1】行内 "标记完成 / 编辑 / 删除" 按钮原本只用 user.role 判断，导致老师即便被管理员
+  //   取消 edit_events 权限仍可点击。改为接入 AppContext 的 canEdit('events') 与 requireEditPermission，
+  //   未授权时按钮置灰 + 点击弹出 "您没有时间线编辑权限，请联系管理员开通"。
+  const { canEdit, requireEditPermission } = useApp();
   const sortedEvents = [...events].sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const getMonthGroup = (dateStr) => {
@@ -33,7 +38,10 @@ const TimelineLinear = ({ events, user, onToggleComplete, onEdit, onDelete }) =>
     return icons[type] || '📌';
   };
 
-  const canEdit = user.role === 'teacher' || user.role === 'admin';
+  // 行内按钮区是否对当前用户可见：老师 / 管理员都展示按钮（管理员无条件可用，老师按 canEdit 决定置灰）。
+  //   学生不展示编辑按钮（与原行为一致）。
+  const showActions = user.role === 'teacher' || user.role === 'admin';
+  const canEditEvents = canEdit ? canEdit('events') : (user.role === 'admin' || user.role === 'teacher');
 
   // 暗色模式事件背景
   const getDarkTypeBg = (type) => {
@@ -129,24 +137,39 @@ const TimelineLinear = ({ events, user, onToggleComplete, onEdit, onDelete }) =>
                       </div>
 
                       {/* 操作按钮 */}
-                      {canEdit && (
+                      {showActions && (
                         <div className="flex gap-1 ml-2">
-                          <button onClick={() => onToggleComplete(event.id)}
+                          <button onClick={() => {
+                            // 【新需求74 任务1】无 edit_events 权限：弹窗提示并不执行；管理员永远放行。
+                            if (requireEditPermission && !requireEditPermission('events')) return;
+                            onToggleComplete(event.id);
+                          }}
                             className="p-1.5 rounded-lg transition"
-                            title={event.completed ? '标记未完成' : '标记完成'}
-                            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)'}
+                            title={!canEditEvents ? '您没有时间线的编辑权限，请联系管理员开通' : (event.completed ? '标记未完成' : '标记完成')}
+                            style={{ opacity: canEditEvents ? 1 : 0.4, cursor: canEditEvents ? 'pointer' : 'not-allowed' }}
+                            onMouseEnter={e => { if (canEditEvents) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)' }}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <Check size={16} style={{ color: event.completed ? '#22c55e' : tokens.colors.text.muted }} />
                           </button>
-                          <button onClick={() => onEdit(event)}
+                          <button onClick={() => {
+                            if (requireEditPermission && !requireEditPermission('events')) return;
+                            onEdit(event);
+                          }}
                             className="p-1.5 rounded-lg transition"
-                            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)'}
+                            title={!canEditEvents ? '您没有时间线的编辑权限，请联系管理员开通' : '编辑'}
+                            style={{ opacity: canEditEvents ? 1 : 0.4, cursor: canEditEvents ? 'pointer' : 'not-allowed' }}
+                            onMouseEnter={e => { if (canEditEvents) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)' }}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <Edit size={16} style={{ color: '#3b82f6' }} />
                           </button>
-                          <button onClick={() => onDelete(event.id)}
+                          <button onClick={() => {
+                            if (requireEditPermission && !requireEditPermission('events')) return;
+                            onDelete(event.id);
+                          }}
                             className="p-1.5 rounded-lg transition"
-                            onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)'}
+                            title={!canEditEvents ? '您没有时间线的编辑权限，请联系管理员开通' : '删除'}
+                            style={{ opacity: canEditEvents ? 1 : 0.4, cursor: canEditEvents ? 'pointer' : 'not-allowed' }}
+                            onMouseEnter={e => { if (canEditEvents) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)' }}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <Trash2 size={16} style={{ color: '#ef4444' }} />
                           </button>
