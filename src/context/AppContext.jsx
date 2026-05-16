@@ -96,6 +96,11 @@ export const AppProvider = ({ children }) => {
               ...result.user,
               role: result.user.role || userData.role,
               name: result.user.name || userData.name,
+              // 【新需求71】/auth/verify 现在会返回老师最新 permissions（管理员调整后无需重登），
+              //   这里要确保 user.permissions 始终为数组，并合并进 sessionStorage。
+              permissions: Array.isArray(result.user.permissions)
+                ? result.user.permissions
+                : (Array.isArray(userData.permissions) ? userData.permissions : []),
             };
             setUser(updatedUser);
             sessionStorage.setItem('user', JSON.stringify(updatedUser));
@@ -130,26 +135,34 @@ export const AppProvider = ({ children }) => {
       if (user?.role === 'admin') {
         data = await apiRequest('/students');
       } else if (user?.role === 'teacher' && user?.teacherId) {
-        // 【新需求68 任务3】拥有 view_all_students 权限的老师点全量接口，
-        // 让“查看所有学生”权限真正生效。
-        // 默认仍走 /students/teacher/:teacherId，仅看自己负责的学生。
+        // 【新需求68 任务3 / 新需求71】拥有 view_all_students 权限的老师走全量接口。
+        //   排查：之前老师本人浏览器里没有 teacherList、也没有 teacherDetails 缓存，
+        //   导致 useAll 永远 false，权限完全失效。
+        //   现在 user.permissions 由后端登录/verify 注入，作为最权威来源；
+        //   teacherList / localStorage 仅作为降级。
         let useAll = false;
         try {
-          const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
-          if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
-            useAll = teacherInfo.permissions.includes('view_all_students');
-          } else {
-            const saved = localStorage.getItem('teacherDetails');
-            if (saved) {
-              const details = JSON.parse(saved);
-              const detail = details[user.teacherId];
-              if (detail && Array.isArray(detail.permissions)) {
-                useAll = detail.permissions.includes('view_all_students');
+          if (Array.isArray(user.permissions)) {
+            useAll = user.permissions.includes('view_all_students');
+          }
+          if (!useAll) {
+            const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
+            if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
+              useAll = teacherInfo.permissions.includes('view_all_students');
+            } else {
+              const saved = localStorage.getItem('teacherDetails');
+              if (saved) {
+                const details = JSON.parse(saved);
+                const detail = details[user.teacherId];
+                if (detail && Array.isArray(detail.permissions)) {
+                  useAll = detail.permissions.includes('view_all_students');
+                }
               }
             }
           }
         } catch (_) { /* ignore */ }
-        // ?all=1 仅在 view_all_students 生效，后端不检查权限但返回全量。
+        // ?all=1 在前后端都需要 view_all_students 权限：前端决定是否请求；
+        //   后端 students.js 还会再做一次 teacherHasPerm 校验，防止越权。
         data = useAll
           ? await apiRequest('/students?all=1')
           : await apiRequest(`/students/teacher/${user.teacherId}`);
@@ -214,14 +227,26 @@ export const AppProvider = ({ children }) => {
   // 权限检查：admin 拥有全部权限，teacher 根据 API 返回的权限列表判断
   const hasPermission = useCallback((permissionId) => {
     if (!user) return false;
-    if (user.role === 'admin') return true;
     if (user.role === 'teacher') {
-      // 优先从 teacherList (API 数据) 中读取权限
+      // 【新需求71】最权威来源：后端登录/verify 注入的 user.permissions（数组）。
+      //   只要 user.permissions 是数组，就以它为唯一依据 —— 这样：
+      //   1) 管理员勾选 view_all_students 后，老师下次刷新即生效；
+      //   2) 管理员去掉某权限后也立刻生效，不再被 localStorage 旧值"复活"。
+      //   仅当 user.permissions 不是数组（异常/旧 token）时，才走 teacherList / localStorage / 默认菜单兜底。
+      if (Array.isArray(user.permissions)) {
+        if (user.permissions.includes(permissionId)) return true;
+        // 兼容旧 seed 数据：老师默认拥有 edit_events / edit_schools / edit_materials（与新需求68 任务4 行为一致），
+        //   即使 seed 的 permissions 列表里没显式写。view_all_students 必须显式开启，不在此白名单内。
+        const legacyDefault = ['edit_events', 'edit_schools', 'edit_materials'];
+        if (legacyDefault.includes(permissionId)) return true;
+        return false;
+      }
+      // 降级 1：从 teacherList (API 数据) 中读取权限
       const teacherInfo = teacherList.find(t => t.teacher_id === user.teacherId);
       if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
         return teacherInfo.permissions.includes(permissionId);
       }
-      // 降级：从 localStorage 读取权限缓存
+      // 降级 2：从 localStorage 读取权限缓存
       try {
         const saved = localStorage.getItem('teacherDetails');
         if (saved) {
@@ -231,9 +256,7 @@ export const AppProvider = ({ children }) => {
             return detail.permissions.includes(permissionId);
           }
         }
-      } catch (e) { /* ignore */ }
-      // 默认老师有基本控制台菜单权限（manage_*）+ 编辑权限（edit_*）。
-      // 【新需求68 任务4】manage_* 只控制"菜单是否显示在老师的控制台上"，
+      } catch (e) { /* ignore */ }      // 【新需求68 任务4】manage_* 只控制"菜单是否显示在老师的控制台上"，
       //   edit_events / edit_schools / edit_materials 控制"页面内是否可增/改/删"（默认拥有以保持旧体验）。
       //   view_all_students 需要管理员显式开启，默认不拥有。
       return [

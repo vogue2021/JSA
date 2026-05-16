@@ -206,11 +206,24 @@ auth.post('/login', async (c) => {
         additionalData = { studentId }
       } else if (user.role === 'teacher') {
         additionalData = { teacherId: user.teacher_id }
+        // 【新需求71】登录响应中带上老师的 permissions，
+        //   让前端 user.permissions 直接可用，不再依赖 teacherList（老师本人不会拉 teacherList）。
+        try {
+          const trow = await db.prepare('SELECT permissions FROM teachers WHERE teacher_id = ?')
+            .bind(user.teacher_id).first()
+          let perms = []
+          if (trow && trow.permissions) {
+            try { perms = JSON.parse(trow.permissions) } catch { perms = [] }
+          }
+          additionalData.permissions = Array.isArray(perms) ? perms : []
+        } catch { additionalData.permissions = [] }
       }
 
       const jwtSecret = c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
+      // JWT 不存 permissions（避免 token 体过大且权限滞后）；permissions 仅在 response 里返回。
+      const { permissions: _omit, ...jwtPayload } = additionalData
       const token = await signJWT(
-        { id: user.id, email: user.email, role: user.role, name: user.name, ...additionalData },
+        { id: user.id, email: user.email, role: user.role, name: user.name, ...jwtPayload },
         jwtSecret
       )
 
@@ -466,7 +479,22 @@ auth.get('/verify', async (c) => {
       c.env.JWT_SECRET || 'dev-jwt-secret-do-not-use-in-production'
     )
     const { payload } = await jwtVerify(token, secret)
-    return c.json({ success: true, user: payload })
+    // 【新需求71】老师每次 /verify 时都从 DB 拉最新 permissions，
+    //   保证管理员调整权限后，老师下一次刷新即生效（不需要重新登录）。
+    let user = { ...payload }
+    if (payload.role === 'teacher' && payload.teacherId) {
+      try {
+        const db = c.env.DB
+        const trow = await db.prepare('SELECT permissions FROM teachers WHERE teacher_id = ?')
+          .bind(payload.teacherId).first()
+        let perms = []
+        if (trow && trow.permissions) {
+          try { perms = JSON.parse(trow.permissions) } catch { perms = [] }
+        }
+        user.permissions = Array.isArray(perms) ? perms : []
+      } catch { user.permissions = [] }
+    }
+    return c.json({ success: true, user })
   } catch {
     return c.json({ success: false, message: '令牌无效或已过期' }, 401)
   }

@@ -72,6 +72,10 @@ const AuthPage = ({ onLogin }) => {
         email: result.user.email,
         studentId: result.user.studentId || null,
         teacherId: result.user.teacherId || null,
+        // 【新需求71】把后端返回的老师 permissions 一起带进 user 状态，
+        //   AppContext 里的"数据范围"判断（loadStudentList / hasPermission）就能直接用 user.permissions，
+        //   不再依赖 teacherList（老师本人不会调用 /teachers 拉列表）。
+        permissions: Array.isArray(result.user.permissions) ? result.user.permissions : [],
         isAdmin: result.user.role === 'admin',
       };
 
