@@ -517,16 +517,17 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
   };
 
   // 根据权限获取可见的学生列表
+  // 【新需求72】关键修复：老师场景下不再做二次过滤！
+  //   后端 AppContext.loadStudentList 已经根据 user.permissions.includes('view_all_students')
+  //   决定是调 /students?all=1（全量）还是 /students/teacher/:teacherId（仅自己负责），
+  //   返回的 studentList 本身就是"应该看到的学生集合"。
+  //   之前这里 `allStudents.filter(...自己负责...)` 会把全量结果再裁剪回三身份，
+  //   导致管理员授予 view_all_students 后，老师虽然后端返回了全部学生，前端却仍然只能看到自己的——
+  //   这就是新需求70/71 修了后端、用户实测仍不生效的真正根因。
   const getVisibleStudents = () => {
     const allStudents = getAllStudents();
-
-    if (user.role === 'admin') {
-      return allStudents; // 管理员看到所有学生
-    } else if (user.role === 'teacher') {
-    // 老师看到自己作为升学老师/学管老师/顾问老师负责的学生
-    // 【新需求68 任务1+2】加入 consultantId 维度
-    return allStudents.filter(s => s.teacherId === user.teacherId || s.academicAdvisorId === user.teacherId || s.consultantId === user.teacherId);
-    }
+    if (user.role === 'admin') return allStudents;
+    if (user.role === 'teacher') return allStudents; // 已由后端按 view_all_students 控制范围
     return []; // 学生不需要看到学生列表
   };
 
@@ -2540,12 +2541,24 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     const [editTagInput, setEditTagInput] = useState('');
 
     const handleUpdateStudentSubject = (studentId, subject) => {
+      // 【新需求72】只有 admin / 学生负责老师 / 拥有 edit_all_students 的老师 才能编辑
+      const target = studentList.find(s => s.id === studentId);
+      if (target && !canEditStudent(target)) {
+        if (showNotification) showNotification('该学生不在您的负责范围内，请联系管理员开通"编辑所有学生"权限', 'error');
+        return;
+      }
       setStudentList(prev => prev.map(s => s.id === studentId ? { ...s, subject } : s));
       if (showNotification) showNotification(`已更新文理科为: ${subject || '未指定'}`);
     };
 
     const handleAddStudentTag = (studentId, tag) => {
       if (!tag.trim()) return;
+      // 【新需求72】数据范围权限校验
+      const target = studentList.find(s => s.id === studentId);
+      if (target && !canEditStudent(target)) {
+        if (showNotification) showNotification('该学生不在您的负责范围内，请联系管理员开通"编辑所有学生"权限', 'error');
+        return;
+      }
       setStudentList(prev => prev.map(s => {
         if (s.id !== studentId) return s;
         const tags = [...(s.tags || [])];
@@ -2556,6 +2569,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     };
 
     const handleRemoveStudentTag = (studentId, tag) => {
+      // 【新需求72】数据范围权限校验
+      const target = studentList.find(s => s.id === studentId);
+      if (target && !canEditStudent(target)) {
+        if (showNotification) showNotification('该学生不在您的负责范围内，请联系管理员开通"编辑所有学生"权限', 'error');
+        return;
+      }
       setStudentList(prev => prev.map(s => {
         if (s.id !== studentId) return s;
         return { ...s, tags: (s.tags || []).filter(t => t !== tag) };
@@ -2572,6 +2591,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     });
 
     const handleInlineTransfer = (student) => {
+      // 【新需求72】转移学生归属同样要 edit_all_students 或 admin
+      if (!canEditStudent(student)) {
+        if (showNotification) showNotification('该学生不在您的负责范围内，无法转移', 'error');
+        return;
+      }
       if (transferTargetTeacher) {
         setStudentList(prev => prev.map(s =>
           s.id === student.id ? { ...s, teacherId: transferTargetTeacher } : s

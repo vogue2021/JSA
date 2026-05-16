@@ -119,6 +119,14 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   // 登录后加载学生列表 + 老师列表
+  // 【新需求72】关键修复：依赖项加入 user?.permissions 的字符串化形式 +  teacherList。
+  //   背景：之前只依赖 user?.id —— 而管理员调权后老师刷新页面，
+  //   首次 setUser(savedUser) 用的是旧 sessionStorage（permissions 还是旧值），
+  //   立即触发一次 loadStudentList → 拉的还是只属于自己的学生；
+  //   随后 /auth/verify 异步回填新 permissions，但 user.id 没变 →
+  //   useEffect 不会再次触发 loadStudentList → 学生列表永远停在错误状态。
+  //   现在依赖 user?.permissions 序列化后的版本，permissions 变化即重新拉取。
+  const permissionsKey = Array.isArray(user?.permissions) ? user.permissions.slice().sort().join(',') : '';
   useEffect(() => {
     if (!user) {
       setStudentList([]);
@@ -127,7 +135,8 @@ export const AppProvider = ({ children }) => {
     }
     loadStudentList();
     loadTeacherList();
-  }, [user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role, user?.teacherId, permissionsKey]);
 
   const loadStudentList = useCallback(async () => {
     try {
