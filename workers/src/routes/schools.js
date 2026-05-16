@@ -3,6 +3,22 @@ import { Hono } from 'hono'
 
 const schools = new Hono()
 
+// 【新需求69】老师“页面内编辑权限”后端兜底校验（与 events.js / materials.js 风格一致）。
+//   读取 teachers 表的 permissions JSON 检查是否包含指定 permId。
+//   admin 全权；非 teacher 不走此校验（返回 true，由路由自身限定访问范围）。
+async function teacherHasEditPerm(db, user, permId) {
+  if (!user || user.role !== 'teacher') return true
+  if (!user.teacherId) return false
+  const t = await db.prepare(
+    'SELECT permissions FROM teachers WHERE teacher_id = ?'
+  ).bind(user.teacherId).first()
+  if (!t) return false
+  let perms = []
+  try { perms = JSON.parse(t.permissions || '[]') } catch { perms = [] }
+  if (!Array.isArray(perms)) perms = []
+  return perms.includes(permId)
+}
+
 // ─── 自动迁移工具 ────────────────────────────────────────────────────────────
 // 【新需求48】自动确保 schools 表有 extra_dates 列
 // 背景：需求45 引入 extra_dates 列用于存储一审/二审/自定义日期，
@@ -201,6 +217,13 @@ schools.get('/:id', async (c) => {
 
 // POST /api/schools - 添加学校
 schools.post('/', async (c) => {
+  // 【新需求69】后端兜底：老师需有 edit_schools 权限
+  const user = c.get('user')
+  const db = c.env.DB
+  if (user && user.role === 'teacher' && !(await teacherHasEditPerm(db, user, 'edit_schools'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有学校的编辑权限，请联系管理员开通' }, 403)
+  }
+
   const body = await c.req.json()
   const {
     student_id, name, name_ja, type, program, status,
@@ -347,8 +370,13 @@ schools.post('/', async (c) => {
 
 // PUT /api/schools/:id - 更新学校
 schools.put('/:id', async (c) => {
+  // 【新需求69】后端兜底：老师需有 edit_schools 权限
+  const user = c.get('user')
   const id = c.req.param('id')
   const db = c.env.DB
+  if (user && user.role === 'teacher' && !(await teacherHasEditPerm(db, user, 'edit_schools'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有学校的编辑权限，请联系管理员开通' }, 403)
+  }
 
   // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
   await ensureExtraDatesColumn(db)
@@ -501,8 +529,13 @@ schools.put('/:id', async (c) => {
 
 // DELETE /api/schools/:id
 schools.delete('/:id', async (c) => {
+  // 【新需求69】后端兜底：老师需有 edit_schools 权限
+  const user = c.get('user')
   const { id } = c.req.param()
   const db = c.env.DB
+  if (user && user.role === 'teacher' && !(await teacherHasEditPerm(db, user, 'edit_schools'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有学校的编辑权限，请联系管理员开通' }, 403)
+  }
 
   const school = await db.prepare('SELECT id FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)

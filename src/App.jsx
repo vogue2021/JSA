@@ -39,7 +39,8 @@ import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService
 // 主应用组件
 const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStudentList }) => {
   // 【新需求64 任务1】删除学生账号后需要刷新全局 studentList，避免学生信息页仍显示已删账号对应的学生
-  const { hasPermission, showNotification, loadStudentList } = useApp();
+  // 【新需求69】引入 canEdit / canEditStudent / requireEditPermission 用于按钮禁用 + 操作前权限校验
+  const { hasPermission, showNotification, loadStudentList, canEdit, canEditStudent, requireEditPermission } = useApp();
   // 先初始化 currentStudent - 从 localStorage 恢复或使用默认值
   const [currentStudent, setCurrentStudent] = useState(() => {
     // 尝试从 localStorage 恢复上次选择的学生
@@ -1032,6 +1033,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
   // 删除事件
   const handleDeleteEvent = async (eventId) => {
+    // 【新需求69】权限闸门：无 edit_events 权限者不允许删除
+    if (!requireEditPermission('events', { student: currentStudent })) return;
     if (window.confirm('确定要删除这个事项吗？')) {
       try {
         await apiReq(`/events/${eventId}`, { method: 'DELETE' });
@@ -1046,6 +1049,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
   // 删除学校
   const handleDeleteSchool = async (schoolId) => {
+    // 【新需求69】权限闸门：无 edit_schools 权限者不允许删除
+    if (!requireEditPermission('schools', { student: currentStudent })) return;
     if (window.confirm('确定要删除这个学校吗？这将同时删除相关的时间线事件和材料清单。')) {
       try {
         await apiReq(`/schools/${schoolId}`, { method: 'DELETE' });
@@ -1060,6 +1065,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
   // 删除材料
   const handleDeleteMaterial = async (type, itemId, schoolName = null) => {
+    // 【新需求69】权限闸门：无 edit_materials 权限者不允许删除
+    if (!requireEditPermission('materials', { student: currentStudent })) return;
     if (window.confirm('确定要删除这个材料项吗？')) {
       try {
         await apiReq(`/materials/${itemId}`, { method: 'DELETE' });
@@ -1074,6 +1081,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
   // 处理材料勾选
   const handleMaterialCheck = async (type, itemId, checked, schoolName = null) => {
+    // 【新需求69】权限闸门：勾选/取消勾选 = 修改材料完成状态，无 edit_materials 权限不允许
+    if (!requireEditPermission('materials', { student: currentStudent })) return;
     // 乐观更新本地状态
     const newChecklist = {...checklist};
     const currentTime = new Date().toISOString().split('T')[0];
@@ -1120,6 +1129,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
     const handleSubmit = async (e) => {
       e.preventDefault();
+      // 【新需求69】权限闸门：无 edit_events 权限者不允许保存事件
+      if (!requireEditPermission('events', { student: currentStudent })) return;
       const eventData = {
         student_id: currentStudent?.studentId,
         type: formData.type,
@@ -1468,6 +1479,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
     const handleSubmit = async (e) => {
       e.preventDefault();
+      // 【新需求69】权限闸门：无 edit_schools 权限者不允许保存学校
+      if (!requireEditPermission('schools', { student: currentStudent })) return;
 
       // 【新需求45】把一审/二审/自定义日期字段打包到 extra_dates JSON 字段
       const extraDates = {
@@ -2330,6 +2343,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
 
     const handleSubmit = async (e) => {
       e.preventDefault();
+      // 【新需求69】权限闸门：无 edit_materials 权限者不允许保存材料
+      if (!requireEditPermission('materials', { student: currentStudent })) return;
       try {
         if (editingMaterial) {
           // 更新已有材料
@@ -4312,12 +4327,16 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       {(user.role === 'teacher' || user.role === 'admin') && (
         <button
           onClick={() => {
+            // 【新需求69】闸门：无 edit_events 权限点击弹窗提示
+            if (!requireEditPermission('events', { student: currentStudent })) return;
             setEditingEvent(null);
             setShowEventModal(true);
           }}
+          disabled={!canEdit('events')}
+          title={!canEdit('events') ? '您没有时间线的编辑权限，请联系管理员开通' : ''}
           className="w-full py-4 rounded-xl font-semibold transition flex items-center justify-center gap-2"
-          style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
-          onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
+          style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('events') ? 1 : 0.5, cursor: canEdit('events') ? 'pointer' : 'not-allowed' }}
+          onMouseEnter={e => { if (canEdit('events')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)' }}
           onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
         >
           <Plus size={20} />
@@ -4362,12 +4381,16 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           {(user.role === 'teacher' || user.role === 'admin') && (
             <button
               onClick={() => {
+                // 【新需求69】闸门：无 edit_schools 权限弹窗提示
+                if (!requireEditPermission('schools', { student: currentStudent })) return;
                 setEditingSchool(null);
                 setShowSchoolModal(true);
               }}
+              disabled={!canEdit('schools')}
+              title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : ''}
               className="ml-auto px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 flex-shrink-0"
-              style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed' }}
-              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)'}
+              style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('schools') ? 1 : 0.5, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+              onMouseEnter={e => { if (canEdit('schools')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)' }}
               onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
             >
               <Plus size={16} />
@@ -4590,12 +4613,16 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 </button>
                 <button
                   onClick={() => {
+                    // 【新需求69】闸门：无 edit_materials 权限弹窗提示
+                    if (!requireEditPermission('materials', { student: currentStudent })) return;
                     setEditingMaterial(null);
                     setShowMaterialModal(true);
                   }}
+                  disabled={!canEdit('materials')}
+                  title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : ''}
                   className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
-                  style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a' }}
-                  onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)'}
+                  style={{ background: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', color: isDark ? '#86efac' : '#16a34a', opacity: canEdit('materials') ? 1 : 0.5, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
+                  onMouseEnter={e => { if (canEdit('materials')) e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.15)' }}
                   onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)'}
                 >
                   <Plus size={14} />

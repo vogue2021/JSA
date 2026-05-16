@@ -25,7 +25,21 @@ export async function authMiddleware(c, next) {
       }
     }
 
-    c.set('user', payload)
+    // 【新需求69】当登录用户是老师时，从 teachers 表加载 permissions 放进 user 上下文，
+    //   供下游路由进行细粒度权限判断（edit_events / edit_schools / edit_materials /
+    //   view_all_students / edit_all_students 等）。
+    //   未拉到时设为 null，路由侧自行兜底（不阻塞请求）。
+    let permissions = null
+    if (db && payload.role === 'teacher' && payload.teacherId) {
+      try {
+        const trow = await db.prepare('SELECT permissions FROM teachers WHERE teacher_id = ?').bind(payload.teacherId).first()
+        if (trow && trow.permissions) {
+          try { permissions = JSON.parse(trow.permissions) } catch { permissions = null }
+        }
+      } catch { /* 忽略，permissions 仍为 null */ }
+    }
+
+    c.set('user', { ...payload, permissions })
     await next()
   } catch (e) {
     return c.json({ success: false, message: '令牌无效或已过期' }, 401)

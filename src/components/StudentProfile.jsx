@@ -8,7 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import { studentsAPI } from '../services/api';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
-  const { user, studentList, setStudentList, showNotification, getTeacherList } = useApp();
+  const { user, studentList, setStudentList, showNotification, getTeacherList, canEditStudent, requireEditPermission } = useApp();
   const { isDark, tokens, glassEnabled } = useTheme();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -172,9 +172,13 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   // 新备注输入
   const [newNote, setNewNote] = useState('');
 
-  const canEdit = user.role === 'teacher' || user.role === 'admin';
+  // 【新需求69】原本“只要是老师就能编辑学生信息”，导致 edit_all_students 权限不生效。
+  // 现在根据 canEditStudent：admin / 学生本人 / 老师负责的学生 / 拥有 edit_all_students 权限的老师 才可编辑。
+  const canEdit = canEditStudent ? canEditStudent(student) : (user.role === 'teacher' || user.role === 'admin');
 
   const handleSave = async () => {
+    // 【新需求69】保存前再次闸门校验，防止绕过禁用样式直接调用
+    if (requireEditPermission && !requireEditPermission('students', { student })) return;
     // 先调用 API 持久化到数据库
     try {
       await studentsAPI.update(student.studentId, {

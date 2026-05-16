@@ -233,8 +233,8 @@ export const AppProvider = ({ children }) => {
         }
       } catch (e) { /* ignore */ }
       // 默认老师有基本控制台菜单权限（manage_*）+ 编辑权限（edit_*）。
-      // 【新需求68 任务4】manage_* 只控制“菜单是否显示在老师控制台”，
-      //   edit_events / edit_schools / edit_materials 控制“页面内是否可增/改/删”（默认拥有以保持旧体验）。
+      // 【新需求68 任务4】manage_* 只控制"菜单是否显示在老师的控制台上"，
+      //   edit_events / edit_schools / edit_materials 控制"页面内是否可增/改/删"（默认拥有以保持旧体验）。
       //   view_all_students 需要管理员显式开启，默认不拥有。
       return [
         'manage_students', 'manage_events', 'manage_schools', 'manage_materials',
@@ -243,6 +243,78 @@ export const AppProvider = ({ children }) => {
     }
     return false;
   }, [user, teacherList, permissionVersion]);
+
+  // 【新需求69】统一的"可编辑性"判断：
+  //   scope 取值：'events' | 'schools' | 'materials' | 'students'
+  //   - admin 永远可编辑
+  //   - student 在自己页面可编辑（事件/材料）；不能编辑学校或他人数据
+  //   - teacher 按 edit_* 权限判断
+  const canEdit = useCallback((scope) => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'student') {
+      // 学生只能编辑自己的事件/材料；学校/学生信息不能编辑
+      return scope === 'events' || scope === 'materials';
+    }
+    if (user.role === 'teacher') {
+      const map = {
+        events: 'edit_events',
+        schools: 'edit_schools',
+        materials: 'edit_materials',
+        students: 'manage_students', // 学生信息编辑沿用旧 manage_students 含义
+      };
+      const permId = map[scope];
+      return permId ? hasPermission(permId) : false;
+    }
+    return false;
+  }, [user, hasPermission]);
+
+  // 【新需求69】判断老师是否能编辑某个特定学生（结合数据范围权限）：
+  //   - admin 可编辑任何学生
+  //   - 学生本人可编辑自己
+  //   - 老师默认只能编辑自己负责的（升学/学管/顾问）；
+  //     如果勾选了 edit_all_students 权限，则可编辑所有学生；
+  //     仅勾选 view_all_students 但未勾 edit_all_students，则可见但不可编辑
+  const canEditStudent = useCallback((student) => {
+    if (!user || !student) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'student') {
+      return String(student.studentId) === String(user.studentId)
+          || String(student.id) === String(user.id);
+    }
+    if (user.role === 'teacher') {
+      const isOwn = student.teacherId === user.teacherId
+                 || student.academicAdvisorId === user.teacherId
+                 || student.consultantId === user.teacherId;
+      if (isOwn) return true;
+      // 不是自己负责的学生 → 需要 edit_all_students 权限
+      return hasPermission('edit_all_students');
+    }
+    return false;
+  }, [user, hasPermission]);
+
+  // 【新需求69】统一的"权限校验闸门"：返回 true 放行；返回 false 时已显示提示弹窗。
+  //   用法：if (!requireEditPermission('events')) return;
+  //   可选传入 student 对象做"数据范围"二次校验。
+  const requireEditPermission = useCallback((scope, opts = {}) => {
+    const { student, silent = false } = opts;
+    // 1) 先看页面级编辑权限
+    if (!canEdit(scope)) {
+      if (!silent) {
+        const scopeLabel = { events: '时间线', schools: '学校', materials: '材料', students: '学生信息' }[scope] || '该页面';
+        showNotification(`您当前没有 ${scopeLabel} 的编辑权限，请联系管理员开通`, 'error');
+      }
+      return false;
+    }
+    // 2) 再看具体学生的数据范围
+    if (student && !canEditStudent(student)) {
+      if (!silent) {
+        showNotification('该学生不在您的负责范围内，请联系管理员开通"编辑所有学生"权限', 'error');
+      }
+      return false;
+    }
+    return true;
+  }, [canEdit, canEditStudent, showNotification]);
 
   const value = useMemo(() => ({
     user, setUser,
@@ -256,10 +328,12 @@ export const AppProvider = ({ children }) => {
     handleLogin, handleLogout,
     getTeacherList,
     hasPermission, refreshPermissions,
+    // 【新需求69】对外暴露三个权限助手
+    canEdit, canEditStudent, requireEditPermission,
     apiRequest,                     // 暴露通用请求方法
   }), [user, allUsers, studentList, teacherList, globalLoading, globalError, notification,
        showNotification, handleLogin, handleLogout, getTeacherList,
-       hasPermission, refreshPermissions, loadStudentList, loadTeacherList]);
-
+       hasPermission, refreshPermissions, loadStudentList, loadTeacherList,
+       canEdit, canEditStudent, requireEditPermission]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

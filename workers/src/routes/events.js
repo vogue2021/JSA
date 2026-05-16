@@ -49,6 +49,23 @@ async function teacherCanAccessByStudentId(db, user, studentId) {
       || stu.consultant_id === user.teacherId
 }
 
+// 【新需求69】老师“页面内编辑权限”后端兜底校验（与 materials.js 保持一致风格）。
+//   读取 teachers 表的 permissions JSON，判断是否包含指定 permId（如 'edit_events'）。
+//   admin / 学生 不走此校验（admin 全权；学生由各路由自行限定到自己数据）。
+//   防止前端禁用/闸门被绕过（如手构 curl）。
+async function teacherHasEditPerm(db, user, permId) {
+  if (!isTeacher(user)) return true
+  if (!user.teacherId) return false
+  const t = await db.prepare(
+    'SELECT permissions FROM teachers WHERE teacher_id = ?'
+  ).bind(user.teacherId).first()
+  if (!t) return false
+  let perms = []
+  try { perms = JSON.parse(t.permissions || '[]') } catch { perms = [] }
+  if (!Array.isArray(perms)) perms = []
+  return perms.includes(permId)
+}
+
 // ─── 获取学生的所有事件 ───────────────────────────────────────────────────────
 events.get('/student/:studentId', async (c) => {
   const user = c.get('user')
@@ -108,6 +125,10 @@ events.post('/', async (c) => {
   const student = await getStudentByIdentifier(db, student_id)
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
   if (!canAccessStudent(user, student)) return c.json({ success: false, message: '无权为该学生创建事件' }, 403)
+  // 【新需求69】后端兜底：老师需有 edit_events 权限
+  if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有时间线的编辑权限，请联系管理员开通' }, 403)
+  }
 
   const days_left = calculateDaysLeft(date)
 
@@ -142,6 +163,10 @@ events.put('/:id', async (c) => {
   }
   if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
     return c.json({ success: false, message: '无权修改该事件' }, 403)
+  }
+  // 【新需求69】后端兜底：老师需有 edit_events 权限
+  if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有时间线的编辑权限，请联系管理员开通' }, 403)
   }
 
   const body = await c.req.json()
@@ -184,6 +209,10 @@ events.delete('/:id', async (c) => {
   if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
     return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
+  // 【新需求69】后端兜底：老师需有 edit_events 权限
+  if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有时间线的编辑权限，请联系管理员开通' }, 403)
+  }
 
   if (event.school_id) {
     return c.json({ success: false, message: '学校关联事件不能单独删除，请通过学校管理删除' }, 400)
@@ -210,6 +239,10 @@ events.on(['PATCH', 'PUT'], '/:id/toggle', async (c) => {
   }
   if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
     return c.json({ success: false, message: '无权操作该事件' }, 403)
+  }
+  // 【新需求69】后端兜底：完成状态划动也是编辑行为，需 edit_events 权限
+  if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有时间线的编辑权限，请联系管理员开通' }, 403)
   }
 
   const newCompleted = event.completed ? 0 : 1
