@@ -3,6 +3,47 @@ import { Hono } from 'hono'
 
 const schools = new Hono()
 
+// 【新需求69 + 70】角色与归属判断 helpers
+const isAdmin = (user) => user?.role === 'admin'
+const isTeacher = (user) => user?.role === 'teacher'
+const isStudent = (user) => user?.role === 'student'
+
+// 【新需求70】老师是否拥有指定权限（从 authMiddleware 注入的 user.permissions 同步读取）
+const teacherHas = (user, permId) => {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  if (user.role !== 'teacher') return false
+  return Array.isArray(user.permissions) && user.permissions.includes(permId)
+}
+
+// 【新需求70】老师是否可以"看到"指定学生的学校：负责该学生 OR 拥有 view_all_students
+async function teacherCanViewStudent(db, user, studentId) {
+  if (!isTeacher(user)) return true
+  if (!user.teacherId || !studentId) return false
+  const stu = await db.prepare(
+    'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
+  ).bind(studentId).first()
+  if (!stu) return false
+  if (stu.teacher_id === user.teacherId
+      || stu.academic_advisor_id === user.teacherId
+      || stu.consultant_id === user.teacherId) return true
+  return teacherHas(user, 'view_all_students')
+}
+
+// 【新需求70】老师是否可以"编辑"指定学生的学校：负责该学生 OR 拥有 edit_all_students
+async function teacherCanEditStudent(db, user, studentId) {
+  if (!isTeacher(user)) return true
+  if (!user.teacherId || !studentId) return false
+  const stu = await db.prepare(
+    'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
+  ).bind(studentId).first()
+  if (!stu) return false
+  if (stu.teacher_id === user.teacherId
+      || stu.academic_advisor_id === user.teacherId
+      || stu.consultant_id === user.teacherId) return true
+  return teacherHas(user, 'edit_all_students')
+}
+
 // 【新需求69】老师“页面内编辑权限”后端兜底校验（与 events.js / materials.js 风格一致）。
 //   读取 teachers 表的 permissions JSON 检查是否包含指定 permId。
 //   admin 全权；非 teacher 不走此校验（返回 true，由路由自身限定访问范围）。
@@ -163,8 +204,17 @@ schools.get('/stats/events', async (c) => {
 
 // GET /api/schools/student/:studentId
 schools.get('/student/:studentId', async (c) => {
+  const user = c.get('user')
   const { studentId } = c.req.param()
   const db = c.env.DB
+
+  // 【新需求70】老师只能查看自己负责学生的学校。拥有 view_all_students 可查任意学生。
+  if (isStudent(user) && String(user.studentId) !== String(studentId)) {
+    return c.json({ success: false, message: '无权查看该学生的学校' }, 403)
+  }
+  if (isTeacher(user) && !(await teacherCanViewStudent(db, user, studentId))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权查看该学生的学校（需 view_all_students 权限）' }, 403)
+  }
 
   // 【新需求49】用户打开学校页面就会触发该 GET，此时立即自动迁移，
   // 避免要等到下一次 POST/PUT 才补列（之前只在写路由触发，首次查询仍读不到列）
@@ -194,11 +244,20 @@ schools.get('/student/:studentId', async (c) => {
 
 // GET /api/schools/:id
 schools.get('/:id', async (c) => {
+  const user = c.get('user')
   const { id } = c.req.param()
   const db = c.env.DB
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
+
+  // 【新需求70】学生/老师需验证归属
+  if (isStudent(user) && String(user.studentId) !== String(school.student_id)) {
+    return c.json({ success: false, message: '无权查看该学校' }, 403)
+  }
+  if (isTeacher(user) && !(await teacherCanViewStudent(db, user, school.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权查看该学校（需 view_all_students 权限）' }, 403)
+  }
 
   if (school.materials) {
     try { school.materials = JSON.parse(school.materials) } catch { school.materials = [] }
@@ -235,6 +294,15 @@ schools.post('/', async (c) => {
 
   if (!student_id || !name || !type) {
     return c.json({ success: false, message: '缺少必填字段（student_id、name、type）' }, 400)
+  }
+
+  // 【新需求70】老师只能为自己负责的学生创建学校（拥有 edit_all_students 除外）
+  if (isTeacher(user) && !(await teacherCanEditStudent(db, user, student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您只能为自己负责的学生添加学校，要跨学生操作请联系管理员开通“编辑所有学生”权限' }, 403)
+  }
+  // 学生不能为自己/别人创建学校（原本也没限制，顺手补上）
+  if (isStudent(user)) {
+    return c.json({ success: false, message: '学生无权创建学校' }, 403)
   }
 
   // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
@@ -378,6 +446,16 @@ schools.put('/:id', async (c) => {
 
   // 【新需求48】自动迁移：确保 schools 表有 extra_dates 列
   await ensureExtraDatesColumn(db)
+
+  const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
+  if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
+  // 【新需求70】老师只能修改自己负责学生的学校（拥有 edit_all_students 除外）
+  if (isTeacher(user) && !(await teacherCanEditStudent(db, user, school.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权修改该学校（需 edit_all_students 权限才能修改他人学生的学校）' }, 403)
+  }
+  if (isStudent(user)) {
+    return c.json({ success: false, message: '学生无权修改学校' }, 403)
+  }
 
   const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
@@ -535,8 +613,15 @@ schools.delete('/:id', async (c) => {
     return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有学校的编辑权限，请联系管理员开通' }, 403)
   }
 
-  const school = await db.prepare('SELECT id FROM schools WHERE id = ?').bind(id).first()
+  const school = await db.prepare('SELECT id, student_id FROM schools WHERE id = ?').bind(id).first()
   if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
+  // 【新需求70】老师只能删除自己负责学生的学校（拥有 edit_all_students 除外）
+  if (isTeacher(user) && !(await teacherCanEditStudent(db, user, school.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权删除该学校（需 edit_all_students 权限才能删除他人学生的学校）' }, 403)
+  }
+  if (isStudent(user)) {
+    return c.json({ success: false, message: '学生无权删除学校' }, 403)
+  }
 
   // 级联删除：学校 + 关联事件 + 关联材料，原子执行
   await db.batch([

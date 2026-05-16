@@ -19,9 +19,12 @@ const canAccessStudent = (user, student) => {
   if (isAdmin(user)) return true
   if (isTeacher(user)) {
     // 【新需求68】升学/学管/顾问 三种老师身份任一匹配即可访问
-    return student.teacher_id === user.teacherId
+    if (student.teacher_id === user.teacherId
         || student.academic_advisor_id === user.teacherId
-        || student.consultant_id === user.teacherId
+        || student.consultant_id === user.teacherId) return true
+    // 【新需求70】view_all_students 老师可看任何学生的材料
+    if (Array.isArray(user.permissions) && user.permissions.includes('view_all_students')) return true
+    return false
   }
   // 学生只能访问自己的数据（通过 student_id 或 user_id 匹配）
   if (isStudent(user)) {
@@ -29,6 +32,41 @@ const canAccessStudent = (user, student) => {
            String(student.user_id) === String(user.id)
   }
   return false
+}
+
+// 【新需求70】判断老师是否可编辑该学生的材料：
+//   自己负责的学生可编辑；不是自己负责的需 edit_all_students 权限。
+const canEditStudent = (user, student) => {
+  if (!user || !student) return false
+  if (isAdmin(user)) return true
+  if (isTeacher(user)) {
+    if (student.teacher_id === user.teacherId
+        || student.academic_advisor_id === user.teacherId
+        || student.consultant_id === user.teacherId) return true
+    if (Array.isArray(user.permissions) && user.permissions.includes('edit_all_students')) return true
+    return false
+  }
+  if (isStudent(user)) {
+    return String(student.student_id) === String(user.studentId) ||
+           String(student.user_id) === String(user.id)
+  }
+  return false
+}
+
+// 【新需求70】inline 辅助：按 student_id 查出三身份后调用 canAccessStudent / canEditStudent
+async function teacherCanAccessMaterial(db, user, studentId) {
+  if (!isTeacher(user)) return true
+  const stu = await db.prepare(
+    'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
+  ).bind(studentId).first()
+  return canAccessStudent(user, stu)
+}
+async function teacherCanEditMaterial(db, user, studentId) {
+  if (!isTeacher(user)) return true
+  const stu = await db.prepare(
+    'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
+  ).bind(studentId).first()
+  return canEditStudent(user, stu)
 }
 
 // 【新需求69】老师"页面内编辑权限"后端兜底校验
@@ -139,9 +177,8 @@ materials.get('/:id', async (c) => {
   if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权访问该材料' }, 403)
   }
-  if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?').bind(material.student_id).first()
-    if (student?.teacher_id !== user.teacherId && student?.academic_advisor_id !== user.teacherId && student?.consultant_id !== user.teacherId) return c.json({ success: false, message: '无权访问该材料' }, 403)
+  if (isTeacher(user) && !(await teacherCanAccessMaterial(db, user, material.student_id))) {
+    return c.json({ success: false, message: '无权访问该材料' }, 403)
   }
 
   return c.json({ success: true, data: material })
@@ -196,15 +233,15 @@ materials.put('/:id', async (c) => {
   if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权修改该材料' }, 403)
   }
+  if (isTeacher(user) && !(await teacherCanEditMaterial(db, user, material.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权修改该材料（需 edit_all_students 权限才能修改他人学生的材料）' }, 403)
+  }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?').bind(material.student_id).first()
-    if (student?.teacher_id !== user.teacherId && student?.academic_advisor_id !== user.teacherId && student?.consultant_id !== user.teacherId) return c.json({ success: false, message: '无权修改该材料' }, 403)
-    // 【新需求69】后端兑底：老师需有 edit_materials 权限
+    // 【新需求69】后端兜底：老师需有 edit_materials 权限
     if (!(await teacherHasEditPerm(db, user, 'edit_materials'))) {
       return c.json({ success: false, message: '您没有材料的编辑权限，请联系管理员开通' }, 403)
     }
   }
-
   const body = await c.req.json()
   await db.prepare(`
     UPDATE materials SET
@@ -236,15 +273,15 @@ materials.delete('/:id', async (c) => {
   if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权删除该材料' }, 403)
   }
+  if (isTeacher(user) && !(await teacherCanEditMaterial(db, user, material.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权删除该材料（需 edit_all_students 权限才能删除他人学生的材料）' }, 403)
+  }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?').bind(material.student_id).first()
-    if (student?.teacher_id !== user.teacherId && student?.academic_advisor_id !== user.teacherId && student?.consultant_id !== user.teacherId) return c.json({ success: false, message: '无权删除该材料' }, 403)
-    // 【新需求69】后端兑底：老师需有 edit_materials 权限
+    // 【新需求69】后端兜底：老师需有 edit_materials 权限
     if (!(await teacherHasEditPerm(db, user, 'edit_materials'))) {
       return c.json({ success: false, message: '您没有材料的编辑权限，请联系管理员开通' }, 403)
     }
   }
-
   await db.prepare('DELETE FROM materials WHERE id = ?').bind(id).run()
   return c.json({ success: true, message: '材料删除成功' })
 })
@@ -261,17 +298,17 @@ materials.put('/:id/status', async (c) => {
   if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权操作该材料' }, 403)
   }
+  if (isTeacher(user) && !(await teacherCanEditMaterial(db, user, material.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权操作该材料（需 edit_all_students 权限才能操作他人学生的材料）' }, 403)
+  }
   if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?').bind(material.student_id).first()
-    if (student?.teacher_id !== user.teacherId && student?.academic_advisor_id !== user.teacherId && student?.consultant_id !== user.teacherId) return c.json({ success: false, message: '无权操作该材料' }, 403)
-    // 【新需求69】后端兑底：老师需有 edit_materials 权限
+    // 【新需求69】后端兜底：老师需有 edit_materials 权限
     if (!(await teacherHasEditPerm(db, user, 'edit_materials'))) {
       return c.json({ success: false, message: '您没有材料的编辑权限，请联系管理员开通' }, 403)
     }
   }
 
-  const { completed, checked_by } = await c.req.json().catch(() => ({}))
-  const newCompleted = completed ? 1 : 0
+  const { completed, checked_by } = await c.req.json().catch(() => ({}))  const newCompleted = completed ? 1 : 0
 
   await db.prepare(`
     UPDATE materials SET completed = ?, checked_by = ?, checked_at = ? WHERE id = ?
@@ -299,9 +336,8 @@ materials.on(['PATCH', 'PUT'], '/:id/toggle', async (c) => {
   if (isStudent(user) && String(material.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权操作该材料' }, 403)
   }
-  if (isTeacher(user)) {
-    const student = await db.prepare('SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?').bind(material.student_id).first()
-    if (student?.teacher_id !== user.teacherId && student?.academic_advisor_id !== user.teacherId && student?.consultant_id !== user.teacherId) return c.json({ success: false, message: '无权操作该材料' }, 403)
+  if (isTeacher(user) && !(await teacherCanEditMaterial(db, user, material.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权操作该材料（需 edit_all_students 权限才能操作他人学生的材料）' }, 403)
   }
 
   const { checked_by } = await c.req.json().catch(() => ({}))

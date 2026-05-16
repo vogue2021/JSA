@@ -29,6 +29,11 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     const dept = t.department;
     return !dept || dept === '学管';
   });
+  // 【新需求70 任务2】顾问老师 = 顾问组部门/无部门（与升学/学管对称）
+  const consultants = teachers.filter(t => {
+    const dept = t.department;
+    return !dept || dept === '顾问组';
+  });
 
   // 玻璃卡片通用样式
   const glassCardStyle = glassEnabled ? {
@@ -622,11 +627,12 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               {isEditing ? (
                 <div>
                   <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.secondary }}>顾问老师</label>
-                  <select value={formData.consultantId || ''} onChange={e => setFormData({...formData, consultantId: e.target.value})}
+                <select value={formData.consultantId || ''} onChange={e => setFormData({...formData, consultantId: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                     <option value="">请选择顾问老师</option>
-                    {teachers.map(t => <option key={t.teacher_id || t.teacherId} value={t.teacher_id || t.teacherId}>{t.name}</option>)}
+                    {/* 【新需求70 任务2】仅限“顾问组”部门与无部门老师作为候选（与升学/学管下拉对称） */}
+                    {consultants.map(t => <option key={t.teacher_id || t.teacherId} value={t.teacher_id || t.teacherId}>{t.name}</option>)}
                   </select>
                 </div>
               ) : (

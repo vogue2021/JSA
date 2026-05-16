@@ -8,6 +8,16 @@ const isAdmin = (user) => user?.role === 'admin'
 const isTeacher = (user) => user?.role === 'teacher'
 const isStudent = (user) => user?.role === 'student'
 
+// 【新需求70】判断老师是否拥有某个权限（从 authMiddleware 注入的 user.permissions 读取）。
+//   permissions 为空数组或 null→返回 false。admin 始终返回 true。
+//   这里使用纯同步判断，不再查一次 DB（authMiddleware 已为老师拉取 permissions）。
+const teacherHasPerm = (user, permId) => {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  if (user.role !== 'teacher') return false
+  return Array.isArray(user.permissions) && user.permissions.includes(permId)
+}
+
 // 密码哈希（Web Crypto PBKDF2，与 auth.js 保持一致）
 // 用于新需求43：管理员/老师添加学生时，可选直接设置初始密码
 async function hashPassword(password) {
@@ -111,11 +121,9 @@ students.get('/', async (c) => {
   } else if (isTeacher(user)) {
     // 老师角色 — 同时可见升学/学管/顾问负责的学生（【新需求68】加入 consultant_id 维度）
     // 【新需求68 任务3】view_all_students=1 时跳过 teacher_id 过滤，让老师看到全部学生。
-    //   该判断通过 query 参数传入（前端在调用时根据老师权限决定是否带 ?all=1），
-    //   后端这里仅在 user.role === 'teacher' 时校验 query；不会被普通用户随意提权——
-    //   因为权限本身仍由前端 hasPermission 控制是否调用 ?all=1。后续若需更严，可在
-    //   teachers 表读取 permissions 字段再二次校验。
-    const wantAll = c.req.query('all') === '1'
+    // 【新需求70】这里增加后端二次校验：all=1 仅在老师拥有 view_all_students 权限时生效；
+    //   否则静默降级为只看自己负责的学生，防止老师手构 ?all=1 绕过权限看全量。
+    const wantAll = c.req.query('all') === '1' && teacherHasPerm(user, 'view_all_students')
     if (!wantAll) {
       sql += ' AND (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?)'
       const tid = user.teacherId || '__none__'
@@ -213,10 +221,12 @@ students.get('/:id', async (c) => {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
   // 【新需求68】老师权限校验加入顾问老师 (consultant_id) 维度
+  // 【新需求70】老师拥有 view_all_students 权限时，可查看任何学生信息（使该权限真正生效）。
   if (isTeacher(user)
       && student.teacher_id !== user.teacherId
       && student.academic_advisor_id !== user.teacherId
-      && student.consultant_id !== user.teacherId) {
+      && student.consultant_id !== user.teacherId
+      && !teacherHasPerm(user, 'view_all_students')) {
     return c.json({ success: false, message: '无权查看该学生信息' }, 403)
   }
 
@@ -356,11 +366,13 @@ students.put('/:id', async (c) => {
     return c.json({ success: false, message: '无权修改该学生信息' }, 403)
   }
   // 【新需求68】老师写权限校验加入顾问老师 (consultant_id) 维度
+  // 【新需求70】老师拥有 edit_all_students 权限时，可修改任何学生信息（让该权限真正生效）。
   if (isTeacher(user)
       && student.teacher_id !== user.teacherId
       && student.academic_advisor_id !== user.teacherId
-      && student.consultant_id !== user.teacherId) {
-    return c.json({ success: false, message: '无权修改该学生信息' }, 403)
+      && student.consultant_id !== user.teacherId
+      && !teacherHasPerm(user, 'edit_all_students')) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您只能修改自己负责学生的信息，要修改其他学生请联系管理员开通“编辑所有学生”权限' }, 403)
   }
 
   const fields = []

@@ -22,13 +22,17 @@ const getStudentByIdentifier = async (db, identifier) => {
 // 【新需求68】老师访问学生权限：升学老师(teacher_id) / 学管老师(academic_advisor_id) / 顾问老师(consultant_id)
 //   三个身份任一匹配即可访问。之前这里只检查了 teacher_id 实际上是 BUG ——
 //   导致学管老师不能为自己负责学生创建事件。本次一并修复。
+// 【新需求70】老师拥有 view_all_students 权限时，可访问任何学生数据（让权限真正生效）
 const canAccessStudent = (user, student) => {
   if (!user || !student) return false
   if (isAdmin(user)) return true
   if (isTeacher(user)) {
-    return student.teacher_id === user.teacherId
+    if (student.teacher_id === user.teacherId
         || student.academic_advisor_id === user.teacherId
-        || student.consultant_id === user.teacherId
+        || student.consultant_id === user.teacherId) return true
+    // 【新需求70】不是自己负责的学生 → 看 view_all_students 权限
+    if (Array.isArray(user.permissions) && user.permissions.includes('view_all_students')) return true
+    return false
   }
   if (isStudent(user)) {
     return String(student.student_id) === String(user.studentId) ||
@@ -38,15 +42,35 @@ const canAccessStudent = (user, student) => {
 }
 
 // 【新需求68】以 student_id 查学生三身份后检查老师访问权限的辅助函数
+// 【新需求70】老师拥有 view_all_students 权限时，可访问任何学生数据（让权限真正生效）
 async function teacherCanAccessByStudentId(db, user, studentId) {
   if (!isTeacher(user)) return true
   const stu = await db.prepare(
     'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
   ).bind(studentId).first()
   if (!stu) return false
-  return stu.teacher_id === user.teacherId
+  if (stu.teacher_id === user.teacherId
       || stu.academic_advisor_id === user.teacherId
-      || stu.consultant_id === user.teacherId
+      || stu.consultant_id === user.teacherId) return true
+  // 不是自己负责的学生 → 看 view_all_students 权限
+  if (Array.isArray(user.permissions) && user.permissions.includes('view_all_students')) return true
+  return false
+}
+
+// 【新需求70】老师拥有 edit_all_students 时，可编辑任何学生关联数据
+//   返回 true 表示放行；用于事件/材料的 PUT/DELETE/toggle 等写接口。
+async function teacherCanEditByStudentId(db, user, studentId) {
+  if (!isTeacher(user)) return true
+  const stu = await db.prepare(
+    'SELECT teacher_id, academic_advisor_id, consultant_id FROM students WHERE student_id = ?'
+  ).bind(studentId).first()
+  if (!stu) return false
+  if (stu.teacher_id === user.teacherId
+      || stu.academic_advisor_id === user.teacherId
+      || stu.consultant_id === user.teacherId) return true
+  // 不是自己负责的学生 → 看 edit_all_students 权限
+  if (Array.isArray(user.permissions) && user.permissions.includes('edit_all_students')) return true
+  return false
 }
 
 // 【新需求69】老师“页面内编辑权限”后端兜底校验（与 materials.js 保持一致风格）。
@@ -129,6 +153,10 @@ events.post('/', async (c) => {
   if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
     return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有时间线的编辑权限，请联系管理员开通' }, 403)
   }
+  // 【新需求70】为别人负责的学生创建事件需要 edit_all_students 权限
+  if (isTeacher(user) && !(await teacherCanEditByStudentId(db, user, student.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您只能为自己负责的学生创建事件，要跨学生操作请联系管理员开通“编辑所有学生”权限' }, 403)
+  }
 
   const days_left = calculateDaysLeft(date)
 
@@ -161,8 +189,8 @@ events.put('/:id', async (c) => {
   if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权修改该事件' }, 403)
   }
-  if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
-    return c.json({ success: false, message: '无权修改该事件' }, 403)
+  if (isTeacher(user) && !(await teacherCanEditByStudentId(db, user, event.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权修改该事件（需 edit_all_students 权限才能修改他人学生的事件）' }, 403)
   }
   // 【新需求69】后端兜底：老师需有 edit_events 权限
   if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
@@ -206,8 +234,8 @@ events.delete('/:id', async (c) => {
   if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权删除该事件' }, 403)
   }
-  if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
-    return c.json({ success: false, message: '无权删除该事件' }, 403)
+  if (isTeacher(user) && !(await teacherCanEditByStudentId(db, user, event.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权删除该事件（需 edit_all_students 权限才能删除他人学生的事件）' }, 403)
   }
   // 【新需求69】后端兜底：老师需有 edit_events 权限
   if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {
@@ -237,8 +265,8 @@ events.on(['PATCH', 'PUT'], '/:id/toggle', async (c) => {
   if (isStudent(user) && String(event.student_id) !== String(user.studentId)) {
     return c.json({ success: false, message: '无权操作该事件' }, 403)
   }
-  if (isTeacher(user) && !(await teacherCanAccessByStudentId(db, user, event.student_id))) {
-    return c.json({ success: false, message: '无权操作该事件' }, 403)
+  if (isTeacher(user) && !(await teacherCanEditByStudentId(db, user, event.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权操作该事件（需 edit_all_students 权限才能操作他人学生的事件）' }, 403)
   }
   // 【新需求69】后端兜底：完成状态划动也是编辑行为，需 edit_events 权限
   if (isTeacher(user) && !(await teacherHasEditPerm(db, user, 'edit_events'))) {

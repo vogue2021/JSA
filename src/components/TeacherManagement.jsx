@@ -521,7 +521,7 @@ const TeacherManagement = () => {
                 <div>
                   <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Briefcase size={20} /> 职务信息</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    <Field label="所属部门" value={editForm.department} editing={isEditing} type="select" options={['', '学部升学组', '学管', '教务', '其他']} onChange={v => setEditForm({...editForm, department: v})} />
+                    <Field label="所属部门" value={editForm.department} editing={isEditing} type="select" options={['', '学部升学组', '学管', '顾问组', '教务', '其他']} onChange={v => setEditForm({...editForm, department: v})} />
                     <Field label="在读/毕业学校" value={editForm.school} editing={isEditing} onChange={v => setEditForm({...editForm, school: v})} />
                     <Field label="学部/学科" value={editForm.faculty} editing={isEditing} onChange={v => setEditForm({...editForm, faculty: v})} />
                     <Field label="最终学历" value={editForm.education} editing={isEditing} type="select" options={['', '学士', '硕士', '博士', '其他']} onChange={v => setEditForm({...editForm, education: v})} />
@@ -639,6 +639,8 @@ const TeacherManagement = () => {
                   <option value="">请选择部门</option>
                   <option value="学部升学组">学部升学组</option>
                   <option value="学管">学管</option>
+                  {/* 【新需求70 任务2】顾问组 部门 */}
+                  <option value="顾问组">顾问组</option>
                   <option value="教务">教务</option>
                   <option value="其他">其他</option>
                 </select>
