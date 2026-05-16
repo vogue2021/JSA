@@ -457,8 +457,6 @@ schools.put('/:id', async (c) => {
     return c.json({ success: false, message: '学生无权修改学校' }, 403)
   }
 
-  const school = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
-  if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
   const body = await c.req.json()
   // 【新需求45】处理 extra_dates（JSON 字段）
   let extraDatesJson = (school.extra_dates || '{}')

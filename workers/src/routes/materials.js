@@ -308,7 +308,8 @@ materials.put('/:id/status', async (c) => {
     }
   }
 
-  const { completed, checked_by } = await c.req.json().catch(() => ({}))  const newCompleted = completed ? 1 : 0
+  const { completed, checked_by } = await c.req.json().catch(() => ({}))
+  const newCompleted = completed ? 1 : 0
 
   await db.prepare(`
     UPDATE materials SET completed = ?, checked_by = ?, checked_at = ? WHERE id = ?
