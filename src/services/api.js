@@ -449,3 +449,86 @@ export const xuebangAPI = {
     return await apiRequest('/xuebang/sync-logs');
   },
 };
+
+// 【新需求77】站内消息 API
+export const messagesAPI = {
+  // 列表（分页 + 搜索 + 角色范围 + 是否仅看自己发布的）
+  list: async ({ page = 1, pageSize = 20, search = '', audience = '', mine = false, includeRevoked = false } = {}) => {
+    const params = new URLSearchParams();
+    params.append('page', page);
+    params.append('pageSize', pageSize);
+    if (search) params.append('search', search);
+    if (audience) params.append('audience', audience);
+    if (mine) params.append('mine', '1');
+    if (includeRevoked) params.append('include_revoked', '1');
+    return await apiRequest(`/messages?${params.toString()}`);
+  },
+  // 时间线顶部横幅（最新未读，最多 5 条）
+  banner: async () => {
+    return await apiRequest('/messages/banner');
+  },
+  // 未读数量（角标用）
+  unreadCount: async () => {
+    return await apiRequest('/messages/unread-count');
+  },
+  // 详情（GET 时后端会自动标记已读）
+  get: async (id) => {
+    return await apiRequest(`/messages/${id}`);
+  },
+  // 创建消息
+  create: async (payload) => {
+    return await apiRequest('/messages', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  // 更新消息
+  update: async (id, payload) => {
+    return await apiRequest(`/messages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+  // 撤回 / 取消撤回
+  revoke: async (id, revoked = true) => {
+    return await apiRequest(`/messages/${id}/revoke`, {
+      method: 'PUT',
+      body: JSON.stringify({ revoked }),
+    });
+  },
+  // 永久删除（admin only）
+  remove: async (id) => {
+    return await apiRequest(`/messages/${id}`, { method: 'DELETE' });
+  },
+  // 显式标记已读
+  markRead: async (id) => {
+    return await apiRequest(`/messages/${id}/read`, { method: 'POST' });
+  },
+  // 一键全部标记为已读
+  markAllRead: async () => {
+    return await apiRequest('/messages/read-all', { method: 'POST' });
+  },
+};
+
+// 【新需求77】R2 图片上传 API
+export const uploadAPI = {
+  // 通过 FormData 上传图片，返回 { key, url, size, mime }
+  // 注意：此接口走 multipart，不能复用 apiRequest（会强制 Content-Type: application/json）
+  uploadImage: async (file) => {
+    const url = `${API_BASE_URL}/upload/image`;
+    const token = sessionStorage.getItem('authToken');
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || `上传失败 (${res.status})`);
+    }
+    const result = await res.json();
+    return result.data !== undefined ? result.data : result;
+  },
+};

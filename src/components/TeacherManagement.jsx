@@ -128,6 +128,8 @@ const TeacherManagement = () => {
     { id: 'export_data', label: '数据导出', desc: '导出学生数据和报表', group: 'menu' },
     // 【新需求76】添加学生权限（默认不勾选；勾选后老师才能在"学生管理"页看到【添加学生】按钮）
     { id: 'add_students', label: '添加学生', desc: '是否可以在"学生管理"页面点击【添加学生】并创建新学生（默认不开启）', group: 'menu' },
+    // 【新需求77】消息发布权限（默认不勾选；勾选后老师可在"消息中心"发布、编辑、撤回自己的消息）
+    { id: 'publish_messages', label: '发布站内消息', desc: '是否可以在"消息中心"发布站内消息、上传图片、撤回自己发布的消息（默认不开启）', group: 'menu' },
     // 页面内编辑权限（【新需求68】新增）
     { id: 'edit_events', label: '时间线·可编辑', desc: '是否可以增/改/删负责学生的时间线事件（取消后仅可查看）', group: 'edit' },
     { id: 'edit_schools', label: '学校·可编辑', desc: '是否可以增/改/删负责学生的学校信息（取消后仅可查看）', group: 'edit' },

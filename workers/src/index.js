@@ -15,6 +15,9 @@ import userRoutes from './routes/users.js'
 import reminderRoutes from './routes/reminders.js'
 import xuebangRoutes from './routes/xuebang.js'
 import studyResourcesRoutes from './routes/study_resources.js'
+// 【新需求77】站内消息发布系统 + R2 图片上传
+import messagesRoutes from './routes/messages.js'
+import uploadRoutes from './routes/upload.js'
 
 const app = new Hono()
 
@@ -67,6 +70,11 @@ app.use('/api/xuebang/*', authMiddleware)
 app.use('/api/xuebang', authMiddleware)
 app.use('/api/study-resources/*', authMiddleware)
 app.use('/api/study-resources', authMiddleware)
+// 【新需求77】消息接口全部需鉴权
+app.use('/api/messages/*', authMiddleware)
+app.use('/api/messages', authMiddleware)
+// 【新需求77】上传接口：POST /api/upload/image 需鉴权；GET /api/upload/r2/* 公开读图
+app.use('/api/upload/image', authMiddleware)
 // 注意：feedback 路由在内部自行处理鉴权（POST 允许匿名，GET/PATCH 需要 admin）
 // 不在这里挂载 authMiddleware，避免 Hono 路径匹配问题
 
@@ -81,6 +89,9 @@ app.route('/api/users', userRoutes)
 app.route('/api/reminders', reminderRoutes)
 app.route('/api/xuebang', xuebangRoutes)
 app.route('/api/study-resources', studyResourcesRoutes)
+// 【新需求77】挂载消息与上传路由
+app.route('/api/messages', messagesRoutes)
+app.route('/api/upload', uploadRoutes)
 
 // ─── 404 处理 ─────────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ success: false, message: '接口不存在' }, 404))

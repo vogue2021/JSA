@@ -4,6 +4,19 @@
  */
 import { SCHOOL_STATUS_LABELS, EVENT_TYPE_LABELS } from '../constants/schoolProcess';
 
+// 【新需求77-A】学校数去重统计：同一学校的多个学部（併願）算 1 所学校
+// 优先使用 nameJa 兜底 name，去掉首尾空白后做集合去重；schools 缺失/空数组返回 0
+const countDistinctSchools = (schools) => {
+  if (!Array.isArray(schools) || schools.length === 0) return 0;
+  const set = new Set();
+  schools.forEach(s => {
+    if (!s) return;
+    const key = String(s.name || s.nameJa || '').trim();
+    if (key) set.add(key);
+  });
+  return set.size;
+};
+
 // CSV 导出（兼容 Excel）
 export const exportToCSV = (data, filename) => {
   const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
@@ -200,7 +213,7 @@ const generateTimelineHTML = (student, events, schools) => {
     <span><strong>学生姓名:</strong> ${escapeHTML(student.name || '')}</span>
     <span><strong>学号:</strong> ${escapeHTML(String(student.studentId || ''))}</span>
     <span><strong>打印日期:</strong> ${new Date().toLocaleDateString('zh-CN')}</span>
-    <span><strong>目标学校数:</strong> ${schools?.length || 0}</span>
+    <span><strong>目标学校数:</strong> ${countDistinctSchools(schools)}</span>
     <span><strong>事件总数:</strong> ${sorted.length}</span>
     <span><strong>未完成:</strong> ${sorted.filter(e => !e.completed).length}</span>
   </div>
@@ -301,7 +314,9 @@ export const copyChecklistToText = async (student, checklist, schools) => {
   const lines = [];
   lines.push(`📋 ${student.name || ''} 的材料准备清单`);
   lines.push(`打印日期: ${new Date().toLocaleDateString('zh-CN')}`);
-  if (schools?.length) lines.push(`目标学校数: ${schools.length}`);
+  // 【新需求77-A】併願多学部 → 仍按 1 所学校计数
+  const distinctSchoolCount = countDistinctSchools(schools);
+  if (distinctSchoolCount) lines.push(`目标学校数: ${distinctSchoolCount}`);
   lines.push('');
 
   const renderGroup = (title, items) => {
@@ -402,7 +417,7 @@ const generateChecklistHTML = (student, checklist, schools) => {
     <span><strong>学生姓名:</strong> ${student.name}</span>
     <span><strong>学号:</strong> ${student.studentId}</span>
     <span><strong>打印日期:</strong> ${new Date().toLocaleDateString('zh-CN')}</span>
-    <span><strong>目标学校数:</strong> ${schools?.length || 0}</span>
+    <span><strong>目标学校数:</strong> ${countDistinctSchools(schools)}</span>
   </div>
   ${generalHTML}
   ${schoolHTML}

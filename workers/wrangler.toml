@@ -10,6 +10,14 @@ binding = "DB"
 database_name = "jsa-db"
 database_id = "9e0f50c0-e85b-4eef-a5e8-f5461965d823"
 
+# 【新需求77】R2 对象存储 - 站内消息系统的图片上传
+# ⚠️ 生产 bucket 需在 Cloudflare 控制台先创建，名字必须与下方 bucket_name 完全一致；
+#     若生产 bucket 暂未创建，可保持以下 4 行被注释，部署仍可成功（消息系统的发布接口会返回 503 提示），
+#     创建好后取消注释并重新 `npx wrangler deploy` 即可。
+# [[r2_buckets]]
+# binding = "R2_UPLOADS"
+# bucket_name = "jsa-uploads"
+
 # ─── 测试环境 ─────────────────────────────────────────────────────────────────
 # 部署命令：npx wrangler deploy --env staging
 [env.staging]
@@ -19,3 +27,8 @@ name = "jsa-api-staging"
 binding = "DB"
 database_name = "jsa-db-staging"
 database_id = "ec330b28-9f0a-4e8a-9bfc-3550eb311903"
+
+# 【新需求77】R2 对象存储（staging 已在 Cloudflare 控制台创建，bucket 名为 staging-mingxue）
+[[env.staging.r2_buckets]]
+binding = "R2_UPLOADS"
+bucket_name = "staging-mingxue"

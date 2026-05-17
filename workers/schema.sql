@@ -240,3 +240,33 @@ CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_logs(user_id, created_at
 CREATE INDEX IF NOT EXISTS idx_audit_route_time ON audit_logs(route, created_at);
 CREATE INDEX IF NOT EXISTS idx_students_xuebang_id ON students(xuebang_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mingxue_id ON users(mingxue_id) WHERE mingxue_id IS NOT NULL;
+
+-- 14. 站内消息发布系统（新需求77）
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  content_type TEXT NOT NULL DEFAULT 'markdown' CHECK(content_type IN ('markdown','html')),
+  audience TEXT NOT NULL DEFAULT 'all' CHECK(audience IN ('student','teacher','all')),
+  author_id TEXT NOT NULL DEFAULT '',
+  author_name TEXT NOT NULL DEFAULT '',
+  author_role TEXT NOT NULL DEFAULT '',
+  image_urls TEXT NOT NULL DEFAULT '[]',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS message_reads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  read_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(message_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_audience_revoked ON messages(audience, revoked);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_message_reads_user ON message_reads(user_id);
+CREATE INDEX IF NOT EXISTS idx_message_reads_msg ON message_reads(message_id);

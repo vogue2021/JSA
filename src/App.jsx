@@ -8,7 +8,7 @@ import {
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw,
-  Copy
+  Copy, Megaphone
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 import { AppProvider, useApp } from './context/AppContext';
@@ -28,6 +28,9 @@ import UpcomingSchools from './components/UpcomingSchools';
 import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
 import AuthPage from './components/AuthPage';
+// 【新需求77】站内消息发布系统
+import MessagesPage from './components/MessagesPage';
+import MessageBanner from './components/MessageBanner';
 import OnboardingTour from './components/common/OnboardingTour';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF, exportTimelineToPDF, copyTimelineToText, copyChecklistToText } from './utils/exportUtils';
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
@@ -84,7 +87,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const navigate = useNavigate();
 
   // 有效的 tab ID 列表（用于 URL 路径校验）
-const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'resources', 'upcoming', 'calendar', 'settings'];
+const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'resources', 'upcoming', 'messages', 'calendar', 'settings'];
 
   // 从 URL 路径提取当前 tab
   const getTabFromPath = () => {
@@ -4954,12 +4957,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
     // 学校信息库 - 学生不显示，老师需权限
     ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
-    // 塾内备考资料库 - 需求38：老师可编辑，学生只读公开资料
+    // 塔内备考资料库 - 需求38：老师可编辑，学生只读公开资料
     { id: 'resources', label: '备考资料库', icon: BookOpen },
     // 近期可报学校 - 所有角色可见（学生端重要入口）
     { id: 'upcoming', label: '近期可报', icon: Calendar },
+    // 【新需求77】消息中心 - 所有角色可见（学生只能看、admin / publish_messages 老师可发布）
+    { id: 'messages', label: '消息中心', icon: Megaphone },
   ];
-
   // 获取主题上下文
   const { isDark, tokens, backgroundStyle, toggleMode, resolvedMode, glassEnabled } = useTheme();
 
@@ -5196,6 +5200,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 { label: '学业管理', ids: ['timeline', 'schools', 'checklist'] },
                 { label: '人员管理', ids: ['students', 'profile', 'teachers'] },
                 { label: '信息查询', ids: ['schooldb', 'resources', 'upcoming'] },
+                { label: '消息', ids: ['messages'] },
               ];
               return groups.map((group, gi) => {
                 const groupTabs = tabs.filter(t => group.ids.includes(t.id));
@@ -5570,7 +5575,13 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               onNavigate={(tab) => setActiveTab(tab)}
               onSelectStudent={() => setActiveTab('students')}
             />
-          ) : <TimelineView />
+          ) : (
+            <>
+              {/* 【新需求77】时间线顶部消息横幅（未读消息，限 5 条） */}
+              <MessageBanner />
+              <TimelineView />
+            </>
+          )
         )}
         {activeTab === 'schools' && (
           user.role === 'admin' && !adminHasOwnStudents ? (
@@ -5633,6 +5644,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             user={user}
           />
         )}
+        {/* 【新需求77】消息中心 */}
+        {activeTab === 'messages' && <MessagesPage />}
 
         {/* 页面底部免责声明 */}
         <div className="mt-8 pb-4 text-center" style={{ color: tokens.colors.text.muted }}>
