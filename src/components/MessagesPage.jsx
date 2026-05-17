@@ -169,6 +169,8 @@ const MessagesPage = () => {
         await messagesAPI.create(payload)
         showNotification?.('消息已发布')
       }
+      // 【新需求79-B】通知 MessageGlobalPopup 立即重新轮询（不必等 60s 间隔）
+      try { window.dispatchEvent(new Event('msg:refresh-popup')) } catch {}
       resetForm()
       // 刷新列表
       await Promise.all([loadMine(), loadHistory()])
@@ -188,7 +190,8 @@ const MessagesPage = () => {
     try {
       setMineLoading(true)
       const res = await messagesAPI.list({ mine: true, pageSize: 50, includeRevoked: true })
-      setMineList(res?.data?.list || [])
+      // apiRequest 已自动剥掉 { success, data } 外壳，res 即 { list, total, page, pageSize }
+      setMineList(res?.list || [])
     } catch (e) {
       console.warn('加载我发布的消息失败:', e)
     } finally {
@@ -242,11 +245,12 @@ const MessagesPage = () => {
     try {
       setHistLoading(true)
       const res = await messagesAPI.list({ page, pageSize: 10, search })
+      // apiRequest 已自动剥掉 { success, data } 外壳，res 即 { list, total, page, pageSize }
       setHist({
-        list: res?.data?.list || [],
-        total: res?.data?.total || 0,
-        page: res?.data?.page || 1,
-        pageSize: res?.data?.pageSize || 10,
+        list: res?.list || [],
+        total: res?.total || 0,
+        page: res?.page || 1,
+        pageSize: res?.pageSize || 10,
       })
     } catch (e) {
       console.warn('加载历史消息失败:', e)
@@ -258,7 +262,8 @@ const MessagesPage = () => {
   const handleOpenDetail = async (m) => {
     try {
       const res = await messagesAPI.get(m.id)
-      setActive(res?.data || m)
+      // apiRequest 已剥掉 data 外壳，res 即消息详情对象
+      setActive(res || m)
       // 详情打开后历史里这一条会被服务端标记已读，这里不再重新拉列表，
       // 因为本页是按时间排序，不展示已读/未读样式（横幅才展示）。
     } catch (e) {

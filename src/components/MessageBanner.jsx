@@ -65,16 +65,19 @@ const MessageBanner = () => {
     setList(prev => prev.filter(x => x.id !== item.id))
   }
 
-  if (loading && list.length === 0) return null
-  if (list.length === 0) return null
+  // 注意：即使横幅列表为空，也要继续保留 active modal 的渲染。
+  // 否则当用户点击横幅条目 → setActive() → 同时 setList([])（移除该条），
+  // 父组件卸载导致 modal 也被卸掉，外观就是"详情弹窗一打开就瞬间关闭"（新需求79-B 排查到的根因）。
+  const empty = !list || list.length === 0
 
   return (
     <>
-      <div style={{
-        marginBottom: 16, borderRadius: 12, overflow: 'hidden',
-        border: `1px solid ${tokens.colors.border.default}`,
-        background: tokens.colors.bg.surface,
-      }}>
+      {!empty && (
+        <div style={{
+          marginBottom: 16, borderRadius: 12, overflow: 'hidden',
+          border: `1px solid ${tokens.colors.border.default}`,
+          background: tokens.colors.bg.surface,
+        }}>
         {/* 头部 */}
         <div style={{
           padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
@@ -151,6 +154,7 @@ const MessageBanner = () => {
           })}
         </ul>
       </div>
+      )}
 
       {active && (
         <MessageDetailModal message={active} onClose={() => setActive(null)} />

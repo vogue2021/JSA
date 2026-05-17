@@ -31,6 +31,7 @@ import AuthPage from './components/AuthPage';
 // 【新需求77】站内消息发布系统
 import MessagesPage from './components/MessagesPage';
 import MessageBanner from './components/MessageBanner';
+import MessageGlobalPopup from './components/MessageGlobalPopup';
 import OnboardingTour from './components/common/OnboardingTour';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF, exportTimelineToPDF, copyTimelineToText, copyChecklistToText } from './utils/exportUtils';
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
@@ -5646,6 +5647,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         )}
         {/* 【新需求77】消息中心 */}
         {activeTab === 'messages' && <MessagesPage />}
+
+        {/* 【新需求79-B】全局新消息弹窗：登录态下任何页面都生效 */}
+        <MessageGlobalPopup enabled={!!user} />
 
         {/* 页面底部免责声明 */}
         <div className="mt-8 pb-4 text-center" style={{ color: tokens.colors.text.muted }}>
