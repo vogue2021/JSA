@@ -255,12 +255,20 @@ students.get('/:id', async (c) => {
   })
 })
 
-// ─── 创建学生（仅管理员/老师）────────────────────────────────────────────────
+// ─── 创建学生（仅管理员/有 add_students 权限的老师）────────────────────────────
 // 新需求43：支持在创建学生的同时，通过 password 字段直接创建登录账号
+// 【新需求76】添加学生从"所有老师默认可加"改为权限管控：
+//   老师必须拥有 'add_students' 权限才能调用此接口；
+//   admin 始终放行；学生角色继续禁止。
+//   前端会同步隐藏【添加学生】按钮，但后端必须做兜底，防止 curl 越权。
 students.post('/', async (c) => {
   const user = c.get('user')
   if (!isAdmin(user) && !isTeacher(user)) {
     return c.json({ success: false, message: '权限不足' }, 403)
+  }
+  // 【新需求76】老师必须显式拥有 add_students 权限
+  if (isTeacher(user) && !teacherHasPerm(user, 'add_students')) {
+    return c.json({ success: false, message: '您没有添加学生的权限，请联系管理员开通' }, 403)
   }
 
   const body = await c.req.json()

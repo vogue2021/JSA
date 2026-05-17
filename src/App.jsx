@@ -2910,8 +2910,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </div>
             )}
           </div>
-          {/* 只有管理员可以添加学生 */}
-          {user.role === 'admin' && (
+          {/* 【新需求76】添加学生改为权限管控：admin 永远放行；老师必须显式拥有 add_students 权限 */}
+          {(user.role === 'admin' || hasPermission('add_students')) && (
           <div className="p-4" style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`, background: isDark ? 'rgba(255,255,255,0.02)' : '#f9fafb' }}>
               <button
                 onClick={() => setShowAddStudentModal(true)}
@@ -5615,7 +5615,11 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               });
               setActiveTab('profile');
             }}
-            onAddStudent={() => setShowAddStudentModal(true)}
+            /* 【新需求76】只有 admin / 拥有 add_students 权限的老师 才会下发 onAddStudent；
+               没有 onAddStudent 时 StudentListPage 不会渲染【添加学生】按钮（既有逻辑） */
+            onAddStudent={(user.role === 'admin' || hasPermission('add_students'))
+              ? () => setShowAddStudentModal(true)
+              : undefined}
           />
         )}
         {activeTab === 'teachers' && <TeacherManagement />}
