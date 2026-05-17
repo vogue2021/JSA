@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Bell, X, ChevronRight, CheckCheck } from 'lucide-react'
 import { messagesAPI } from '../services/api'
-import { useTheme } from '../theme'
+import { useTheme } from '../context/ThemeContext'
 import MessageDetailModal from './MessageDetailModal'
 
 const audienceColor = (a) => {

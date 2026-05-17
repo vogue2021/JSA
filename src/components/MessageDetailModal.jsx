@@ -5,7 +5,7 @@
 //   - 全部 HTML 输出经 escapeHtml 转义后再插入有限的标签，避免 XSS
 import React, { useEffect } from 'react'
 import { X, ExternalLink } from 'lucide-react'
-import { useTheme } from '../theme'
+import { useTheme } from '../context/ThemeContext'
 
 // ─── 极简 Markdown → HTML（白名单输出）─────────────────────────────────────────
 const escapeHtml = (s = '') => String(s)

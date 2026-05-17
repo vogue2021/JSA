@@ -10,7 +10,7 @@ import {
   Bold, Italic, List, ListOrdered, Quote, Code as CodeIcon, Link as LinkIcon, Heading,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { useTheme } from '../theme'
+import { useTheme } from '../context/ThemeContext'
 import { messagesAPI, uploadAPI } from '../services/api'
 import MessageDetailModal, { renderMarkdown } from './MessageDetailModal'
 
