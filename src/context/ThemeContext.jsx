@@ -17,6 +17,8 @@ const lightTokens = {
     bg: {
       base: '#F6F8FB',
       elevated: '#FFFFFF',
+      // 【新需求80-B】surface 别名：纯色卡片/弹窗背景（不要用 glass 半透明，否则下层内容会透出来）
+      surface: '#FFFFFF',
       glass: 'rgba(255, 255, 255, 0.7)',
       overlay: 'rgba(0, 0, 0, 0.1)',
       gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -47,6 +49,8 @@ const lightTokens = {
       hairline: 'rgba(255, 255, 255, 0.5)',
       subtle: 'rgba(0, 0, 0, 0.06)',
       strong: 'rgba(0, 0, 0, 0.12)',
+      // 【新需求80-B】default 别名：消息组件等使用 tokens.colors.border.default 时需有值
+      default: 'rgba(0, 0, 0, 0.12)',
     },
     // 组件颜色
     component: {
@@ -104,6 +108,8 @@ const darkTokens = {
     bg: {
       base: '#0F1117',
       elevated: '#151922',
+      // 【新需求80-B】surface 别名：纯色卡片/弹窗背景（暗色用稍浅的 elevated 灰，确保不透）
+      surface: '#1B2030',
       glass: 'rgba(255, 255, 255, 0.06)',
       overlay: 'rgba(0, 0, 0, 0.4)',
       gradient: 'linear-gradient(135deg, #1a1a3e 0%, #2d1b4e 100%)',
@@ -134,6 +140,8 @@ const darkTokens = {
       hairline: 'rgba(255, 255, 255, 0.08)',
       subtle: 'rgba(255, 255, 255, 0.08)',
       strong: 'rgba(255, 255, 255, 0.2)',
+      // 【新需求80-B】default 别名：暗色弹窗/卡片使用更可见的边框
+      default: 'rgba(255, 255, 255, 0.16)',
     },
     // 组件颜色（玻璃卡片）
     component: {

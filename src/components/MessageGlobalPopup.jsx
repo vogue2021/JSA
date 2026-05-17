@@ -1,23 +1,32 @@
 // 【新需求79-B】全局新消息弹窗
+// 【新需求80-A 修复】之前"首轮静默把所有未读加入 seenIds"的设计有缺陷：
+//   场景：admin 发完消息后老师/学生才登录页面 → 首轮 banner 已经包含这条新消息
+//        → 被静默吃掉 → 老师学生永远看不到弹窗（用户反馈：只有 admin 弹）
+//   修正：不再有"首轮静默"分支。任何在 banner 列表里出现且未在本会话主动处理过
+//        （未关闭、未标记已读）的消息都该入队弹窗。
+//   防淹没策略改为：
+//     · banner 后端本身只返回最多 5 条未读，不会无限弹屏
+//     · seenIds 只在用户主动点击"关闭弹窗"或"标记已读"后写入，下次轮询不再重复弹
+//     · 标记已读后这条本来就不在 banner 里了，自然消失
+//
 // 设计：
 //   - 在 App 顶层挂载（任何登录后页面都生效），不依赖时间线/消息中心 tab
 //   - 启动后立即拉一次 banner，并每 60s 轮询一次未读
-//   - 发现新的 message id（不在本会话 seenIds 内）→ 加入弹窗队列
+//   - 发现 banner 中没在本会话 seenIds 里的消息 → 加入弹窗队列
 //   - 当前展示队列首条；用户两种选择：
 //       「关闭弹窗」：仅本会话隐藏，不调 markRead，下次刷新还会再弹
 //       「标记已读」：调 messagesAPI.markRead，从队列移除并永久不再弹
 //   - 多条新消息按时间倒序依次弹（关闭一条立即弹下一条）
-//   - 启动时把首次拉到的「初始未读」全部加入 seenIds，避免老消息把用户淹没
-//     —— 仅"启动之后新发布的消息"才会触发弹窗
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCheck, X } from 'lucide-react'
 import { messagesAPI } from '../services/api'
 import { useTheme } from '../context/ThemeContext'
-import MessageDetailModal, { renderMarkdown } from './MessageDetailModal'
+import { renderMarkdown } from './MessageDetailModal'
 
 const POLL_INTERVAL_MS = 60 * 1000 // 60s 轮询一次
 
-// 是否已通过 sessionStorage 看过启动初值（避免在登录后立即被一堆历史未读弹屏）
+// 用 sessionStorage 在同一会话内（同 tab 不刷新）记忆"已经被处理过的弹窗 id"
+// 关掉浏览器/重新登录会自然清空，未读消息会再次弹一次（这是想要的行为）
 const SEEN_KEY = 'msg_global_popup_seen_ids_v1'
 const loadSeen = () => {
   try {
@@ -32,15 +41,15 @@ const saveSeen = (set) => {
 }
 
 const MessageGlobalPopup = ({ enabled = true }) => {
-  const { tokens } = useTheme()
+  const { tokens, isDark } = useTheme()
   // 弹窗队列（待展示的新消息）
   const [queue, setQueue] = useState([])
   // 当前正在展示的那一条
   const [active, setActive] = useState(null)
-  // 这个会话内已经"见过"（弹过 / 主动关闭 / 标记已读）的 id，下次轮询不再触发弹窗
+  // 这个会话内已经主动"关闭/标记已读"的 id，下次轮询不再触发弹窗
   const seenRef = useRef(loadSeen())
-  // 防止"启动后第一次拉到的全部未读"统统被当作"新消息"弹给用户
-  const initializedRef = useRef(false)
+  // 已经入队的 id（避免同一轮多次入队 + 跨轮询重复入队）
+  const queuedRef = useRef(new Set())
 
   const persistSeen = useCallback(() => {
     saveSeen(seenRef.current)
@@ -53,27 +62,18 @@ const MessageGlobalPopup = ({ enabled = true }) => {
       const list = Array.isArray(res) ? res : (res?.data ?? [])
       if (!Array.isArray(list)) return
 
-      if (!initializedRef.current) {
-        // 首轮：把当前所有未读都视为"老的"，直接静默加入 seenIds，不弹窗
-        list.forEach(m => seenRef.current.add(m.id))
-        persistSeen()
-        initializedRef.current = true
-        return
-      }
-
-      // 后续轮询：找出真正"新"的消息（id 没在 seenIds 里）
-      const fresh = list.filter(m => !seenRef.current.has(m.id))
+      // 找出"新"的消息：banner 里有 + 未被本会话主动处理过 + 还未入队
+      const fresh = list.filter(m => !seenRef.current.has(m.id) && !queuedRef.current.has(m.id))
       if (fresh.length === 0) return
-      // 标记 seen（避免下次轮询重复入队）
-      fresh.forEach(m => seenRef.current.add(m.id))
-      persistSeen()
-      // 入队（按时间倒序入队，新消息优先弹）
+      // 标记已入队
+      fresh.forEach(m => queuedRef.current.add(m.id))
+      // 入队（按 banner 返回顺序，已是 pinned DESC + created_at DESC + id DESC）
       setQueue(prev => [...prev, ...fresh])
     } catch (e) {
       // 静默：消息接口故障不影响主流程
       console.warn('[MessageGlobalPopup] poll 失败:', e)
     }
-  }, [persistSeen])
+  }, [])
 
   useEffect(() => {
     if (!enabled) return
@@ -96,15 +96,22 @@ const MessageGlobalPopup = ({ enabled = true }) => {
     }
   }, [active, queue])
 
-  // 关闭弹窗（不标记已读）
+  // 关闭弹窗（不标记已读，但本会话内不再弹同一条）
   const handleDismiss = () => {
+    const cur = active
     setActive(null)
+    if (cur?.id != null) {
+      seenRef.current.add(cur.id)
+      persistSeen()
+    }
   }
   // 标记已读
   const handleMarkRead = async () => {
     const cur = active
     setActive(null)
     if (cur?.id != null) {
+      seenRef.current.add(cur.id)
+      persistSeen()
       try { await messagesAPI.markRead(cur.id) } catch { /* 忽略 */ }
     }
   }
@@ -138,7 +145,11 @@ const CustomMessageModal = ({ message, tokens, onDismiss, onMarkRead }) => {
     <div
       onClick={onDismiss}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+        position: 'fixed', inset: 0,
+        // 【新需求80-B】加深 backdrop + 背景模糊，确保下层内容不再透出
+        background: 'rgba(0,0,0,0.78)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
         padding: 16,
       }}

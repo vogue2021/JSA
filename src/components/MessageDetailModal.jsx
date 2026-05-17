@@ -139,7 +139,12 @@ const MessageDetailModal = ({ message, onClose }) => {
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+        position: 'fixed', inset: 0,
+        // 【新需求80-B】加深 backdrop，避免背景页面内容从透明缝隙透出影响阅读
+        background: 'rgba(0,0,0,0.78)',
+        // 足够强烈的背景虚化作为双保险（阅读面板本身仍然是纯色）
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
         padding: 16,
       }}
