@@ -6,6 +6,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { studentsAPI } from '../services/api';
+import { PACKAGE_OPTIONS, getPackageDisplayName, normalizePackageName } from '../utils/packageUtils';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { user, studentList, setStudentList, showNotification, getTeacherList, canEditStudent, requireEditPermission } = useApp();
@@ -72,7 +73,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     photo: studentInfo.photo || '',
     email: studentInfo.email || student.email || '',
     targetLevel: studentInfo.targetLevel || student.targetLevel || '修士',
-    packageName: studentInfo.packageName || '',
+    packageName: normalizePackageName(studentInfo.packageName || ''),
     packageEndDate: studentInfo.packageEndDate || '',
     academicAdvisorId: studentInfo.academicAdvisorId || '',
     // 【新需求68 任务1+2】顾问老师
@@ -83,8 +84,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     overseasCertifications: Array.isArray(studentInfo.overseasCertifications) ? studentInfo.overseasCertifications : [],
   });
 
-  // 套餐列表（与实际数据保持一致）
-  const packageOptions = ['私塾', '校内考专家 1+2', '校内考专家 1+2+3', '丁老师规划 1+2', '丁老师规划 1+2+3', 'VIP'];
+  // 套餐列表（新需求81：1+2 → 1，1+2+3 → 1+2，括号备注旧名）
+  const packageOptions = PACKAGE_OPTIONS;
 
   // 套餐状态计算
   const getPackageStatus = () => {
@@ -118,7 +119,7 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       photo: info.photo || '',
       email: info.email || student.email || '',
       targetLevel: info.targetLevel || student.targetLevel || '修士',
-      packageName: info.packageName || '',
+      packageName: normalizePackageName(info.packageName || ''),
       packageEndDate: info.packageEndDate || '',
       academicAdvisorId: info.academicAdvisorId || '',
       // 【新需求68】顾问老师同步初始化
@@ -555,14 +556,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#fff', color: tokens.colors.text.primary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : undefined }}>
                     <option value="">请选择套餐</option>
-                    {packageOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    {packageOptions.map(opt => <option key={opt} value={opt}>{getPackageDisplayName(opt)}</option>)}
                   </select>
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium mb-1" style={{ color: tokens.colors.text.muted }}>套餐名称</label>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium" style={{ color: tokens.colors.text.primary }}>{formData.packageName || '-'}</span>
+                    <span className="font-medium" style={{ color: tokens.colors.text.primary }}>{formData.packageName ? getPackageDisplayName(formData.packageName) : '-'}</span>
                     {formData.packageName && getPackageStatus() && (
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
                         background: getPackageStatus() === 'expired'

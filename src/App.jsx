@@ -36,6 +36,7 @@ import OnboardingTour from './components/common/OnboardingTour';
 import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF, exportTimelineToPDF, copyTimelineToText, copyChecklistToText } from './utils/exportUtils';
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
+import { getPackageDisplayName } from './utils/packageUtils';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 // AuthPage 已拆分到 src/components/AuthPage.jsx
@@ -2712,7 +2713,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                             )}
                             {student.packageName && (
                               <div className="text-xs" style={{ color: isDark ? '#a78bfa' : '#7c3aed' }}>
-                                📦 {student.packageName}
+                                📦 {getPackageDisplayName(student.packageName)}
                               </div>
                             )}
                           </div>
@@ -2851,7 +2852,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                         <span>进度: {student.progress}%</span>
                         {user.role === 'admin' && <span>老师: {getTeacherList().find(t => t.id === student.teacherId)?.name || '待分配'}</span>}
                         {user.role === 'admin' && student.academicAdvisorId && <span>学管: {getTeacherList().find(t => t.id === student.academicAdvisorId)?.name || '-'}</span>}
-                        {student.packageName && <span style={{ color: isDark ? '#a78bfa' : '#7c3aed' }}>📦 {student.packageName}</span>}
+                        {student.packageName && <span style={{ color: isDark ? '#a78bfa' : '#7c3aed' }}>📦 {getPackageDisplayName(student.packageName)}</span>}
                         {student.urgentTasks > 0 && <span className="text-red-600">{student.urgentTasks}个紧急</span>}
                       </div>
                     </div>
