@@ -662,7 +662,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
-                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
+                      {/* 【新需求85】列名改为「考试月份」，与录入精度保持一致 */}
+                      <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试月份</th>
                       <th className="px-3 py-2 text-left font-medium text-themed-secondary">级别</th>
                       <th className="px-3 py-2 text-left font-medium text-themed-secondary">分数</th>
                       {isEditing && <th className="px-3 py-2"></th>}
@@ -671,7 +672,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                   <tbody>
                     {formData.jlptScores.map((s, i) => (
                       <tr key={i} className="border-t">
-                        <td className="px-3 py-2">{s.date || '-'}</td>
+                        {/* 【新需求85】兼容历史 YYYY-MM-DD 数据，截取前 7 位仅显示到月份 */}
+                        <td className="px-3 py-2">{s.date ? String(s.date).slice(0, 7) : '-'}</td>
                         <td className="px-3 py-2 font-semibold" style={{ color: '#3b82f6' }}>{s.level || '-'}</td>
                         <td className="px-3 py-2">{s.score || '-'}</td>
                         {isEditing && (
@@ -694,7 +696,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               <div className="bg-themed-elevated rounded-lg p-4">
                 <p className="text-sm font-medium text-themed-secondary mb-3">添加 JLPT 成绩</p>
                 <div className={`${isMobile ? 'grid grid-cols-2 gap-2' : 'flex gap-3 flex-wrap'}`}>
-                  <input type="date" className="px-3 py-2 border rounded-lg text-sm w-full" placeholder="考试日期"
+                  {/* 【新需求85】考试日期只记录到月份（YYYY-MM），不再细化到日 */}
+                  <input type="month" className="px-3 py-2 border rounded-lg text-sm w-full" placeholder="考试月份"
                     id="newJlptDate" />
                   <select className="px-3 py-2 border rounded-lg text-sm w-full" id="newJlptLevel" defaultValue="N1">
                     <option value="N1">N1</option>
@@ -798,7 +801,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                   {formData.ejuScores.map(score => (
                     <div key={score.id} className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{score.date}</span>
+                        {/* 【新需求85】EJU 移动端卡片日期只显示到月份（兼容历史 YYYY-MM-DD 数据） */}
+                        <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{score.date ? String(score.date).slice(0, 7) : ''}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-lg font-bold" style={{ color: '#3b82f6' }}>{score.totalScore}分</span>
                           {isEditing && (
@@ -824,7 +828,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                   <table className="w-full text-sm">
                     <thead>
                       <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
-                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试日期</th>
+                        {/* 【新需求85】EJU 桌面端列名改为「考试月份」 */}
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试月份</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">总分</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语记述</th>
@@ -837,7 +842,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     <tbody>
                       {formData.ejuScores.map(score => (
                         <tr key={score.id} className="border-t">
-                          <td className="px-3 py-2">{score.date}</td>
+                          {/* 【新需求85】EJU 桌面端日期只显示到月份（兼容历史 YYYY-MM-DD 数据） */}
+                          <td className="px-3 py-2">{score.date ? String(score.date).slice(0, 7) : ''}</td>
                           <td className="px-3 py-2 font-semibold text-blue-600">{score.totalScore}</td>
                           <td className="px-3 py-2">{score.japanese || '-'}</td>
                           <td className="px-3 py-2">{score.descriptive || '-'}</td>
@@ -867,9 +873,10 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               <div className="bg-themed-elevated rounded-lg p-4">
                 <p className="text-sm font-medium text-themed-secondary mb-3">添加 EJU 成绩</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <input type="date" value={newEjuScore.date}
+                  {/* 【新需求85】EJU 考试日期只记录到月份（YYYY-MM） */}
+                  <input type="month" value={newEjuScore.date}
                     onChange={e => setNewEjuScore({...newEjuScore, date: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="考试日期" />
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="考试月份" />
                   <input type="number" value={newEjuScore.totalScore}
                     onChange={e => setNewEjuScore({...newEjuScore, totalScore: e.target.value})}
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="总分" />
