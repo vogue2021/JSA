@@ -211,6 +211,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         consultant_id: formData.consultantId,
         has_china_high_school_record: formData.hasChinaHighSchoolRecord,
         overseas_certifications: formData.overseasCertifications,
+        // 【新需求84】保存目标学位（学部/修士/博士），修复刷新后回退到默认值的 bug
+        target_level: formData.targetLevel,
       });
     } catch (err) {
       console.error('保存学生信息失败:', err);

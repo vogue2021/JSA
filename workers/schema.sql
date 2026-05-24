@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS students (
   xuebang_id TEXT DEFAULT '',
   has_china_high_school_record TEXT DEFAULT '',
   overseas_certifications TEXT DEFAULT '[]',
+  -- 【新需求84】目标学位（学部/修士/博士），默认 '修士' 与前端兜底一致
+  target_level TEXT DEFAULT '修士',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

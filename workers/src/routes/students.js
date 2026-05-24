@@ -69,6 +69,8 @@ function formatStudent(row) {
     xuebangId: row.xuebang_id || '',
     hasChinaHighSchoolRecord: row.has_china_high_school_record || '',
     overseasCertifications: (() => { try { return JSON.parse(row.overseas_certifications || '[]') } catch { return [] } })(),
+    // 【新需求84】目标学位（学部/修士/博士）。row.target_level 列在旧库可能不存在，做兜底为 '修士'
+    targetLevel: row.target_level || '修士',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -320,8 +322,8 @@ students.post('/', async (c) => {
     db.prepare(
       `INSERT INTO students (student_id, user_id, name, email, teacher_id, academic_advisor_id, consultant_id,
         birthday, high_school, language_school, jlpt_score, english_score, eju_scores,
-        follow_up_notes, package_name, package_end_date, tags, subject, has_account)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        follow_up_notes, package_name, package_end_date, tags, subject, has_account, target_level)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       studentIdStr, userId, body.name, emailStr,
       teacherId, body.academic_advisor_id || '', body.consultant_id || '',
@@ -331,7 +333,9 @@ students.post('/', async (c) => {
       typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes || []),
       body.package_name || '', body.package_end_date || '',
       JSON.stringify(body.tags || []), body.subject || '',
-      hasAccount
+      hasAccount,
+      // 【新需求84】创建学生时同步写入目标学位，未传则默认 '修士'
+      body.target_level || '修士'
     )
   ]
   if (wantsAccount) {
@@ -390,7 +394,9 @@ students.put('/:id', async (c) => {
     'lang_school_shift', 'phone',
     'jlpt_score', 'english_score', 'photo',
     'package_name', 'package_end_date', 'subject',
-    'has_china_high_school_record']
+    'has_china_high_school_record',
+    // 【新需求84】允许更新目标学位（学部/修士/博士）
+    'target_level']
 
   updatable.forEach(f => {
     if (body[f] !== undefined) { fields.push(`${f} = ?`); params.push(body[f]) }
