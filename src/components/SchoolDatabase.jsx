@@ -280,6 +280,8 @@ const SchoolDatabase = () => {
     const DATE_SUBFIELDS = [
       'label',
       'applicationStartDate', 'applicationEndDate',
+      // 【新需求87】出愿截止类型（消印有效 / 必着 / 当面受付 / 其他）
+      'deadlineType',
       'examDate', 'resultDate',
       'firstExamDate', 'firstResultDate',
       'secondExamDate', 'secondResultDate',
@@ -668,7 +670,7 @@ const SchoolDatabase = () => {
                             )}
                             {dateGroup.applicationEndDate && (
                               <div className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
-                                <Calendar size={12} /> 出愿截止: {dateGroup.applicationEndDate}
+                                <Calendar size={12} /> 出愿截止: {dateGroup.applicationEndDate}{dateGroup.deadlineType ? ` (${dateGroup.deadlineType})` : ''}
                               </div>
                             )}
                             {dateGroup.firstExamDate && (
@@ -713,7 +715,7 @@ const SchoolDatabase = () => {
                   </div>
                 )}
                 {school.requirements && (
-                  <div><h5 className="text-sm font-medium text-themed-secondary mb-1">申请要求</h5><p className="text-sm text-themed-primary">{school.requirements}</p></div>
+                  <div><h5 className="text-sm font-medium text-themed-secondary mb-1">申请要求</h5><p className="text-sm text-themed-primary whitespace-pre-line">{school.requirements}</p></div>
                 )}
                 {/* 所需材料 */}
                 {school.requiredMaterials && school.requiredMaterials.length > 0 && (
@@ -729,7 +731,7 @@ const SchoolDatabase = () => {
                   </div>
                 )}
                 {school.notes && (
-                  <div><h5 className="text-sm font-medium text-themed-secondary mb-1">备注</h5><p className="text-sm text-themed-primary">{school.notes}</p></div>
+                  <div><h5 className="text-sm font-medium text-themed-secondary mb-1">备注</h5><p className="text-sm text-themed-primary whitespace-pre-line">{school.notes}</p></div>
                 )}
                 {school.requirementsUrl && (
                   <div>
@@ -835,6 +837,8 @@ const SchoolDatabase = () => {
                       label: nextLabel,
                       applicationStartDate: '',
                       applicationEndDate: '',
+                      // 【新需求87】出愿截止类型（消印有効 / 必着 / 当面受付）
+                      deadlineType: '',
                       examDate: '',
                       resultDate: '',
                       // 【新需求45】新增一审/二审考试 & 发表时间
@@ -893,6 +897,26 @@ const SchoolDatabase = () => {
                             setFormData({...formData, importantDates: dates});
                           }}
                           className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      </div>
+                      {/* 【新需求87】出愿截止类型（消印有効 / 必着 / 当面受付） */}
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-themed-secondary">
+                          出愿截止类型
+                          <span className="text-themed-muted ml-1">（日本：消印 / 必着 / 当面受付）</span>
+                        </label>
+                        <select value={dateGroup.deadlineType || ''}
+                          onChange={e => {
+                            const dates = [...(formData.importantDates || [])];
+                            dates[gi] = { ...dates[gi], deadlineType: e.target.value };
+                            setFormData({...formData, importantDates: dates});
+                          }}
+                          className="w-full px-3 py-2 border rounded-lg text-sm">
+                          <option value="">未指定</option>
+                          <option value="消印有効">消印有効（邮戳有效）</option>
+                          <option value="必着">必着（必送达）</option>
+                          <option value="当面受付">当面受付（当面递交）</option>
+                          <option value="其他">其他</option>
+                        </select>
                       </div>
                       {/* 【新需求45】一审考试 / 发表时间 */}
                       <div>

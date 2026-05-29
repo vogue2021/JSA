@@ -309,7 +309,7 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                       {dates.map((dg, gi) => {
                                         const items = [
                                           { k: '出愿开始', v: dg.applicationStartDate || dg.application_start_date, c: '#22c55e' },
-                                          { k: '出愿截止', v: dg.applicationEndDate || dg.application_end_date, c: '#ef4444' },
+                                          { k: '出愿截止', v: dg.applicationEndDate || dg.application_end_date, c: '#ef4444', extra: dg.deadlineType || dg.deadline_type },
                                           { k: '一审考试', v: dg.firstExamDate || dg.first_exam_date, c: '#0ea5e9' },
                                           { k: '一审发表', v: dg.firstResultDate || dg.first_result_date, c: '#14b8a6' },
                                           { k: '二审考试', v: dg.secondExamDate || dg.second_exam_date, c: '#ec4899' },
@@ -329,7 +329,7 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                               {items.map((it, i) => (
                                                 <span key={i} style={{ color: tokens.colors.text.muted }}>
                                                   <span style={{ color: it.c }}>●</span> {it.k}:{' '}
-                                                  <span style={{ color: tokens.colors.text.secondary, fontWeight: 500 }}>{it.v}</span>
+                                                  <span style={{ color: tokens.colors.text.secondary, fontWeight: 500 }}>{it.v}{it.extra ? ` (${it.extra})` : ''}</span>
                                                 </span>
                                               ))}
                                             </div>
@@ -456,7 +456,7 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                           <div className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.secondary }}>{dg.label || `第${gi+1}审`}</div>
                           <div className="grid grid-cols-2 gap-2">
                             {asd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div><div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{asd}</div></div>}
-                            {aed && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{aed}</div></div>}
+                            {aed && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{aed}</div>{dg.deadlineType && <div className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>{dg.deadlineType}</div>}</div>}
                             {fxd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>一审考试</div><div className="text-sm font-semibold" style={{ color: '#0ea5e9' }}>{fxd}</div></div>}
                             {frd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>一审发表</div><div className="text-sm font-semibold" style={{ color: '#14b8a6' }}>{frd}</div></div>}
                             {sxd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>二审考试</div><div className="text-sm font-semibold" style={{ color: '#ec4899' }}>{sxd}</div></div>}
@@ -478,10 +478,23 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                 })()}
               </div>
               {/* 录取信息 */}
-              {(detailSchool.acceptanceRate || detailSchool.requirements) && (
+              {detailSchool.acceptanceRate && (
                 <div className="flex items-center gap-4 text-sm" style={{ color: tokens.colors.text.secondary }}>
-                  {detailSchool.acceptanceRate && <span>录取率: <strong>{detailSchool.acceptanceRate}</strong></span>}
-                  {detailSchool.requirements && <span>要求: {detailSchool.requirements}</span>}
+                  <span>录取率: <strong>{detailSchool.acceptanceRate}</strong></span>
+                </div>
+              )}
+              {/* 【新需求87】申请要求（支持换行显示） */}
+              {detailSchool.requirements && (
+                <div>
+                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>申请要求</h5>
+                  <p className="text-sm whitespace-pre-line" style={{ color: tokens.colors.text.secondary }}>{detailSchool.requirements}</p>
+                </div>
+              )}
+              {/* 【新需求87】备注（支持换行显示） */}
+              {detailSchool.notes && (
+                <div>
+                  <h5 className="text-xs font-semibold mb-1" style={{ color: tokens.colors.text.muted }}>备注</h5>
+                  <p className="text-sm whitespace-pre-line" style={{ color: tokens.colors.text.secondary }}>{detailSchool.notes}</p>
                 </div>
               )}
               {/* 招生学部 */}

@@ -246,6 +246,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
           applicationEndDate: s.application_end_date,
           examDate: s.exam_date,
           resultDate: s.result_date,
+          // 【新需求87】出愿截止类型（消印有効 / 必着 / 当面受付）从 extra_dates 解包
+          deadlineType: extra.deadlineType || s.deadline_type || '',
           requirementsUrl: s.requirements_url || '',
           teacherNotes: s.teacher_notes || '',
           materials: Array.isArray(s.materials) ? s.materials : [],
@@ -1328,6 +1330,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
         secondExamDate: extra.secondExamDate || '',
         secondResultDate: extra.secondResultDate || '',
         customDates: Array.isArray(extra.customDates) ? extra.customDates : [],
+        // 【新需求87】出愿截止类型回显
+        deadlineType: editingSchool.deadlineType || extra.deadlineType || '',
       };
     }
     return {
@@ -1339,6 +1343,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       status: 'preparing',
       applicationStartDate: '',
       applicationEndDate: '',
+      // 【新需求87】出愿截止类型（消印有効 / 必着 / 当面受付）
+      deadlineType: '',
       examDate: '',
       resultDate: '',
       // 【新需求45】一审/二审考试时间 & 发表时间（从学校信息库对应学部自动填充）
@@ -1462,6 +1468,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
         program: (fullSchool.programs && fullSchool.programs[0]) || prev.program,
         applicationStartDate: firstDateGroup.applicationStartDate || firstDateGroup.application_start_date || prev.applicationStartDate,
         applicationEndDate: firstDateGroup.applicationEndDate || firstDateGroup.application_end_date || prev.applicationEndDate,
+        // 【新需求87】出愿截止类型从信息库首组自动带出
+        deadlineType: firstDateGroup.deadlineType || firstDateGroup.deadline_type || prev.deadlineType || '',
         examDate: firstDateGroup.examDate || firstDateGroup.exam_date || prev.examDate,
         resultDate: firstDateGroup.resultDate || firstDateGroup.result_date || prev.resultDate,
         // 【新需求45】一审/二审/发表时间 & 自定义日期，同步首组默认值
@@ -1495,6 +1503,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
         secondExamDate: formData.secondExamDate || '',
         secondResultDate: formData.secondResultDate || '',
         customDates: Array.isArray(formData.customDates) ? formData.customDates : [],
+        // 【新需求87】出愿截止类型随 extra_dates 一起持久化
+        deadlineType: formData.deadlineType || '',
       };
 
       const schoolData = {
@@ -1543,6 +1553,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                 secondExamDate: jp.secondExamDate || '',
                 secondResultDate: jp.secondResultDate || '',
                 customDates: Array.isArray(jp.customDates) ? jp.customDates : [],
+                // 【新需求87】并愿子学部也带上出愿截止类型
+                deadlineType: jp.deadlineType || '',
               };
               const jointSchoolData = {
                 student_id: currentStudent?.studentId,
@@ -1760,6 +1772,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                             program: dg.label || prev.program,
                             applicationStartDate: dg.applicationStartDate || prev.applicationStartDate || '',
                             applicationEndDate: dg.applicationEndDate || prev.applicationEndDate || '',
+                            // 【新需求87】选择学部后自动带出出愿截止类型
+                            deadlineType: dg.deadlineType || dg.deadline_type || prev.deadlineType || '',
                             examDate: dg.examDate || prev.examDate || '',
                             resultDate: dg.resultDate || prev.resultDate || '',
                             firstExamDate: dg.firstExamDate || '',
@@ -1862,6 +1876,25 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                     required
                   />
                 </div>
+              </div>
+
+              {/* 【新需求87】出愿截止类型（消印有效 / 必着 / 当面受付） */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  出愿截止类型
+                  <span className="text-xs ml-2" style={{ color: tokens.colors.text.muted }}>（日本：消印有效 / 必着 / 当面受付）</span>
+                </label>
+                <select
+                  value={formData.deadlineType || ''}
+                  onChange={(e) => setFormData({...formData, deadlineType: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">未指定</option>
+                  <option value="消印有效">消印有效（邮戳有效）</option>
+                  <option value="必着">必着（必送达）</option>
+                  <option value="当面受付">当面受付（当面递交）</option>
+                  <option value="其他">其他</option>
+                </select>
               </div>
 
               {/* 【新需求45】一审考试时间 / 一审发表时间 */}
@@ -2049,6 +2082,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                                           program: dg.label || list[idx].program,
                                           applicationStartDate: dg.applicationStartDate || list[idx].applicationStartDate || '',
                                           applicationEndDate: dg.applicationEndDate || list[idx].applicationEndDate || '',
+                                          // 【新需求87】并愿第 N 个学部选择后自动带出出愿截止类型
+                                          deadlineType: dg.deadlineType || dg.deadline_type || list[idx].deadlineType || '',
                                           examDate: dg.examDate || list[idx].examDate || '',
                                           resultDate: dg.resultDate || list[idx].resultDate || '',
                                           firstExamDate: dg.firstExamDate || '',
