@@ -897,17 +897,21 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     }
 
     if (school.applicationEndDate) {
+      // 【新需求88】在时间线事件中附带出愿截止类型，以便PDF导出、复制文本、ICS 导出都能包含
+      const deadlineTypeSuffix = school.deadlineType ? `（${school.deadlineType}）` : '';
       eventsToAdd.push({
         id: Date.now() + Math.random() + 1,
         type: 'deadline',
-        title: `${school.name} 出愿截止`,
+        title: `${school.name} 出愿截止${deadlineTypeSuffix}`,
         date: school.applicationEndDate,
         daysLeft: calculateDaysLeft(school.applicationEndDate),
         category: '出愿',
         urgent: true,
-        notes: `${school.program} 出愿截止，务必在此之前提交`,
+        notes: `${school.program} 出愿截止${deadlineTypeSuffix}，务必在此之前提交`,
         completed: false,
-        schoolId: school.id
+        schoolId: school.id,
+        // 【新需求88】事件上决持出愿截止类型，时间线 UI 可直接读取显示
+        deadlineType: school.deadlineType || ''
       });
     }
 
@@ -4559,6 +4563,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   <div className="p-2 rounded" style={{ background: isDark ? 'rgba(249,115,22,0.1)' : 'rgba(249,115,22,0.06)' }}>
                     <div className="text-xs" style={{ color: isDark ? '#fdba74' : '#ea580c' }}>出愿截止</div>
                     <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.applicationEndDate}</div>
+                    {/* 【新需求88】出愿截止类型（消印 / 必着 / 当面受付） */}
+                    {school.deadlineType && (
+                      <div className="text-[11px] mt-0.5 font-medium" style={{ color: isDark ? '#fdba74' : '#c2410c' }}>{school.deadlineType}</div>
+                    )}
                   </div>
                   <div className="p-2 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}>
                     <div className="text-xs" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>考试日期</div>
@@ -5887,6 +5895,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(249,115,22,0.1)' : 'rgba(249,115,22,0.06)' }}>
                         <div className="text-xs" style={{ color: isDark ? '#fdba74' : '#ea580c' }}>出愿截止</div>
                         <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{schoolDetailModal.applicationEndDate}</div>
+                        {/* 【新需求88】详情弹窗中双同场景显示出愿截止类型 */}
+                        {schoolDetailModal.deadlineType && (
+                          <div className="text-[11px] mt-1 font-medium" style={{ color: isDark ? '#fdba74' : '#c2410c' }}>{schoolDetailModal.deadlineType}</div>
+                        )}
                       </div>
                     )}
                     {schoolDetailModal.examDate && (

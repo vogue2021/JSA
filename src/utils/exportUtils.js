@@ -57,10 +57,11 @@ export const exportStudentToCSV = (student, studentData) => {
   const schools = studentData?.schools || [];
   if (schools.length > 0) {
     rows.push(['志愿学校']);
-    rows.push(['学校名称', '类型', '学部/专业', '状态', '出愿开始', '出愿截止', '考试日期', '合格发表']);
+    // 【新需求88】导出时新增"出愿截止类型"列（消印 / 必着 / 当面受付）
+    rows.push(['学校名称', '类型', '学部/专业', '状态', '出愿开始', '出愿截止', '出愿截止类型', '考试日期', '合格发表']);
     schools.forEach(s => {
       rows.push([s.name, s.type, s.program, getStatusText(s.status),
-        s.applicationStartDate, s.applicationEndDate, s.examDate, s.resultDate]);
+        s.applicationStartDate, s.applicationEndDate, s.deadlineType || '', s.examDate, s.resultDate]);
     });
     rows.push(['']);
   }

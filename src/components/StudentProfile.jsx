@@ -344,7 +344,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         }
       };
       pushIfMissing(`${s.name} 出愿开始`, s.applicationStartDate || s.application_start_date);
-      pushIfMissing(`${s.name} 出愿截止`, s.applicationEndDate || s.application_end_date);
+      // 【新需求88】出愿截止类型（消印 / 必着 / 当面受付）作为后缀拼到事件标题
+      const dlType = s.deadlineType || extra.deadlineType || s.deadline_type || '';
+      pushIfMissing(`${s.name} 出愿截止${dlType ? `（${dlType}）` : ''}`, s.applicationEndDate || s.application_end_date);
       pushIfMissing(`${s.name} 入学考试`, s.examDate || s.exam_date, 'exam');
       pushIfMissing(`${s.name} 合格发表`, s.resultDate || s.result_date);
       pushIfMissing(`${s.name} 一审考试`, s.firstExamDate || extra.firstExamDate, 'exam');
