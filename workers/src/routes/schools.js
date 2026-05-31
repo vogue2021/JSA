@@ -381,9 +381,19 @@ schools.post('/', async (c) => {
     days_left: Math.ceil((new Date(date) - new Date()) / 86400000)
   })
 
+  // 【新需求90】出愿截止类型从 extra_dates 取出，拼接到事件 title/notes（全链路贯通场景）
+  let deadlineTypeForTitle = ''
+  try {
+    const extraObjForDl = typeof extraDatesJson === 'string' ? JSON.parse(extraDatesJson || '{}') : (extraDatesJson || {})
+    if (extraObjForDl && typeof extraObjForDl.deadlineType === 'string' && extraObjForDl.deadlineType.trim()) {
+      deadlineTypeForTitle = extraObjForDl.deadlineType.trim()
+    }
+  } catch (e) { /* ignore */ }
+  const dlSuffix = deadlineTypeForTitle ? `（${deadlineTypeForTitle}）` : ''
+
   const eventInserts = []
   if (application_start_date) eventInserts.push(makeEvent(`${name} 出愿开始`, application_start_date, '出愿', false, `${program} 出愿开始，请准备材料`))
-  if (application_end_date) eventInserts.push(makeEvent(`${name} 出愿截止`, application_end_date, '出愿', true, `${program} 出愿截止，务必在此之前提交`))
+  if (application_end_date) eventInserts.push(makeEvent(`${name} 出愿截止${dlSuffix}`, application_end_date, '出愿', true, `${program} 出愿截止${dlSuffix}，务必在此之前提交`))
   if (exam_date) eventInserts.push(makeEvent(`${name} 入学考试`, exam_date, '考试', false, `${program} 入学考试`))
   if (result_date) eventInserts.push(makeEvent(`${name} 合格发表`, result_date, '合格发表', false, `${program} 合格发表日`))
 
@@ -497,9 +507,19 @@ schools.put('/:id', async (c) => {
     days_left: Math.ceil((new Date(date) - new Date()) / 86400000)
   })
 
+  // 【新需求90】同步处理 PUT 路径下的出愿截止类型拼接
+  let deadlineTypeForTitleU = ''
+  try {
+    const extraObjU = typeof updated.extra_dates === 'string' ? JSON.parse(updated.extra_dates || '{}') : (updated.extra_dates || {})
+    if (extraObjU && typeof extraObjU.deadlineType === 'string' && extraObjU.deadlineType.trim()) {
+      deadlineTypeForTitleU = extraObjU.deadlineType.trim()
+    }
+  } catch (e) { /* ignore */ }
+  const dlSuffixU = deadlineTypeForTitleU ? `（${deadlineTypeForTitleU}）` : ''
+
   const eventInserts = []
   if (updated.application_start_date) eventInserts.push(makeEvent(`${updated.name} 出愿开始`, updated.application_start_date, '出愿', false, `${updated.program} 出愿开始，请准备材料`))
-  if (updated.application_end_date) eventInserts.push(makeEvent(`${updated.name} 出愿截止`, updated.application_end_date, '出愿', true, `${updated.program} 出愿截止，务必在此之前提交`))
+  if (updated.application_end_date) eventInserts.push(makeEvent(`${updated.name} 出愿截止${dlSuffixU}`, updated.application_end_date, '出愿', true, `${updated.program} 出愿截止${dlSuffixU}，务必在此之前提交`))
   if (updated.exam_date) eventInserts.push(makeEvent(`${updated.name} 入学考试`, updated.exam_date, '考试', false, `${updated.program} 入学考试`))
   if (updated.result_date) eventInserts.push(makeEvent(`${updated.name} 合格发表`, updated.result_date, '合格发表', false, `${updated.program} 合格发表日`))
 

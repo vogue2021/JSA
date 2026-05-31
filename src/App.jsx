@@ -206,6 +206,17 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       ]);
 
       // 将 API 返回的 events 转换为前端格式
+      // 【新需求90】出愿截止类型（消印有效/必着/当面受付）此前未入库 events 表，
+      //   导致重新加载后时间线/PDF/复制文本看不到这个字段。后端已把类型拼接到 event.title
+      //   后缀（如"早稲田 出愿截止（消印有效）"），前端这里按统一规则从 title 反向提取，
+      //   还原到 event.deadlineType，让 TimelineLinear 红色徽章 / exportUtils PDF 徽章
+      //   / copyTimelineToText 独立行 / ICS 都能命中。这样即使老数据未带后缀也只是缺失，不会报错。
+      const extractDeadlineType = (title) => {
+        if (!title || typeof title !== 'string') return ''
+        // 仅匹配"出愿截止（XXX）"形式，避免误伤"出愿截止前注意事项"这类自定义事件标题
+        const m = title.match(/出愿截止[（(]([^）)]+)[）)]\s*$/)
+        return m ? m[1].trim() : ''
+      }
       const events = Array.isArray(eventsData) ? eventsData.map(e => ({
         id: e.id,
         type: e.type,
@@ -217,6 +228,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         notes: e.notes || '',
         completed: Boolean(e.completed),
         schoolId: e.school_id || null,
+        // 【新需求90】优先用后端返回的 deadline_type 字段（若 D1 已迁移），否则从 title 后缀提取
+        deadlineType: e.deadline_type || extractDeadlineType(e.title),
       })) : [];
 
       // 将 API 返回的 schools 转换为前端格式
