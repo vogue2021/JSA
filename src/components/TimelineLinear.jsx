@@ -130,6 +130,17 @@ const TimelineLinear = ({ events, user, onToggleComplete, onEdit, onDelete }) =>
                           }}>
                             {event.daysLeft <= 0 ? '已过期' : `还剩 ${event.daysLeft} 天`}
                           </span>
+                          {/* 【新需求89 子任务3】出愿截止类型独立小徽章，避免只藏在标题后缀里被忽略 */}
+                          {event.deadlineType && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                              style={{
+                                background: isDark ? 'rgba(239,68,68,0.18)' : '#fee2e2',
+                                color: isDark ? '#fca5a5' : '#b91c1c',
+                                border: `1px solid ${isDark ? 'rgba(239,68,68,0.35)' : '#fecaca'}`,
+                              }}>
+                              {event.deadlineType}
+                            </span>
+                          )}
                         </div>
                         {event.notes && (
                           <p className="text-sm mt-2" style={{ color: tokens.colors.text.secondary }}>{event.notes}</p>

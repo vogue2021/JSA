@@ -170,10 +170,14 @@ const generateTimelineHTML = (student, events, schools) => {
             const daysClass = daysLeft !== '-' && daysLeft <= 7 && daysLeft >= 0 ? 'urgent' : '';
             const status = ev.completed ? '✓ 完成' : (ev.urgent ? '紧急' : '待办');
             const notesHTML = ev.notes ? `<div class="notes">${escapeHTML(ev.notes)}</div>` : '';
+            // 【新需求89 子任务3】出愿截止类型独立显示为徽章，避免只藏在标题后缀里容易被忽略
+            const dlBadge = ev.deadlineType
+              ? `<div class="dl-type">出愿截止类型：${escapeHTML(ev.deadlineType)}</div>`
+              : '';
             return `
               <tr class="${ev.completed ? 'done' : ''}">
                 <td>${ev.date || '-'}</td>
-                <td><strong>${escapeHTML(ev.title || '-')}</strong>${notesHTML}</td>
+                <td><strong>${escapeHTML(ev.title || '-')}</strong>${dlBadge}${notesHTML}</td>
                 <td class="${daysClass}">${daysText}</td>
                 <td>${status}</td>
               </tr>
@@ -205,6 +209,8 @@ const generateTimelineHTML = (student, events, schools) => {
   tr.done td { color: #9ca3af; text-decoration: line-through; }
   td.urgent { color: #dc2626; font-weight: 600; }
   .notes { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  /* 【新需求89 子任务3】出愿截止类型徽章 */
+  .dl-type { display: inline-block; margin-top: 4px; padding: 1px 6px; font-size: 11px; color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; border-radius: 4px; }
   .empty { text-align: center; padding: 40px; color: #9ca3af; }
   .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 10px; }
   @media print { body { padding: 0; } .no-print { display: none; } h2 { break-after: avoid; } tr { break-inside: avoid; } }
@@ -299,6 +305,8 @@ export const copyTimelineToText = async (student, events) => {
         daysLeft > 0 ? `（剩 ${daysLeft} 天）` : `（已过 ${Math.abs(daysLeft)} 天）`;
       const mark = ev.completed ? '✅' : (ev.urgent ? '⚠️' : '•');
       lines.push(`  ${mark} ${ev.date || '待定'} ${ev.title || ''} ${daysText}`);
+      // 【新需求89 子任务3】出愿截止类型独立一行，复制到微信后依然明显
+      if (ev.deadlineType) lines.push(`      出愿截止类型: ${ev.deadlineType}`);
       if (ev.notes) lines.push(`      备注: ${ev.notes}`);
     });
     lines.push('');

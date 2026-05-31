@@ -5,6 +5,8 @@ import {
   GraduationCap, School, AlertCircle, Plus
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+// 【新需求89 子任务1】学生搜索栏支持拼音 / 首字母简拼搜索
+import { matchByPinyin } from '../utils/pinyinUtils';
 
 const StudentListPage = ({
   user,
@@ -60,12 +62,13 @@ const StudentListPage = ({
   // 过滤
   const filteredStudents = useMemo(() => {
     return visibleStudents.filter(s => {
-      // 搜索
+      // 【新需求89 子任务1】搜索：姓名 / 学号 / 标签 同时支持中文 + 拼音 + 首字母简拼
+      // 例："zhang" → 张姓；"san" → 名字含"三"；"zs" → "张三"
       if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const nameMatch = s.name?.toLowerCase().includes(q);
-        const idMatch = s.studentId?.toLowerCase().includes(q);
-        const tagMatch = (s.tags || []).some(t => t.toLowerCase().includes(q));
+        const q = searchQuery;
+        const nameMatch = matchByPinyin(s.name, q);
+        const idMatch = matchByPinyin(s.studentId, q);
+        const tagMatch = (s.tags || []).some(t => matchByPinyin(t, q));
         if (!nameMatch && !idMatch && !tagMatch) return false;
       }
       // 按老师筛选（不再区分升学/学管，一个老师可能同时是升学和学管，只要 OR 匹配两个字段即可）
@@ -187,7 +190,7 @@ const StudentListPage = ({
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-themed-muted" />
             <input
               type="text"
-              placeholder="搜索学生姓名、学号或标签..."
+              placeholder="搜索姓名/学号/标签（支持拼音，如 zhang、san、zs）"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"

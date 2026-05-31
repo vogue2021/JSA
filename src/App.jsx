@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, School, FileText, CheckSquare, Plus,
   ChevronRight, AlertCircle, Edit, Users, LogOut, Save,
-  X, User, Bell, Search, Filter, Download, Upload,
+  X, User, Bell, Search, Filter, Download,
   Menu, ChevronDown, Eye, EyeOff, Trash2, Check, Edit2, UserCheck,
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
@@ -4696,21 +4696,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             </button>
             {(user.role === 'teacher' || user.role === 'admin') && (
               <>
-                <button
-                  onClick={() => {
-                    // 【新需求74 任务1】上传材料也属于编辑材料行为，需 edit_materials 权限。
-                    if (!requireEditPermission('materials', { student: currentStudent })) return;
-                    // 上传逻辑预留（与"添加材料"分开，由后续上传弹窗实现）
-                  }}
-                  disabled={!canEdit('materials')}
-                  title={!canEdit('materials') ? '您没有材料的编辑权限，请联系管理员开通' : '上传材料'}
-                  className="px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-2 text-sm"
-                  style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('materials') ? 1 : 0.5, cursor: canEdit('materials') ? 'pointer' : 'not-allowed' }}
-                  onMouseEnter={e => { if (canEdit('materials')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.15)' }}
-                  onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}>
-                  <Upload size={14} />
-                  上传材料
-                </button>
+                {/* 【新需求89 子任务2】移除"上传材料"按钮——上传功能未真正生效，先下线避免误用，
+                    保留"添加材料"用于手动录入材料项。后续如需真正的文件上传，再统一规划。 */}
                 <button
                   onClick={() => {
                     // 【新需求69】闸门：无 edit_materials 权限弹窗提示
