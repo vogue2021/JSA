@@ -290,6 +290,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         Object.entries(materialsData.schoolSpecific).forEach(([schoolName, mats]) => {
           schoolSpecific[schoolName] = mats.map(m => ({
             id: m.id,
+            // 【新需求91 任务1】保留 school_id：后端按学校 name 聚合，但併願场景下同 name 多学部
+            // 会让所有学部的材料挤进同一桶。编辑学校时需按 schoolId 精确过滤当前学部材料，
+            // 否则 PUT 提交时会把"同名其他学部"的材料一并 INSERT 给当前学部，再 reload
+            // 后聚合数会膨胀，每改一次状态材料就翻倍。
+            schoolId: m.school_id || null,
             item: m.item,
             completed: Boolean(m.completed),
             deadline: m.deadline,
@@ -1327,7 +1332,17 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
   // SchoolModal 的 state 提升到 MainApp 层级，避免 SchoolModal 因 MainApp 重渲染被卸载重挂载导致 state 丢失
   const getInitialSchoolFormData = () => {
     if (editingSchool) {
-      const existingMaterials = checklist?.schoolSpecific?.[editingSchool.name] || [];
+      // 【新需求91 任务1】Bug 修复：併願（同一学校多个学部）场景下，后端按学校 name 把
+      // 所有学部的材料聚合到同一桶 checklist.schoolSpecific[name]。编辑某个学部时若不
+      // 按 schoolId 过滤，formData.materials 就会包含其他学部材料；PUT 提交后端 DELETE
+      // + INSERT 会把它们写进当前学部，再 reload 又被聚合 → 桶里材料每改一次状态翻一倍。
+      // 这里加 schoolId 过滤兜底：旧数据没 schoolId 的（schoolId == null）走原行为。
+      const allMaterialsForName = checklist?.schoolSpecific?.[editingSchool.name] || [];
+      const existingMaterials = allMaterialsForName.filter(m =>
+        // 当前学部精确匹配；若 m 没有 schoolId（旧数据/兼容），且学校名下只有一组材料，则保留
+        (m.schoolId && m.schoolId === editingSchool.id)
+        || (!m.schoolId && allMaterialsForName.every(x => !x.schoolId))
+      );
       const materialsForForm = existingMaterials.map(m => ({
         name: m.item || m.name || '',
         deadline: m.deadline || '',
@@ -1608,12 +1623,131 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
           console.log('[学校保存诊断] 提交的 extra_dates:', extraDates);
           console.log('[学校保存诊断] 数据库 schema:', diag);
         } catch (e) { /* ignore */ }
-        // 重新从 API 加载数据
-        await loadStudentDataFromAPI(currentStudent?.studentId);
-        setShowSchoolModal(false);
-        setEditingSchool(null);
-        if (showNotification && !(formData.joint && (formData.jointPrograms || []).some(jp => jp && (jp.program || '').trim()))) {
-          showNotification(editingSchool ? '学校信息已更新' : '学校已添加');
+
+        // 【新需求91 任务2】UI 体验：编辑场景下不再 await 全量 loadStudentDataFromAPI 阻塞关闭弹窗，
+        // 改为「乐观更新当前学校卡片 → 立即关闭 Modal → 后台静默刷新 events/materials」。
+        // 用户感知：点保存后弹窗瞬间关闭，状态文本立即变化，无整页刷新感。
+        // 新增场景仍走全量 reload，因为本地 schools[] 缺新创建的项。
+        if (editingSchool) {
+          // 乐观更新：用 formData 直接 patch 本地 schools[id] 项
+          const patchedSchool = {
+            ...editingSchool,
+            name: formData.name,
+            nameJa: formData.nameJa,
+            type: formData.type,
+            location: formData.location,
+            acceptanceRate: formData.acceptanceRate,
+            program: formData.program,
+            status: formData.status,
+            applicationStartDate: formData.applicationStartDate,
+            applicationEndDate: formData.applicationEndDate,
+            examDate: formData.examDate,
+            resultDate: formData.resultDate,
+            requirementsUrl: formData.requirementsUrl,
+            requirements: formData.requirements,
+            teacherNotes: formData.teacherNotes,
+            deadlineType: formData.deadlineType || '',
+            firstExamDate: formData.firstExamDate || '',
+            firstResultDate: formData.firstResultDate || '',
+            secondExamDate: formData.secondExamDate || '',
+            secondResultDate: formData.secondResultDate || '',
+            customDates: Array.isArray(formData.customDates) ? formData.customDates : [],
+            extra_dates: extraDates,
+          };
+          const key = currentStudent?.studentId || 'default';
+          setStudentData(prev => {
+            const cur = prev?.[key] || { events: [], schools: [], checklist: { general: [], schoolSpecific: {} } };
+            return {
+              ...prev,
+              [key]: {
+                ...cur,
+                schools: (cur.schools || []).map(s => s.id === editingSchool.id ? patchedSchool : s),
+              },
+            };
+          });
+
+          setShowSchoolModal(false);
+          setEditingSchool(null);
+          if (showNotification) showNotification('学校信息已更新');
+
+          // 后台静默刷新 events / materials（PUT 时后端会重建这两份），不阻塞 UI
+          (async () => {
+            try {
+              const studentId = currentStudent?.studentId;
+              if (!studentId) return;
+              const [eventsData, materialsData] = await Promise.all([
+                apiReq(`/events/student/${studentId}`).catch(() => null),
+                apiReq(`/materials/student/${studentId}`).catch(() => null),
+              ]);
+
+              // 复用 loadStudentDataFromAPI 中的 deadlineType 反向提取规则（保持一致）
+              const extractDeadlineType = (title) => {
+                if (!title || typeof title !== 'string') return '';
+                const m = title.match(/出愿截止[（(]([^）)]+)[）)]\s*$/);
+                return m ? m[1].trim() : '';
+              };
+
+              setStudentData(prev => {
+                const cur = prev?.[key];
+                if (!cur) return prev;
+                const next = { ...cur };
+                if (Array.isArray(eventsData)) {
+                  next.events = eventsData.map(e => ({
+                    id: e.id,
+                    type: e.type,
+                    title: e.title,
+                    date: e.date,
+                    daysLeft: e.days_left,
+                    category: e.category,
+                    urgent: Boolean(e.urgent),
+                    notes: e.notes || '',
+                    completed: Boolean(e.completed),
+                    schoolId: e.school_id || null,
+                    deadlineType: e.deadline_type || extractDeadlineType(e.title),
+                  }));
+                }
+                if (materialsData) {
+                  const general = Array.isArray(materialsData.general) ? materialsData.general.map(m => ({
+                    id: m.id,
+                    item: m.item,
+                    completed: Boolean(m.completed),
+                    deadline: m.deadline,
+                    checkedBy: m.checked_by || null,
+                    checkedAt: m.checked_at || null,
+                    url: m.url || '',
+                  })) : (cur.checklist?.general || []);
+                  const schoolSpecific = {};
+                  if (materialsData.schoolSpecific) {
+                    Object.entries(materialsData.schoolSpecific).forEach(([schoolName, mats]) => {
+                      schoolSpecific[schoolName] = mats.map(m => ({
+                        id: m.id,
+                        // 【新需求91 任务1】保留 school_id 用于后续编辑学校时的精确过滤
+                        schoolId: m.school_id || null,
+                        item: m.item,
+                        completed: Boolean(m.completed),
+                        deadline: m.deadline,
+                        checkedBy: m.checked_by || null,
+                        checkedAt: m.checked_at || null,
+                        url: m.url || '',
+                      }));
+                    });
+                  }
+                  next.checklist = { general, schoolSpecific };
+                }
+                return { ...prev, [key]: next };
+              });
+            } catch (bgErr) {
+              console.warn('[学校保存] 后台刷新 events/materials 失败，下次切换学生时会自动恢复:', bgErr);
+            }
+          })();
+        } else {
+          // 新增场景：本地 schools 没有新创建项，必须 reload 一次完整数据
+          await loadStudentDataFromAPI(currentStudent?.studentId);
+          setShowSchoolModal(false);
+          setEditingSchool(null);
+          if (showNotification && !(formData.joint && (formData.jointPrograms || []).some(jp => jp && (jp.program || '').trim()))) {
+            showNotification('学校已添加');
+          }
         }
 
         // 【新需求49】持久化校验：若提交了 extra_dates 但诊断发现数据库列缺失，立即警告
