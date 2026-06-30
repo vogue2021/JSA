@@ -143,18 +143,35 @@ students.get('/', async (c) => {
   const { results } = await db.prepare(sql).bind(...params).all()
 
   // 批量查询所有学生的材料进度（一次 SQL，避免 N+1）
+  // 注意：Cloudflare D1 的 SQL 变量上限为 100，不能用 IN (?, ?, ...) 枚举学号，
+  //       否则学生数 ≥ 101 时会触发 "too many SQL variables" 直接 500。
+  //       这里改为按当前请求结果的学号集合，通过 SUBQUERY 让 D1 自行匹配，
+  //       完全不需要绑定 student_id 参数，从根本上规避变量上限问题。
   const studentIds = results.map(s => s.student_id)
   let materialProgressMap = {}
   if (studentIds.length > 0) {
-    const placeholders = studentIds.map(() => '?').join(',')
-    const { results: materialStats } = await db.prepare(`
-      SELECT student_id,
+    let progressSql = `
+      SELECT m.student_id,
         COUNT(*) as total,
-        SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done
-      FROM materials
-      WHERE student_id IN (${placeholders})
-      GROUP BY student_id
-    `).bind(...studentIds).all()
+        SUM(CASE WHEN m.completed = 1 THEN 1 ELSE 0 END) as done
+      FROM materials m
+      INNER JOIN students s ON s.student_id = m.student_id
+      WHERE s.is_active = 1
+    `
+    const progressParams = []
+    if (isTeacher(user)) {
+      const wantAll = c.req.query('all') === '1' && teacherHasPerm(user, 'view_all_students')
+      if (!wantAll) {
+        progressSql += ' AND (s.teacher_id = ? OR s.academic_advisor_id = ? OR s.consultant_id = ?)'
+        const tid = user.teacherId || '__none__'
+        progressParams.push(tid, tid, tid)
+      }
+    } else if (isStudent(user)) {
+      progressSql += ' AND s.student_id = ?'
+      progressParams.push(user.studentId || '__none__')
+    }
+    progressSql += ' GROUP BY m.student_id'
+    const { results: materialStats } = await db.prepare(progressSql).bind(...progressParams).all()
     materialStats.forEach(m => {
       materialProgressMap[m.student_id] = m.total > 0 ? Math.round(m.done / m.total * 100) : 0
     })
@@ -183,18 +200,21 @@ students.get('/teacher/:teacherId', async (c) => {
   ).bind(teacherId, teacherId, teacherId).all()
 
   // 批量查询材料进度
+  // 注意：Cloudflare D1 SQL 变量上限 100，避免使用 IN (?, ?, ...) 枚举学号，
+  //       改为 INNER JOIN 同样的过滤条件，完全不再绑定学号参数。
   const studentIds = results.map(s => s.student_id)
   let materialProgressMap = {}
   if (studentIds.length > 0) {
-    const placeholders = studentIds.map(() => '?').join(',')
     const { results: materialStats } = await db.prepare(`
-      SELECT student_id,
+      SELECT m.student_id,
         COUNT(*) as total,
-        SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done
-      FROM materials
-      WHERE student_id IN (${placeholders})
-      GROUP BY student_id
-    `).bind(...studentIds).all()
+        SUM(CASE WHEN m.completed = 1 THEN 1 ELSE 0 END) as done
+      FROM materials m
+      INNER JOIN students s ON s.student_id = m.student_id
+      WHERE s.is_active = 1
+        AND (s.teacher_id = ? OR s.academic_advisor_id = ? OR s.consultant_id = ?)
+      GROUP BY m.student_id
+    `).bind(teacherId, teacherId, teacherId).all()
     materialStats.forEach(m => {
       materialProgressMap[m.student_id] = m.total > 0 ? Math.round(m.done / m.total * 100) : 0
     })
