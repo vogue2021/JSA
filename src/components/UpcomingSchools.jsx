@@ -268,86 +268,33 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                           onMouseEnter={e => e.currentTarget.style.boxShadow = tokens.shadow.elevationHover}
                           onMouseLeave={e => e.currentTarget.style.boxShadow = glassCardStyle.boxShadow || 'none'}
                         >
-                          <div className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <div className={`w-2 h-2 rounded-full ${typeColor}`} />
-                                  <h4 className="font-bold truncate" style={{ color: tokens.colors.text.primary }}>{school.name}</h4>
-                    {(school.nameJa || school.name_ja) && (
-                                    <span className="text-xs truncate hidden sm:inline" style={{ color: tokens.colors.text.muted }}>{school.nameJa || school.name_ja}</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 text-xs mb-2" style={{ color: tokens.colors.text.muted }}>
-                                  {school.location && (
-                                    <span className="flex items-center gap-1"><MapPin size={12} />{school.location}</span>
-                                  )}
-                                  <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-                                    style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
-                                    {school.type}
-                                  </span>
-                                </div>
-                                {((school.xuexinCert || school.xuexin_cert) || (school.overseasCert || school.overseas_cert)) && (
-                                  <div className="flex flex-wrap gap-1">
-                                    <span className="text-xs px-2 py-0.5 rounded-full"
-                                      style={{ background: (school.xuexinCert || school.xuexin_cert) === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : (school.xuexinCert || school.xuexin_cert) === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: (school.xuexinCert || school.xuexin_cert) === '是' ? '#22c55e' : (school.xuexinCert || school.xuexin_cert) === '否' ? '#ef4444' : '#eab308' }}>
-                                      学信网:{(school.xuexinCert || school.xuexin_cert) || '不确定'}
-                                    </span>
-                                    <span className="text-xs px-2 py-0.5 rounded-full"
-                                      style={{ background: (school.overseasCert || school.overseas_cert) === '是' ? (isDark ? 'rgba(34,197,94,0.12)' : '#f0fdf4') : (school.overseasCert || school.overseas_cert) === '否' ? (isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2') : (isDark ? 'rgba(234,179,8,0.12)' : '#fefce8'), color: (school.overseasCert || school.overseas_cert) === '是' ? '#22c55e' : (school.overseasCert || school.overseas_cert) === '否' ? '#ef4444' : '#eab308' }}>
-                                      海外认证:{(school.overseasCert || school.overseas_cert) || '不确定'}
-                                    </span>
-                                  </div>
+                          <div className="p-3">
+                            {/* 【新需求93】精简卡片：默认只显示学校基础信息（名称、地区、类型），点击弹窗查看具体报考信息 */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${typeColor}`} />
+                                <h4 className="font-semibold truncate" style={{ color: tokens.colors.text.primary }}>{school.name}</h4>
+                                {(school.nameJa || school.name_ja) && (
+                                  <span className="text-xs truncate hidden md:inline" style={{ color: tokens.colors.text.muted }}>{school.nameJa || school.name_ja}</span>
                                 )}
-
-                                {/* 【新需求46】卡片上显示重要日期字段（按学部分组，展示本月及后续关键日期） */}
-                                {(() => {
-                                  const dates = school.importantDates || school.important_dates;
-                                  if (!Array.isArray(dates) || dates.length === 0) return null;
-                                  return (
-                                    <div className="mt-2 space-y-1.5">
-                                      {dates.map((dg, gi) => {
-                                        const items = [
-                                          { k: '出愿开始', v: dg.applicationStartDate || dg.application_start_date, c: '#22c55e' },
-                                          { k: '出愿截止', v: dg.applicationEndDate || dg.application_end_date, c: '#ef4444', extra: dg.deadlineType || dg.deadline_type },
-                                          { k: '一审考试', v: dg.firstExamDate || dg.first_exam_date, c: '#0ea5e9' },
-                                          { k: '一审发表', v: dg.firstResultDate || dg.first_result_date, c: '#14b8a6' },
-                                          { k: '二审考试', v: dg.secondExamDate || dg.second_exam_date, c: '#ec4899' },
-                                          { k: '二审发表', v: dg.secondResultDate || dg.second_result_date, c: '#d946ef' },
-                                          { k: '考试', v: dg.examDate || dg.exam_date, c: '#3b82f6' },
-                                          { k: '合格发表', v: dg.resultDate || dg.result_date, c: '#a855f7' },
-                                          ...(Array.isArray(dg.customDates) ? dg.customDates.filter(cd => cd && cd.label && cd.date).map(cd => ({ k: cd.label, v: cd.date, c: '#8b5cf6' })) : []),
-                                        ].filter(x => x.v);
-                                        if (items.length === 0) return null;
-                                        return (
-                                          <div key={gi} className="rounded-md px-2 py-1"
-                                            style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${tokens.colors.border.hairline}` }}>
-                                            {dg.label && (
-                                              <div className="text-xs font-semibold mb-0.5" style={{ color: tokens.colors.text.secondary }}>{dg.label}</div>
-                                            )}
-                                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-                                              {items.map((it, i) => (
-                                                <span key={i} style={{ color: tokens.colors.text.muted }}>
-                                                  <span style={{ color: it.c }}>●</span> {it.k}:{' '}
-                                                  <span style={{ color: tokens.colors.text.secondary, fontWeight: 500 }}>{it.v}{it.extra ? ` (${it.extra})` : ''}</span>
-                                                </span>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                })()}
                               </div>
-                              <div className="flex items-center gap-2 ml-2">
-                                {user.role !== 'student' && relatedStudents.length > 0 && (
-                                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
-                                    style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>
-                                    <Users size={12} />{relatedStudents.length}
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {school.location && (
+                                  <span className="hidden sm:flex items-center gap-1 text-xs" style={{ color: tokens.colors.text.muted }}>
+                                    <MapPin size={11} />{school.location}
                                   </span>
                                 )}
-                                <ExternalLink size={14} style={{ color: tokens.colors.text.muted }} />
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium"
+                                  style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
+                                  {school.type}
+                                </span>
+                                {user.role !== 'student' && relatedStudents.length > 0 && (
+                                  <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
+                                    style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>
+                                    <Users size={11} />{relatedStudents.length}
+                                  </span>
+                                )}
+                                <ExternalLink size={13} style={{ color: tokens.colors.text.muted }} />
                               </div>
                             </div>
                           </div>
