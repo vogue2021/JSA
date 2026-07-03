@@ -151,6 +151,11 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
         <div>
           <h2 className="text-2xl lg:text-3xl font-bold" style={{ color: tokens.colors.text.primary }}>近期可报学校</h2>
           <p className="text-sm mt-1" style={{ color: tokens.colors.text.muted }}>根据学校信息库的出愿时间，按月份展示近期可报考学校</p>
+          {/* 【新需求94】添加提示，让用户知道学校卡片可以点击查看详情 */}
+          <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.accent.primary }}>
+            <ExternalLink size={12} />
+            点击任意学校卡片可查看详细报考信息（重要日期、认证需求、募集要项等）
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -265,8 +270,15 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                             transition: 'all 250ms cubic-bezier(0.16,1,0.3,1)',
                           }}
                           onClick={() => setDetailSchool(school)}
-                          onMouseEnter={e => e.currentTarget.style.boxShadow = tokens.shadow.elevationHover}
-                          onMouseLeave={e => e.currentTarget.style.boxShadow = glassCardStyle.boxShadow || 'none'}
+                          title={`点击查看 ${school.name} 的详细报考信息`}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.boxShadow = tokens.shadow.elevationHover;
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.boxShadow = glassCardStyle.boxShadow || 'none';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                          }}
                         >
                           <div className="p-3">
                             {/* 【新需求93】精简卡片：默认只显示学校基础信息（名称、地区、类型），点击弹窗查看具体报考信息 */}
@@ -294,7 +306,12 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                     <Users size={11} />{relatedStudents.length}
                                   </span>
                                 )}
-                                <ExternalLink size={13} style={{ color: tokens.colors.text.muted }} />
+                                {/* 【新需求94】明确的"详情"提示，让用户知道卡片可点击 */}
+                                <span className="hidden sm:flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded"
+                                  style={{ background: isDark ? 'rgba(99,102,241,0.15)' : '#eef2ff', color: tokens.colors.accent.primary }}>
+                                  详情<ExternalLink size={11} />
+                                </span>
+                                <ExternalLink size={13} className="sm:hidden" style={{ color: tokens.colors.accent.primary }} />
                               </div>
                             </div>
                           </div>
