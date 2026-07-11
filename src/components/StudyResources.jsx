@@ -769,7 +769,8 @@ const StudyResources = () => {
                   <a
                     href={selected.url}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener"
+                    referrerPolicy="origin"
                     className="flex items-center gap-3 p-4 rounded-xl transition-all hover:opacity-90"
                     style={{
                       background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)',
