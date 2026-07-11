@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS school_database (
   requirements_year TEXT DEFAULT '',
   requirements_updated INTEGER DEFAULT 0,
   requirements_updated_at TEXT DEFAULT '',
+  -- 【新需求95】高才加分校标记：1 = 属于高才加分校，0 = 否
+  is_talent_bonus INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

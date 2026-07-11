@@ -33,6 +33,9 @@ const CSV_FORMAT_HELP = `CSV文件格式说明（2026 更新）
 • xuexinCert               学信网认证
 • overseasCert             海外学历认证
 
+━━ 【新需求95】高才加分校（可填 是 / 否 或 true/false/1/0）━━
+• isTalentBonus            是否属于高才加分校（开启后学生申请时将看到【高才加分】徽章）
+
 ━━ 重要日期 · 第一组（round1_，均为可选）━━
 • round1_label             组标签，例如：2025年度 前期募集
 • round1_applicationStartDate   出愿开始，YYYY-MM-DD
@@ -71,6 +74,8 @@ const emptyForm = {
   requirementsYear: '',           // 参考年度，如 '2026' 或 '2025（沿用去年）'
   requirementsUpdated: false,     // true = 已更新到最新年度，false = 沿用去年要项
   requirementsUpdatedAt: '',      // 最后更新日期 YYYY-MM-DD
+  // 【新需求95】高才加分校：true = 属于高才加分校，false = 否
+  isTalentBonus: false,
 };
 
 const SchoolDatabase = () => {
@@ -93,6 +98,8 @@ const SchoolDatabase = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterUpdateStatus, setFilterUpdateStatus] = useState('all'); // all | updated | outdated
+  // 【新需求95】高才加分校筛选：all | only
+  const [filterTalentBonus, setFilterTalentBonus] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSchool, setEditingSchool] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -147,7 +154,11 @@ const SchoolDatabase = () => {
       filterUpdateStatus === 'all' ||
       (filterUpdateStatus === 'updated' && s.requirementsUpdated) ||
       (filterUpdateStatus === 'outdated' && !s.requirementsUpdated);
-    return matchSearch && matchType && matchUpdate;
+    // 【新需求95】高才加分校筛选
+    const matchTalent =
+      filterTalentBonus === 'all' ||
+      (filterTalentBonus === 'only' && !!s.isTalentBonus);
+    return matchSearch && matchType && matchUpdate && matchTalent;
   });
 
   const openEdit = (school) => {
@@ -186,6 +197,8 @@ const SchoolDatabase = () => {
       requirementsYear: formData.requirementsYear || '',
       requirementsUpdated: !!formData.requirementsUpdated,
       requirementsUpdatedAt: formData.requirementsUpdatedAt || '',
+      // 【新需求95】高才加分校标记
+      isTalentBonus: !!formData.isTalentBonus,
     };
 
     try {
@@ -321,6 +334,10 @@ const SchoolDatabase = () => {
       if (raw.requirementsUpdated !== undefined && raw.requirementsUpdated !== '') {
         obj.requirementsUpdated = parseBool(raw.requirementsUpdated);
       }
+      // 【新需求95】高才加分校布尔字段
+      if (raw.isTalentBonus !== undefined && raw.isTalentBonus !== '') {
+        obj.isTalentBonus = parseBool(raw.isTalentBonus);
+      }
 
       // 重要日期聚合：支持 round1_*、round2_* 前缀；兼容无前缀（等价 round1_*）
       const groups = {};
@@ -395,6 +412,8 @@ const SchoolDatabase = () => {
       'name', 'nameJa', 'type', 'location', 'ranking', 'difficulty', 'acceptanceRate',
       'requirements', 'notes', 'programs', 'requiredMaterials',
       'xuexinCert', 'overseasCert', 'requirementsUrl',
+      // 【新需求95】高才加分校
+      'isTalentBonus',
       // 募集要项年度更新状态
       'requirementsYear', 'requirementsUpdated', 'requirementsUpdatedAt',
       // 第一组重要日期
@@ -418,6 +437,7 @@ const SchoolDatabase = () => {
       '工学研究科;理学研究科;情报理工学系研究科',
       '成绩单;毕业证明;推荐信;研究计划书;日语成绩证明',
       '是', '是', 'https://www.u-tokyo.ac.jp/ja/admissions/index.html',
+      '是',
       '2026', '是', '2026-04-15',
       // round1
       '2025年度 前期募集',
@@ -439,6 +459,7 @@ const SchoolDatabase = () => {
       '基幹理工学研究科',
       '',
       '否', '是', '',
+      '否',
       '2025（沿用去年）', '否', '',
       '', '', '', '', '', '', '', '', '',
       '', '', '', '', '', '', '', '', '',
@@ -547,6 +568,31 @@ const SchoolDatabase = () => {
             );
           })}
         </div>
+        {/* 【新需求95】高才加分校筛选 */}
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'all', label: '全部学校' },
+            { value: 'only', label: '⭐️ 仅高才加分校', color: '#f59e0b', bg: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)' },
+          ].map(opt => {
+            const active = filterTalentBonus === opt.value;
+            return (
+              <button key={opt.value} onClick={() => setFilterTalentBonus(opt.value)}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition"
+                style={{
+                  background: active
+                    ? (opt.bg || tokens.colors.accent.primary)
+                    : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                  color: active
+                    ? (opt.color || tokens.colors.text.inverse)
+                    : tokens.colors.text.secondary,
+                  border: active && opt.color ? `1px solid ${opt.color}` : `1px solid ${tokens.colors.border.subtle}`,
+                }}
+                title="高才加分校：学生申请得到附加加分的合作校">
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* 统计 */}
@@ -599,6 +645,14 @@ const SchoolDatabase = () => {
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold text-lg">{school.name}</h3>
                     <span className="text-xs px-2 py-1 rounded-full" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}>{school.type}</span>
+                    {/* 【新需求95】高才加分校徽章 */}
+                    {school.isTalentBonus && (
+                      <span className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1"
+                        style={{ background: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                        title="高才加分校：学生申请此校可获得加分">
+                        ⭐ 高才加分校
+                      </span>
+                    )}
                     {/* 募集要项更新状态徽章（需求 28.1） */}
                     {school.requirementsUpdated ? (
                       <span className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1"
@@ -1066,6 +1120,36 @@ const SchoolDatabase = () => {
                     <option value="是">是 ✅</option><option value="否">否 ❌</option><option value="不确定">不确定 ❓</option>
                   </select>
                 </div>
+              </div>
+
+              {/* 【新需求95】高才加分校开关 */}
+              <div className="p-4 bg-themed-elevated rounded-lg">
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">⭐</span>
+                      <span className="text-sm font-semibold text-themed-primary">高才加分校</span>
+                    </div>
+                    <p className="text-xs text-themed-muted mt-1">
+                      开启后，此学校会在学校信息库/学生申请界面显示【⭐ 高才加分校】徽章，
+                      学生可通过筛选快速找到并选择这些加分合作校。
+                    </p>
+                  </div>
+                  {/* 类原生 iOS 风格开关 */}
+                  <button type="button"
+                    onClick={() => setFormData({ ...formData, isTalentBonus: !formData.isTalentBonus })}
+                    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                    style={{
+                      background: formData.isTalentBonus ? '#f59e0b' : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'),
+                    }}
+                    role="switch"
+                    aria-checked={!!formData.isTalentBonus}>
+                    <span
+                      className="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+                      style={{ transform: formData.isTalentBonus ? 'translateX(22px)' : 'translateX(2px)' }}
+                    />
+                  </button>
+                </label>
               </div>
 
               <div>

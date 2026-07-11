@@ -1840,7 +1840,17 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                       <button key={s.id} type="button"
                         onMouseDown={(e) => { e.preventDefault(); handleSelectDbSchool(s); }}
                         className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between text-sm border-b last:border-0">
-                        <span className="font-medium">{s.name}</span>
+                        <span className="font-medium flex items-center gap-2">
+                          {s.name}
+                          {/* 【新需求95】学生添加志愿学校时，识别高才加分校 */}
+                          {s.isTalentBonus && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                              style={{ background: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                              title="高才加分校">
+                              ⭐ 高才加分
+                            </span>
+                          )}
+                        </span>
                         <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{s.type} {s.location || ''}</span>
                       </button>
                     ))}

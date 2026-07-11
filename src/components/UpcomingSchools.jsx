@@ -19,6 +19,8 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [detailSchool, setDetailSchool] = useState(null); // 弹窗展示学校详情
   const [searchQuery, setSearchQuery] = useState('');
+  // 【新需求95】高才加分校筛选：all | only
+  const [filterTalentBonus, setFilterTalentBonus] = useState('all');
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -111,14 +113,21 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
 
   // 搜索过滤
   const filteredMonthsData = useMemo(() => {
-    if (!searchQuery) return monthsData;
+    // 无搜索 & 无高才加分筛选 → 直接返回
+    if (!searchQuery && filterTalentBonus === 'all') return monthsData;
     return monthsData.map(md => ({
       ...md,
-      schools: md.schools.filter(s =>
-        s.name.includes(searchQuery) || s.nameJa?.includes(searchQuery) || s.location?.includes(searchQuery)
-      ),
+      schools: md.schools.filter(s => {
+        const matchSearch = !searchQuery
+          || s.name.includes(searchQuery)
+          || s.nameJa?.includes(searchQuery)
+          || s.location?.includes(searchQuery);
+        // 【新需求95】高才加分校筛选
+        const matchTalent = filterTalentBonus === 'all' || (filterTalentBonus === 'only' && !!s.isTalentBonus);
+        return matchSearch && matchTalent;
+      }),
     }));
-  }, [monthsData, searchQuery]);
+  }, [monthsData, searchQuery, filterTalentBonus]);
 
   // 获取相关学生信息（已申请该学校的学生）—— 从 props 中的 studentData 获取
   const getStudentsForSchool = (schoolName) => {
@@ -157,7 +166,22 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
             点击任意学校卡片可查看详细报考信息（重要日期、认证需求、募集要项等）
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 【新需求95】高才加分校筛选 */}
+          <button
+            type="button"
+            onClick={() => setFilterTalentBonus(filterTalentBonus === 'only' ? 'all' : 'only')}
+            className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1"
+            style={{
+              background: filterTalentBonus === 'only'
+                ? (isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)')
+                : (isDark ? 'rgba(255,255,255,0.06)' : '#fff'),
+              border: `1px solid ${filterTalentBonus === 'only' ? 'rgba(245,158,11,0.35)' : tokens.colors.border.subtle}`,
+              color: filterTalentBonus === 'only' ? '#f59e0b' : tokens.colors.text.secondary,
+            }}
+            title="仅显示高才加分校">
+            ⭐ {filterTalentBonus === 'only' ? '仅高才加分校' : '高才加分校'}
+          </button>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: tokens.colors.text.muted }} />
             <input
@@ -300,6 +324,14 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                   style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>
                                   {school.type}
                                 </span>
+                                {/* 【新需求95】高才加分校徽章 */}
+                                {school.isTalentBonus && (
+                                  <span className="px-1.5 py-0.5 rounded text-xs font-medium"
+                                    style={{ background: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                                    title="高才加分校：学生申请可获得附加加分">
+                                    ⭐
+                                  </span>
+                                )}
                                 {user.role !== 'student' && relatedStudents.length > 0 && (
                                   <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
                                     style={{ background: isDark ? 'rgba(59,130,246,0.12)' : '#eff6ff', color: isDark ? '#93c5fd' : '#2563eb' }}>
@@ -372,6 +404,14 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
               <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: tokens.colors.text.muted }}>
                 {detailSchool.location && <span className="flex items-center gap-1"><MapPin size={12} />{detailSchool.location}</span>}
                 <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', color: tokens.colors.text.secondary }}>{detailSchool.type}</span>
+                {/* 【新需求95】高才加分校徽章 */}
+                {detailSchool.isTalentBonus && (
+                  <span className="px-1.5 py-0.5 rounded text-xs font-medium"
+                    style={{ background: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                    title="高才加分校：学生申请可获得附加加分">
+                    ⭐ 高才加分校
+                  </span>
+                )}
                 {detailSchool.acceptanceRate && <span>录取率: {detailSchool.acceptanceRate}</span>}
               </div>
             </div>

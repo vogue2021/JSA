@@ -20,6 +20,8 @@ function formatSchool(r) {
     requirementsYear: r.requirements_year || '',
     requirementsUpdated: Boolean(r.requirements_updated),
     requirementsUpdatedAt: r.requirements_updated_at || '',
+    // 【新需求95】高才加分校标识（布尔）
+    isTalentBonus: Boolean(r.is_talent_bonus),
     programs: (() => { try { return JSON.parse(r.programs || '[]') } catch { return [] } })(),
     importantDates: (() => { try { return JSON.parse(r.important_dates || '[]') } catch { return [] } })(),
     requiredMaterials: (() => { try { return JSON.parse(r.required_materials || '[]') } catch { return [] } })(),
@@ -80,8 +82,8 @@ schoolDatabase.post('/', async (c) => {
   await db.prepare(`
     INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
       acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials,
-      requirements_year, requirements_updated, requirements_updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      requirements_year, requirements_updated, requirements_updated_at, is_talent_bonus)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     body.name, body.nameJa || body.name_ja || '',
     body.type, body.location || '',
@@ -96,7 +98,9 @@ schoolDatabase.post('/', async (c) => {
     JSON.stringify(body.requiredMaterials || body.required_materials || []),
     body.requirementsYear || body.requirements_year || '',
     (body.requirementsUpdated || body.requirements_updated) ? 1 : 0,
-    body.requirementsUpdatedAt || body.requirements_updated_at || ''
+    body.requirementsUpdatedAt || body.requirements_updated_at || '',
+    // 【新需求95】高才加分校标记
+    (body.isTalentBonus || body.is_talent_bonus) ? 1 : 0
   ).run()
 
   const newSchool = await db.prepare(
@@ -144,9 +148,11 @@ schoolDatabase.put('/:id', async (c) => {
       requirementsYear: 'requirements_year', requirements_year: 'requirements_year',
       requirementsUpdated: 'requirements_updated', requirements_updated: 'requirements_updated', // INTEGER 0/1
       requirementsUpdatedAt: 'requirements_updated_at', requirements_updated_at: 'requirements_updated_at',
+      // 【新需求95】高才加分校标记（INTEGER 0/1）
+      isTalentBonus: 'is_talent_bonus', is_talent_bonus: 'is_talent_bonus',
     }
     const jsonCols = new Set(['programs', 'important_dates', 'required_materials'])
-    const intCols = new Set(['ranking', 'requirements_updated'])
+    const intCols = new Set(['ranking', 'requirements_updated', 'is_talent_bonus'])
     // 【需求40】判断是否为 camelCase 风格 key（避免 snake_case 旧字段覆盖用户改过的 camelCase 新值）
     const isCamelKey = (k) => /[A-Z]/.test(k)
 
@@ -262,8 +268,8 @@ schoolDatabase.post('/batch', async (c) => {
       await db.prepare(`
         INSERT INTO school_database (name, name_ja, type, location, programs, requirements, notes,
           acceptance_rate, difficulty, ranking, xuexin_cert, overseas_cert, important_dates, requirements_url, required_materials,
-          requirements_year, requirements_updated, requirements_updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          requirements_year, requirements_updated, requirements_updated_at, is_talent_bonus)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         s.name, s.nameJa || s.name_ja || '',
         s.type || '私立', s.location || '',
@@ -278,7 +284,9 @@ schoolDatabase.post('/batch', async (c) => {
         JSON.stringify(s.requiredMaterials || s.required_materials || []),
         s.requirementsYear || s.requirements_year || '',
         (s.requirementsUpdated || s.requirements_updated) ? 1 : 0,
-        s.requirementsUpdatedAt || s.requirements_updated_at || ''
+        s.requirementsUpdatedAt || s.requirements_updated_at || '',
+        // 【新需求95】高才加分校标记
+        (s.isTalentBonus || s.is_talent_bonus) ? 1 : 0
       ).run()
       results.success.push({ index: i, name: s.name })
     } catch (err) {
