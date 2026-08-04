@@ -230,7 +230,23 @@ export function generateTestData() {
       highSchool: `${randomPick(['北京', '上海', '广州', '深圳', '成都', '武汉', '南京', '杭州'])}第${randomPick(['一', '二', '三'])}中学`,
       languageSchool: `${randomPick(['東京', '大阪', '横浜', '名古屋', '京都'])}${randomPick(['国際', '日本語', 'アジア', '中央'])}学院`,
       jlptScore: randomPick(['N1', 'N2', 'N1', '']),
-      ejuScores: Math.random() > 0.3 ? [{ date: '2025-06', japanese: randomInt(250, 400), comprehensiveSub: randomInt(100, 200), math: randomInt(100, 200) }] : [],
+      // 【新需求98】EJU 理科综合拆分为物理/化学/生物；总分由前端 calcEjuTotal 自动计算，不再持久化
+      ejuScores: Math.random() > 0.3
+        ? [(() => {
+            const isScience = Math.random() > 0.5;
+            const jp = randomInt(250, 400);
+            const math = randomInt(100, 200);
+            if (isScience) {
+              // 理科：三选二，其中一科留空
+              const subjects = ['physics', 'chemistry', 'biology'];
+              const drop = subjects[randomInt(0, 2)];
+              const rec = { date: '2025-06', japanese: jp, math };
+              subjects.forEach(k => { if (k !== drop) rec[k] = randomInt(40, 100); });
+              return rec;
+            }
+            return { date: '2025-06', japanese: jp, math, generalSubjects: randomInt(100, 200) };
+          })()]
+        : [],
       englishScore: Math.random() > 0.5 ? `TOEFL ${randomInt(70, 105)}` : '',
       followUpNotes: '',
       photo: '',

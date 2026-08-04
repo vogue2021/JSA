@@ -47,9 +47,29 @@ export const exportStudentToCSV = (student, studentData) => {
 
   if (student.ejuScores && student.ejuScores.length > 0) {
     rows.push(['EJU成绩记录']);
-    rows.push(['考试日期', '总分', '日语', '日语记述', '数学', '理科', '综合科目']);
+    // 【新需求98】理科综合拆分为物理/化学/生物；总分自动计算（日语+数学+文综或理综）
+    rows.push(['考试月份', '总分', '日语', '日语记述', '数学', '物理', '化学', '生物', '文综', '理综(旧)']);
+    const calcTotal = (s) => {
+      const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+      const scienceSum = n(s.physics) + n(s.chemistry) + n(s.biology);
+      const sciencePart = scienceSum > 0 ? scienceSum : n(s.science);
+      return n(s.japanese) + n(s.math) + sciencePart + n(s.generalSubjects);
+    };
     student.ejuScores.forEach(s => {
-      rows.push([s.date, s.totalScore, s.japanese || '', s.descriptive || '', s.math || '', s.science || '', s.generalSubjects || '']);
+      const hasNew = s.physics || s.chemistry || s.biology;
+      const total = hasNew || s.generalSubjects || s.japanese || s.math ? calcTotal(s) : (s.totalScore ?? calcTotal(s));
+      rows.push([
+        s.date || '',
+        total,
+        s.japanese || '',
+        s.descriptive || '',
+        s.math || '',
+        s.physics || '',
+        s.chemistry || '',
+        s.biology || '',
+        s.generalSubjects || '',
+        hasNew ? '' : (s.science || ''),
+      ]);
     });
     rows.push(['']);
   }

@@ -171,9 +171,34 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     // 切换学生或切换到备注 tab 时都重新拉取
   }, [student.studentId, activeSection]);
 
+  // 【新需求98】EJU 理科综合拆分为物理/化学/生物三个独立字段，总分自动计算（日语+数学+文综或理综）
+  // 兼容历史数据的 science 字段（旧“理科”合并分）
   const [newEjuScore, setNewEjuScore] = useState({
-    date: '', totalScore: '', japanese: '', descriptive: '', math: '', science: '', generalSubjects: ''
+    date: '', japanese: '', descriptive: '', math: '', physics: '', chemistry: '', biology: '', generalSubjects: ''
   });
+
+  // 【新需求98】EJU 总分自动计算：
+  //   - 日语（不含记述）+ 数学
+  //   - 理科：加上 物理+化学+生物（学生只选2科，未填的按0计）
+  //   - 文科：加上 文综
+  //   - 兼容旧数据：如果没有物理/化学/生物但有 science 字段，则加 science
+  const calcEjuTotal = (score) => {
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const jp = num(score.japanese);
+    const math = num(score.math);
+    const phys = num(score.physics);
+    const chem = num(score.chemistry);
+    const bio = num(score.biology);
+    const scienceSum = phys + chem + bio;
+    const legacyScience = num(score.science); // 旧数据兼容
+    const general = num(score.generalSubjects);
+    // 优先使用新的三科拆分；若都为空且有旧 science 字段，则用旧字段
+    const sciencePart = scienceSum > 0 ? scienceSum : legacyScience;
+    return jp + math + sciencePart + general;
+  };
 
   // 新备注输入
   const [newNote, setNewNote] = useState('');
@@ -268,10 +293,14 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   };
 
   const handleAddEjuScore = () => {
-    if (newEjuScore.date && newEjuScore.totalScore) {
-      const updated = [...formData.ejuScores, { ...newEjuScore, id: Date.now() }];
+    // 【新需求98】校验：至少填写考试月份 + 任一科目分数即可添加；总分由系统自动计算
+    const hasAnyScore = ['japanese', 'descriptive', 'math', 'physics', 'chemistry', 'biology', 'generalSubjects']
+      .some(k => newEjuScore[k] !== '' && newEjuScore[k] !== null && newEjuScore[k] !== undefined);
+    if (newEjuScore.date && hasAnyScore) {
+      const totalScore = calcEjuTotal(newEjuScore);
+      const updated = [...formData.ejuScores, { ...newEjuScore, totalScore, id: Date.now() }];
       setFormData({ ...formData, ejuScores: updated });
-      setNewEjuScore({ date: '', totalScore: '', japanese: '', descriptive: '', math: '', science: '', generalSubjects: '' });
+      setNewEjuScore({ date: '', japanese: '', descriptive: '', math: '', physics: '', chemistry: '', biology: '', generalSubjects: '' });
     }
   };
 
@@ -800,13 +829,19 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               isMobile ? (
                 /* 移动端：卡片式展示 EJU 成绩 */
                 <div className="space-y-3 mb-4">
-                  {formData.ejuScores.map(score => (
+                {formData.ejuScores.map(score => {
+                    // 【新需求98】总分自动计算：新拆分字段优先；无新数据但有历史 totalScore 则沿用旧值
+                    const hasNewScience = score.physics || score.chemistry || score.biology;
+                    const mobileTotal = hasNewScience || score.generalSubjects || score.japanese || score.math
+                      ? calcEjuTotal(score)
+                      : (score.totalScore ?? calcEjuTotal(score));
+                    return (
                     <div key={score.id} className="rounded-lg p-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}` }}>
                       <div className="flex items-center justify-between mb-2">
                         {/* 【新需求85】EJU 移动端卡片日期只显示到月份（兼容历史 YYYY-MM-DD 数据） */}
                         <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{score.date ? String(score.date).slice(0, 7) : ''}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold" style={{ color: '#3b82f6' }}>{score.totalScore}分</span>
+                          <span className="text-lg font-bold" style={{ color: '#3b82f6' }}>{mobileTotal}分</span>
                           {isEditing && (
                             <button onClick={() => handleRemoveEjuScore(score.id)} className="text-red-500 p-1 rounded">
                               <Trash2 size={14} />
@@ -814,15 +849,22 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                           )}
                         </div>
                       </div>
+                      {/* 【新需求98】理科综合拆分为物理/化学/生物；兼容旧数据的 science 字段 */}
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>日语</span><span style={{ color: tokens.colors.text.primary }}>{score.japanese || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>日语记述</span><span style={{ color: tokens.colors.text.primary }}>{score.descriptive || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>数学</span><span style={{ color: tokens.colors.text.primary }}>{score.math || '-'}</span></div>
-                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>理科</span><span style={{ color: tokens.colors.text.primary }}>{score.science || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>物理</span><span style={{ color: tokens.colors.text.primary }}>{score.physics || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>化学</span><span style={{ color: tokens.colors.text.primary }}>{score.chemistry || '-'}</span></div>
+                        <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>生物</span><span style={{ color: tokens.colors.text.primary }}>{score.biology || '-'}</span></div>
                         <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>文综</span><span style={{ color: tokens.colors.text.primary }}>{score.generalSubjects || '-'}</span></div>
+                        {score.science && !score.physics && !score.chemistry && !score.biology && (
+                          <div className="flex justify-between"><span style={{ color: tokens.colors.text.muted }}>理综(旧)</span><span style={{ color: tokens.colors.text.primary }}>{score.science}</span></div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 /* 桌面端：表格式展示 EJU 成绩 */
@@ -831,26 +873,39 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                     <thead>
                       <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb' }}>
                         {/* 【新需求85】EJU 桌面端列名改为「考试月份」 */}
+                        {/* 【新需求98】拆分理科综合为物理/化学/生物；总分自动计算 */}
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">考试月份</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">总分</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">日语记述</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">数学</th>
-                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">理科/综合</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">物理</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">化学</th>
+                        <th className="px-3 py-2 text-left font-medium text-themed-secondary">生物</th>
                         <th className="px-3 py-2 text-left font-medium text-themed-secondary">文综</th>
                         {isEditing && <th className="px-3 py-2"></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {formData.ejuScores.map(score => (
+                      {formData.ejuScores.map(score => {
+                        // 【新需求98】兼容旧数据：若无 physics/chemistry/biology 但有旧 science 字段，物理列显示为「(旧)science 值」
+                        const hasNewScience = score.physics || score.chemistry || score.biology;
+                        const legacyScienceHint = !hasNewScience && score.science ? `理综(旧):${score.science}` : '';
+                        // 【新需求98】总分自动计算：旧数据若已有 totalScore 且新拆分字段全为空则沿用旧值；否则实时重算
+                        const displayTotal = hasNewScience || score.generalSubjects || score.japanese || score.math
+                          ? calcEjuTotal(score)
+                          : (score.totalScore ?? calcEjuTotal(score));
+                        return (
                         <tr key={score.id} className="border-t">
                           {/* 【新需求85】EJU 桌面端日期只显示到月份（兼容历史 YYYY-MM-DD 数据） */}
                           <td className="px-3 py-2">{score.date ? String(score.date).slice(0, 7) : ''}</td>
-                          <td className="px-3 py-2 font-semibold text-blue-600">{score.totalScore}</td>
+                          <td className="px-3 py-2 font-semibold text-blue-600">{displayTotal}</td>
                           <td className="px-3 py-2">{score.japanese || '-'}</td>
                           <td className="px-3 py-2">{score.descriptive || '-'}</td>
                           <td className="px-3 py-2">{score.math || '-'}</td>
-                          <td className="px-3 py-2">{score.science || '-'}</td>
+                          <td className="px-3 py-2">{score.physics || (legacyScienceHint || '-')}</td>
+                          <td className="px-3 py-2">{score.chemistry || '-'}</td>
+                          <td className="px-3 py-2">{score.biology || '-'}</td>
                           <td className="px-3 py-2">{score.generalSubjects || '-'}</td>
                           {isEditing && (
                             <td className="px-3 py-2">
@@ -860,7 +915,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
                             </td>
                           )}
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -873,31 +929,44 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
             {isEditing && (
               <div className="bg-themed-elevated rounded-lg p-4">
-                <p className="text-sm font-medium text-themed-secondary mb-3">添加 EJU 成绩</p>
+                {/* 【新需求98】理科综合拆分为物理/化学/生物；总分不再手动输入，由系统自动计算（日语+数学+文综或理综） */}
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-themed-secondary">添加 EJU 成绩</p>
+                  <p className="text-xs" style={{ color: tokens.colors.text.muted }}>
+                    自动总分：<span className="font-semibold text-blue-500">{calcEjuTotal(newEjuScore)}</span>
+                    <span className="ml-1">（日语+数学+{(newEjuScore.physics || newEjuScore.chemistry || newEjuScore.biology) ? '理综(物+化+生)' : '文综'}）</span>
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {/* 【新需求85】EJU 考试日期只记录到月份（YYYY-MM） */}
                   <input type="month" value={newEjuScore.date}
                     onChange={e => setNewEjuScore({...newEjuScore, date: e.target.value})}
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="考试月份" />
-                  <input type="number" value={newEjuScore.totalScore}
-                    onChange={e => setNewEjuScore({...newEjuScore, totalScore: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="总分" />
                   <input type="number" value={newEjuScore.japanese}
                     onChange={e => setNewEjuScore({...newEjuScore, japanese: e.target.value})}
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="日语(读解/听力)" />
                   <input type="number" value={newEjuScore.descriptive}
                     onChange={e => setNewEjuScore({...newEjuScore, descriptive: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="日语记述" />
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="日语记述(不计入总分)" />
                   <input type="number" value={newEjuScore.math}
                     onChange={e => setNewEjuScore({...newEjuScore, math: e.target.value})}
                     className="px-3 py-2 border rounded-lg text-sm" placeholder="数学" />
-                  <input type="number" value={newEjuScore.science}
-                    onChange={e => setNewEjuScore({...newEjuScore, science: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="理科" />
+                  <input type="number" value={newEjuScore.physics}
+                    onChange={e => setNewEjuScore({...newEjuScore, physics: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="物理" />
+                  <input type="number" value={newEjuScore.chemistry}
+                    onChange={e => setNewEjuScore({...newEjuScore, chemistry: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="化学" />
+                  <input type="number" value={newEjuScore.biology}
+                    onChange={e => setNewEjuScore({...newEjuScore, biology: e.target.value})}
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="生物" />
                   <input type="number" value={newEjuScore.generalSubjects}
                     onChange={e => setNewEjuScore({...newEjuScore, generalSubjects: e.target.value})}
-                    className="px-3 py-2 border rounded-lg text-sm" placeholder="综合科目" />
+                    className="px-3 py-2 border rounded-lg text-sm" placeholder="文综(与理综二选一)" />
                 </div>
+                <p className="mt-2 text-xs" style={{ color: tokens.colors.text.muted }}>
+                  提示：EJU 中「理科(物/化/生 选2)」与「文综」二选一。总分 = 日语 + 数学 + 文综或理综。
+                </p>
                 <button onClick={handleAddEjuScore}
                   className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition"
                   style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', color: '#3b82f6' }}
