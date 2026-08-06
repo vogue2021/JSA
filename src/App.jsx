@@ -5388,13 +5388,22 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           <div className="flex-1 pt-2 pb-2 overflow-y-auto">
             {(() => {
               // 按功能分组
-              const groups = [
+              //【新需求100】此前 supervision（监管台）未登记在任何分组白名单里，
+              //导致 tabs 里已注册、但侧边栏 groups.filter 时被整条丢弃 → 桌面端看不到入口。
+              //   修复：① 把 supervision 归入「人员管理」分组；
+              //        ② 增加兜底分组「其他」，任何未登记的 tab 自动兜底显示，避免以后新增页面再次隐形消失。
+              const baseGroups = [
                 { label: '概览', ids: ['dashboard'] },
                 { label: '学业管理', ids: ['timeline', 'schools', 'checklist'] },
-                { label: '人员管理', ids: ['students', 'profile', 'teachers'] },
+                { label: '人员管理', ids: ['students', 'profile', 'teachers', 'supervision'] },
                 { label: '信息查询', ids: ['schooldb', 'resources', 'upcoming'] },
                 { label: '消息', ids: ['messages'] },
               ];
+              const groupedIds = new Set(baseGroups.flatMap(g => g.ids));
+              const leftoverIds = tabs.map(t => t.id).filter(id => !groupedIds.has(id));
+              const groups = leftoverIds.length > 0
+                ? [...baseGroups, { label: '其他', ids: leftoverIds }]
+                : baseGroups;
               return groups.map((group, gi) => {
                 const groupTabs = tabs.filter(t => group.ids.includes(t.id));
                 if (groupTabs.length === 0) return null;
