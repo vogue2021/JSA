@@ -28,6 +28,8 @@ import UpcomingSchools from './components/UpcomingSchools';
 import Dashboard from './components/Dashboard';
 import StudentListPage from './components/StudentListPage';
 import AuthPage from './components/AuthPage';
+// 【新需求99】管理员监管页面（Excel 风格，按老师维度切换）
+import AdminSupervisionPage from './components/AdminSupervisionPage';
 // 【新需求77】站内消息发布系统
 import MessagesPage from './components/MessagesPage';
 import MessageBanner from './components/MessageBanner';
@@ -5144,6 +5146,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     ...(user.role === 'admin' || user.role === 'teacher' ? [{ id: 'students', label: '学生列表', icon: Users }] : []),
     ...(user.role !== 'student' ? [{ id: 'profile', label: '学生信息', icon: UserCircle }] : []),
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
+    // 【新需求99】监管台 - 仅管理员可见，用于总览老师-学生-报考进度
+    ...(user.role === 'admin' ? [{ id: 'supervision', label: '监管台', icon: Shield }] : []),
     // 学校信息库 - 学生不显示，老师需权限
     ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
     // 塔内备考资料库 - 需求38：老师可编辑，学生只读公开资料
@@ -5823,6 +5827,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           />
         )}
         {activeTab === 'teachers' && <TeacherManagement />}
+        {/* 【新需求99】管理员监管页面 */}
+        {activeTab === 'supervision' && <AdminSupervisionPage />}
         {activeTab === 'schooldb' && <SchoolDatabase />}
         {activeTab === 'resources' && <StudyResources />}
         {activeTab === 'upcoming' && (
