@@ -121,6 +121,26 @@ export function collectExamDates(school) {
     }
   });
 
+  // 4) 【新需求102】学校信息库（school_database）形态：importantDates 多组日期
+  //    该结构里每组代表一个入试（秋季入试 / 春季入试 …），组内同样有校内考/一审/二审/自定义日期。
+  //    这样本工具对"学生志愿校"和"学校信息库候选校"两种数据形态都通用。
+  const groups = school.importantDates || school.important_dates;
+  if (Array.isArray(groups)) {
+    groups.forEach((dg, gi) => {
+      if (!dg) return;
+      const groupLabel = dg.label || `第${gi + 1}审`;
+      push(dg.examDate ?? dg.exam_date, `${groupLabel}·校内考`);
+      push(dg.firstExamDate ?? dg.first_exam_date, `${groupLabel}·一审考试`);
+      push(dg.secondExamDate ?? dg.second_exam_date, `${groupLabel}·二审考试`);
+      const groupCustoms = Array.isArray(dg.customDates) ? dg.customDates : [];
+      groupCustoms.forEach((cd) => {
+        if (cd && cd.label && cd.date && isExamLikeLabel(cd.label)) {
+          push(cd.date, `${groupLabel}·${cd.label}`);
+        }
+      });
+    });
+  }
+
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -189,6 +209,55 @@ export function detectExamConflicts(schools) {
     involvedSchoolCount: involved.size,
     hasConflict: conflictDates.length > 0,
   };
+}
+
+/**
+ * 【新需求102】把"已报志愿校"的考试日期建成索引，供候选校快速比对
+ * @param {Array<object>} plannedSchools 学生已报的志愿校列表
+ * @returns {Object<string, Array<{schoolName: string, program: string, label: string}>>} date → 占用该日的考试
+ */
+export function buildExamDateIndex(plannedSchools) {
+  const index = {};
+  if (!Array.isArray(plannedSchools)) return index;
+  plannedSchools.forEach((school) => {
+    const schoolName = school?.name || '(未命名学校)';
+    const program = school?.program || '';
+    collectExamDates(school).forEach(({ date, label }) => {
+      if (!index[date]) index[date] = [];
+      index[date].push({ schoolName, program, label });
+    });
+  });
+  return index;
+}
+
+/**
+ * 【新需求102】候选学校（如"近期可报"里的信息库学校）与"已报志愿校"的撞期比对
+ *
+ * 与 detectExamConflicts 的区别：这里是"候选 × 已有计划"的单向比对，
+ * 用于回答"如果给这个学生报这所学校，考试会不会和已报的学校撞车"。
+ *
+ * @param {object} candidateSchool 候选学校（支持 importantDates 形态）
+ * @param {Object} plannedIndex buildExamDateIndex 的返回值
+ * @param {object} [options]
+ * @param {string} [options.excludeSchoolName] 需要排除的学校名（候选校本身已被该学生报过时避免自撞）
+ * @returns {Array<{date: string, label: string, others: Array<{schoolName: string, label: string}>}>}
+ */
+export function findConflictsAgainstIndex(candidateSchool, plannedIndex, options = {}) {
+  if (!candidateSchool || !plannedIndex) return [];
+  const { excludeSchoolName } = options;
+  const out = [];
+  collectExamDates(candidateSchool).forEach(({ date, label }) => {
+    const occupied = (plannedIndex[date] || [])
+      .filter(o => !excludeSchoolName || o.schoolName !== excludeSchoolName);
+    if (occupied.length > 0) {
+      out.push({
+        date,
+        label,
+        others: occupied.map(o => ({ schoolName: o.schoolName, label: o.label })),
+      });
+    }
+  });
+  return out;
 }
 
 /**

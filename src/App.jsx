@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 // 【新需求101】校内考撞期检测工具（与监管台共用同一套判定口径）
-import { detectExamConflicts, getSchoolConflicts, normalizeDate } from './utils/examConflictUtils';
+import { detectExamConflicts, getSchoolConflicts, normalizeDate, isExamLikeLabel } from './utils/examConflictUtils';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -44,6 +44,20 @@ import { getPackageDisplayName } from './utils/packageUtils';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 // AuthPage 已拆分到 src/components/AuthPage.jsx
+
+// 【新需求102】开发期防呆：侧边栏注册了某个 tab，但 URL 白名单 validTabs 漏登记时，
+//   会出现"点一次被弹回仪表盘、点两次才进得去"的隐蔽 bug。这里在dev 环境下把它变成显式告警。
+let tabRouteWarned = false;
+const warnMissingTabRoutes = (tabs, validTabs) => {
+  if (tabRouteWarned || !import.meta.env?.DEV) return;
+  const missing = tabs.map(t => t.id).filter(id => !validTabs.includes(id));
+  if (missing.length > 0) {
+    tabRouteWarned = true;
+    console.error(
+      `[路由白名单缺失] 以下 tab 已注册到侧边栏但不在 validTabs 中，点击后会被弹回默认页：${missing.join(', ')}`
+    );
+  }
+};
 
 // 主应用组件
 const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStudentList }) => {
@@ -93,7 +107,13 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const navigate = useNavigate();
 
   // 有效的 tab ID 列表（用于 URL 路径校验）
-const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'schooldb', 'resources', 'upcoming', 'messages', 'calendar', 'settings'];
+  // 【新需求102】⚠️ 这个白名单必须与下方 `tabs` 数组里的 id 保持同步！
+  //漏登记会导致极隐蔽的 bug：点击菜单 → setActiveTabRaw 生效（页面闪一下）→ navigate 改URL
+  //   → location.pathname 变化触发同步 useEffect → getTabFromPath 发现路径不在白名单
+  //   → 回退成默认 tab（dashboard）→ 表现为"点一次跳回仪表盘、点第二次才进得去"
+  //   （第二次能进是因为 URL 已经是目标路径，setActiveTab 不再 navigate，同步 effect 也就不再触发）。
+  //   supervision（监管台）此前正是漏在这里。
+  const validTabs = ['dashboard', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'supervision', 'schooldb', 'resources', 'upcoming', 'messages', 'calendar', 'settings'];
 
   // 从 URL 路径提取当前 tab
   const getTabFromPath = () => {
@@ -4849,7 +4869,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   )}
                   {Array.isArray(school.customDates) && school.customDates.filter(cd => cd && cd.label && cd.date).map((cd, ci) => {
                     // 【新需求101】自定义日期里的"考试类"条目若撞期，同样标红
-                    const cdHit = conflictDates.has(normalizeDate(cd.date));
+                    // 【新需求102】仅"考试类" label 参与高亮，避免"书类提交"这类非考试项被误标
+                    const cdHit = isExamLikeLabel(cd.label) && conflictDates.has(normalizeDate(cd.date));
                     return (
                       <div key={`cd-${ci}`} className="p-2 rounded"
                         style={cdHit ? conflictCellStyle : { background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}
@@ -5257,6 +5278,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     // 【新需求77】消息中心 - 所有角色可见（学生只能看、admin / publish_messages 老师可发布）
     { id: 'messages', label: '消息中心', icon: Megaphone },
   ];
+  // 【新需求102】dev 环境校验 tabs 与 validTabs 是否同步（生产环境为no-op）
+  warnMissingTabRoutes(tabs, validTabs);
   // 获取主题上下文
   const { isDark, tokens, backgroundStyle, toggleMode, resolvedMode, glassEnabled } = useTheme();
 
