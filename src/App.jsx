@@ -1939,6 +1939,10 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
                     </button>
                   )}
                 </div>
+                {/* 【新需求103】学部字段提示：从信息库下拉带出的 label 可能是"秋季入试"这类审次名，需要老师改成真实学部名 */}
+                <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>
+                  此处可修改，请输入正确学部名称
+                </p>
                 {/* 【新需求45】学部下拉：来自学校信息库该学校的 importantDates 各组 label，选择后自动填充日期端 */}
                 {showProgramDropdown && dbSchoolDateGroups.length > 0 && (
                   <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-56 overflow-y-auto"
@@ -2411,6 +2415,10 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
             <div>
               <label className="block text-sm font-medium mb-2">所需材料（将同步到材料清单）</label>
+              {/* 【新需求103】提醒老师：材料的截止日期是给学生的待办，不要直接填出愿截止当天 */}
+              <p className="text-xs mb-2" style={{ color: tokens.colors.text.muted }}>
+                待办事项的截止日期请合理设置提前量
+              </p>
               <div className="space-y-2 mb-2">
                 <div className="flex gap-2">
                   <input

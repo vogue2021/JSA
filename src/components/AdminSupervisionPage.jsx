@@ -77,6 +77,9 @@ const AdminSupervisionPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 学生信息完整度过滤
   const [expandedRows, setExpandedRows] = useState(new Set()); // 展开显示学校详情的行
+  // 【新需求103】视图维度：teacher = 按老师看学生；university = 按大学看报考学生
+  const [viewMode, setViewMode] = useState('teacher');
+  const [expandedUniversities, setExpandedUniversities] = useState(new Set());
 
   // 加载数据：老师 + 学生 + 每个学生的学校
   const loadAll = useCallback(async () => {
@@ -174,16 +177,16 @@ const AdminSupervisionPage = () => {
     return map;
   }, [teachers, students]);
 
+  // 当前 tab 下要展示的学生（仅按老师维度收敛，搜索/完整度筛选在下一层做）
+  const teacherScopedStudents = useMemo(() => {
+    if (selectedTeacher === 'all') return students;
+    if (selectedTeacher === 'unassigned') return teacherToStudents['__unassigned__'] || [];
+    return teacherToStudents[selectedTeacher] || [];
+  }, [students, teacherToStudents, selectedTeacher]);
+
   // 当前 tab 下要展示的学生
   const filteredStudents = useMemo(() => {
-    let list;
-    if (selectedTeacher === 'all') {
-      list = students;
-    } else if (selectedTeacher === 'unassigned') {
-      list = teacherToStudents['__unassigned__'] || [];
-    } else {
-      list = teacherToStudents[selectedTeacher] || [];
-    }
+    let list = teacherScopedStudents;
     // 搜索
     const q = searchQuery.trim().toLowerCase();
     if (q) {
@@ -213,7 +216,7 @@ const AdminSupervisionPage = () => {
       if (ta !== tb) return ta.localeCompare(tb);
       return String(a.studentId || '').localeCompare(String(b.studentId || ''));
     });
-  }, [students, teacherToStudents, selectedTeacher, searchQuery, statusFilter]);
+  }, [teacherScopedStudents, searchQuery, statusFilter]);
 
   // 老师名映射
   const teacherNameById = useMemo(() => {
@@ -233,6 +236,71 @@ const AdminSupervisionPage = () => {
     }
     return map;
   }, [schoolsByStudent]);
+
+  // 【新需求103】按大学维度聚合：某所大学都有哪些学生报考了
+  //   数据源与老师视图一致（同一份 schoolsByStudent），只是换了个聚合键：学校名。
+  //   同一学生在同一所大学报了多个学部 → 学部各占一行，但"报考人数"按学生去重。
+  const universityGroups = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const map = new Map(); // schoolName -> group
+    for (const stu of teacherScopedStudents) {
+      const list = schoolsByStudent[stu.studentId] || [];
+      const conflict = conflictByStudent[stu.studentId];
+      for (const sc of list) {
+        const name = (sc.name || '(未命名学校)').trim();
+        if (!map.has(name)) {
+          map.set(name, {
+            name,
+            nameJa: sc.nameJa || '',
+            type: sc.type || '',
+            rows: [],
+            studentIds: new Set(),
+            statusCount: {},
+            conflictRows: 0,
+          });
+        }
+        const g = map.get(name);
+        if (sc.nameJa && !g.nameJa) g.nameJa = sc.nameJa;
+        if (sc.type && !g.type) g.type = sc.type;
+        const scConflicts = getSchoolConflicts(conflict, sc);
+        g.rows.push({
+          key: `${stu.studentId}-${sc.id}`,
+          studentId: stu.studentId,
+          studentName: stu.name || '-',
+          subject: stu.subject || '',
+          teacherName: teacherNameById[stu.teacherId] || '（未分配）',
+          program: sc.program || '',
+          status: sc.status || 'not_started',
+          applicationEndDate: sc.applicationEndDate || '',
+          examDates: collectExamDates(sc),
+          conflictDates: new Set(scConflicts.map(c => c.date)),
+          conflicts: scConflicts,
+        });
+        g.studentIds.add(stu.studentId);
+        g.statusCount[sc.status || 'not_started'] = (g.statusCount[sc.status || 'not_started'] || 0) + 1;
+        if (scConflicts.length > 0) g.conflictRows += 1;
+      }
+    }
+    let groups = Array.from(map.values()).map(g => ({
+      ...g,
+      studentCount: g.studentIds.size,
+      rows: g.rows.sort((a, b) =>
+        a.teacherName.localeCompare(b.teacherName)
+        || String(a.studentName).localeCompare(String(b.studentName))),
+    }));
+    // 搜索：大学名 / 日文名 / 该校下任一学生姓名或学号
+    if (q) {
+      groups = groups.filter(g =>
+        g.name.toLowerCase().includes(q)
+        || (g.nameJa || '').toLowerCase().includes(q)
+        || g.rows.some(r =>
+          String(r.studentName).toLowerCase().includes(q)
+          || String(r.studentId).toLowerCase().includes(q))
+      );
+    }
+    // 报考人数多的排前面，人数相同按学校名
+    return groups.sort((a, b) => b.studentCount - a.studentCount || a.name.localeCompare(b.name));
+  }, [teacherScopedStudents, schoolsByStudent, conflictByStudent, teacherNameById, searchQuery]);
 
   // 汇总卡片数据
   const summary = useMemo(() => {
@@ -259,6 +327,15 @@ const AdminSupervisionPage = () => {
     setExpandedRows(prev => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  // 【新需求103】大学分组展开/收起
+  const toggleUniversity = (name) => {
+    setExpandedUniversities(prev => {
+      const n = new Set(prev);
+      if (n.has(name)) n.delete(name); else n.add(name);
       return n;
     });
   };
@@ -315,6 +392,50 @@ const AdminSupervisionPage = () => {
     showNotification?.('已导出监管数据 CSV', 'success');
   };
 
+  // 【新需求103】按大学维度导出 CSV
+  const exportUniversityCsv = () => {
+    const rows = [];
+    rows.push([
+      '大学', '日文名', '类型', '报考人数',
+      '学生姓名', '学号', '文理科', '负责老师',
+      '研究科/学部', '申请状态', '出愿截止', '考试日期', '撞期'
+    ]);
+    for (const g of universityGroups) {
+      for (const r of g.rows) {
+        rows.push([
+          g.name,
+          g.nameJa || '',
+          g.type || '',
+          g.studentCount,
+          r.studentName,
+          r.studentId,
+          r.subject,
+          r.teacherName,
+          r.program,
+          statusPill(r.status).label,
+          r.applicationEndDate,
+          r.examDates.map(d => `${d.label}:${d.date}`).join(' / '),
+          r.conflicts.length > 0
+            ? r.conflicts.map(c => `${c.date}↔${c.others.map(o => o.schoolName).join('、')}`).join('；')
+            : '',
+        ]);
+      }
+    }
+    const csv = rows.map(r => r.map(cell => {
+      const v = cell == null ? '' : String(cell);
+      return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    }).join(',')).join('\n');
+    const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.download = `监管台_按大学_${dateStr}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification?.('已导出按大学维度的监管数据 CSV', 'success');
+  };
+
   // ─── 渲染 ─────────────────────────────────────────────────────────────────
   // 【新需求101】权限守卫放在所有 Hook 之后，避免条件式提前 return 破坏 Hook 调用顺序
   if (!canView) {
@@ -367,9 +488,35 @@ const AdminSupervisionPage = () => {
             }}>{user?.role === 'admin' ? '管理员' : (canSeeAllTeachers ? '老师·全部学生' : '老师·我的学生')}</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* 【新需求103】视图维度切换：按老师 / 按大学 */}
+            <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${tokens.colors.border.subtle}` }}>
+              {[
+                { id: 'teacher', label: '按老师', icon: GraduationCap },
+                { id: 'university', label: '按大学', icon: SchoolIcon },
+              ].map(v => {
+                const VIcon = v.icon;
+                const active = viewMode === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setViewMode(v.id)}
+                    className="px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-all"
+                    style={{
+                      background: active
+                        ? (isDark ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.12)')
+                        : 'transparent',
+                      color: active ? (isDark ? '#c7d2fe' : '#4338ca') : tokens.colors.text.secondary,
+                    }}
+                  >
+                    <VIcon size={14} />
+                    {v.label}
+                  </button>
+                );
+              })}
+            </div>
             <button
-              onClick={exportCsv}
-              disabled={loading || filteredStudents.length === 0}
+              onClick={viewMode === 'university' ? exportUniversityCsv : exportCsv}
+              disabled={loading || (viewMode === 'university' ? universityGroups.length === 0 : filteredStudents.length === 0)}
               className="btn-press px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 disabled:opacity-50"
               style={{
                 background: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)',
@@ -397,6 +544,7 @@ const AdminSupervisionPage = () => {
         </div>
 
         {/* 汇总卡 */}
+        {viewMode === 'teacher' && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' }}>
             <div className="text-xs" style={{ color: tokens.colors.text.muted }}>学生数</div>
@@ -435,6 +583,40 @@ const AdminSupervisionPage = () => {
             </div>
           </div>
         </div>
+        )}
+
+        {/* 【新需求103】按大学维度的汇总卡 */}
+        {viewMode === 'university' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' }}>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>涉及大学数</div>
+            <div className="text-xl font-bold" style={{ color: tokens.colors.text.primary }}>{universityGroups.length}</div>
+          </div>
+          <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>报考记录数</div>
+            <div className="text-xl font-bold" style={{ color: isDark ? '#93c5fd' : '#1d4ed8' }}>
+              {universityGroups.reduce((n, g) => n + g.rows.length, 0)}
+            </div>
+          </div>
+          <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.06)' }}>
+            <div className="text-xs" style={{ color: tokens.colors.text.muted }}>最热门大学</div>
+            <div className="text-sm font-bold truncate" style={{ color: isDark ? '#86efac' : '#166534' }}>
+              {universityGroups[0] ? `${universityGroups[0].name}（${universityGroups[0].studentCount} 人）` : '-'}
+            </div>
+          </div>
+          <div className="p-3 rounded-lg" style={{
+            background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.07)',
+            border: `1px solid ${isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.2)'}`,
+          }}>
+            <div className="text-xs flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>
+              <AlertTriangle size={12} /> 撞期报考记录
+            </div>
+            <div className="text-xl font-bold" style={{ color: '#dc2626' }}>
+              {universityGroups.reduce((n, g) => n + g.conflictRows, 0)}
+            </div>
+          </div>
+        </div>
+        )}
 
         {/* 按老师维度切换 */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -483,7 +665,7 @@ const AdminSupervisionPage = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索姓名 / 学号 / 邮箱"
+              placeholder={viewMode === 'university' ? '搜索大学名 / 学生姓名 / 学号' : '搜索姓名 / 学号 / 邮箱'}
               className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none"
               style={{
                 background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
@@ -492,6 +674,8 @@ const AdminSupervisionPage = () => {
               }}
             />
           </div>
+          {/* 完整度筛选只对"按老师"视图有意义 */}
+          {viewMode === 'teacher' && (
           <div className="flex items-center gap-1">
             <Filter size={14} style={{ color: tokens.colors.text.muted }} />
             <select
@@ -510,6 +694,7 @@ const AdminSupervisionPage = () => {
               <option value="empty">尚未录入</option>
             </select>
           </div>
+          )}
         </div>
 
         {loading && (
@@ -520,6 +705,7 @@ const AdminSupervisionPage = () => {
       </div>
 
       {/* Excel 风格表格 */}
+      {viewMode === 'teacher' && (
       <div className="glass-panel rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
@@ -777,7 +963,137 @@ const AdminSupervisionPage = () => {
           </table>
         </div>
       </div>
+      )}
 
+      {/* 【新需求103】按大学维度视图：某所大学都有哪些学生报考了 */}
+      {viewMode === 'university' && (
+      <div className="glass-panel rounded-2xl overflow-hidden">
+        {universityGroups.length === 0 && !loading && (
+          <div className="py-8 text-center text-sm" style={{ color: tokens.colors.text.muted }}>
+            暂无报考记录
+          </div>
+        )}
+        <div className="divide-y" style={{ borderColor: tokens.colors.border.subtle }}>
+          {universityGroups.map((g) => {
+            const opened = expandedUniversities.has(g.name);
+            return (
+              <div key={g.name} style={{ borderTop: `1px solid ${tokens.colors.border.subtle}` }}>
+                {/* 大学汇总行 */}
+                <button
+                  onClick={() => toggleUniversity(g.name)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                  style={{ background: opened ? (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)') : 'transparent' }}
+                >
+                  {opened
+                    ? <ChevronDown size={16} className="flex-shrink-0" style={{ color: tokens.colors.text.secondary }} />
+                    : <ChevronRight size={16} className="flex-shrink-0" style={{ color: tokens.colors.text.muted }} />}
+                  <SchoolIcon size={16} className="flex-shrink-0" style={{ color: tokens.colors.accent.primary }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold" style={{ color: tokens.colors.text.primary }}>{g.name}</span>
+                      {g.nameJa && <span className="text-xs" style={{ color: tokens.colors.text.muted }}>{g.nameJa}</span>}
+                      {g.type && (
+                        <span className="text-xs px-1.5 py-0.5 rounded" style={{
+                          background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                          color: tokens.colors.text.secondary,
+                        }}>{g.type}</span>
+                      )}
+                      {g.conflictRows > 0 && (
+                        <span className="text-xs px-1.5 py-0.5 rounded font-semibold inline-flex items-center gap-1"
+                          style={{ background: 'rgba(239,68,68,0.14)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.35)' }}
+                          title="该校下有报考记录的考试日期与该生其他志愿校撞期">
+                          <AlertTriangle size={11} /> 撞期 {g.conflictRows}
+                        </span>
+                      )}
+                    </div>
+                    {/* 各申请状态分布 */}
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {Object.entries(g.statusCount).map(([st, n]) => {
+                        const p = statusPill(st);
+                        return (
+                          <span key={st} className="text-xs px-1.5 py-0.5 rounded" style={{ background: p.bg, color: p.fg }}>
+                            {p.label} {n}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-lg font-bold" style={{ color: tokens.colors.text.primary }}>{g.studentCount}</div>
+                    <div className="text-xs" style={{ color: tokens.colors.text.muted }}>
+                      人报考{g.rows.length !== g.studentCount ? ` · ${g.rows.length} 条` : ''}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 展开：该大学下的学生明细 */}
+                {opened && (
+                  <div className="px-4 pb-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ color: tokens.colors.text.muted }}>
+                          <th className="px-2 py-1 text-left font-normal">学生</th>
+                          <th className="px-2 py-1 text-left font-normal">文理</th>
+                          <th className="px-2 py-1 text-left font-normal">负责老师</th>
+                          <th className="px-2 py-1 text-left font-normal">研究科/学部</th>
+                          <th className="px-2 py-1 text-left font-normal">出愿截止</th>
+                          <th className="px-2 py-1 text-left font-normal">考试日期</th>
+                          <th className="px-2 py-1 text-left font-normal">状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.rows.map((r) => {
+                          const p = statusPill(r.status);
+                          return (
+                            <tr key={r.key} style={{ borderTop: `1px solid ${tokens.colors.border.hairline}` }}>
+                              <td className="px-2 py-1 whitespace-nowrap">
+                                <span style={{ color: tokens.colors.text.primary }}>{r.studentName}</span>
+                                <span className="ml-1" style={{ color: tokens.colors.text.muted }}>{r.studentId}</span>
+                              </td>
+                              <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>{r.subject || '-'}</td>
+                              <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>{r.teacherName}</td>
+                              <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>{r.program || '-'}</td>
+                              <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>{r.applicationEndDate || '-'}</td>
+                              <td className="px-2 py-1">
+                                {r.examDates.length === 0 ? (
+                                  <span style={{ color: tokens.colors.text.muted }}>-</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {r.examDates.map((d, di) => {
+                                      const hit = r.conflictDates.has(d.date);
+                                      return (
+                                        <span key={`${d.date}-${di}`}
+                                          className="px-1.5 py-0.5 rounded whitespace-nowrap"
+                                          style={hit
+                                            ? { background: 'rgba(239,68,68,0.14)', color: '#dc2626', fontWeight: 600, border: '1px solid rgba(239,68,68,0.35)' }
+                                            : { color: tokens.colors.text.secondary }}
+                                          title={hit
+                                            ? `该生同日还有：${r.conflicts.filter(c => c.date === d.date).flatMap(c => c.others.map(o => `${o.schoolName}(${o.label})`)).join('、')}`
+                                            : ''}
+                                        >
+                                          {d.label}: {d.date}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-2 py-1">
+                                <span className="px-1.5 py-0.5 rounded" style={{ background: p.bg, color: p.fg }}>{p.label}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      )}
       {/* 图例 */}
       <div className="glass-panel p-3 rounded-2xl">
         <div className="text-xs mb-2" style={{ color: tokens.colors.text.muted }}>状态图例：</div>
@@ -788,10 +1104,17 @@ const AdminSupervisionPage = () => {
             </span>
           ))}
         </div>
+        {viewMode === 'teacher' && (
         <div className="text-xs mt-2" style={{ color: tokens.colors.text.muted }}>
           <Check size={12} className="inline mr-1" style={{ color: '#16a34a' }} />= 已录入 &nbsp;
           <XIcon size={12} className="inline mr-1" style={{ color: '#dc2626' }} />= 未录入
         </div>
+        )}
+        {viewMode === 'university' && (
+        <div className="text-xs mt-2" style={{ color: tokens.colors.text.muted }}>
+          点击任意大学行可展开该校下全部报考学生（含负责老师 / 学部 / 出愿截止 / 考试日期 / 申请状态）
+        </div>
+        )}
         {/* 【新需求101】撞期口径说明 */}
         <div className="text-xs mt-1 flex items-start gap-1" style={{ color: tokens.colors.text.muted }}>
           <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#dc2626' }} />

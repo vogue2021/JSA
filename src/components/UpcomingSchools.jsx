@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   School, Calendar, ChevronLeft, ChevronRight, MapPin,
-  ExternalLink, Users, BookOpen, Search, X, FileText, AlertTriangle
+  ExternalLink, Users, BookOpen, Search, X, FileText, AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { schoolDatabaseAPI } from '../services/api';
@@ -10,13 +11,124 @@ import {
   detectExamConflicts, getSchoolConflicts, isExamLikeLabel,
   buildExamDateIndex, findConflictsAgainstIndex, normalizeDate,
 } from '../utils/examConflictUtils';
-
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
 const TYPE_COLORS = {
   '国立': 'bg-blue-500',
   '公立': 'bg-green-500',
   '私立': 'bg-purple-500',
+};
+
+/**
+ * 【新需求103】考试日期撞期红色叹号
+ * 需求原话：点开学校卡片之后，那个学校的考试日期处显示一个红色叹号，
+ *   鼠标悬停叹号时显示与它撞期的学校名称。
+ *
+ * 实现要点：
+ * 1. 不用原生 title —— 有 ~1s 延迟、样式不可控、多行会被截断。
+ * 2. tooltip 走 React Portal + position:fixed —— 详情弹窗本身是 `max-h-[85vh] overflow-y-auto`
+ *    的滚动容器，普通 absolute tooltip 会被容器裁掉；挂到 body 上就不会。
+ * 3. 自动翻转：下方空间不足时改为在上方显示。
+ * 4. 同时绑定 onClick（阻止冒泡，避免误关弹窗）以支持触屏点按查看。
+ */
+const ExamConflictMark = ({ conflict, isDark, tokens }) => {
+  const anchorRef = useRef(null);
+  const [tip, setTip] = useState(null); // { top, left, placement }
+
+  const openTip = () => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const ESTIMATED_H = 150; // tooltip 估算高度，用于判断是否需要翻转
+    const placeBelow = r.bottom + ESTIMATED_H < window.innerHeight;
+    setTip({
+      top: placeBelow ? r.bottom + 6 : r.top - 6,
+      left: r.left + r.width / 2,
+      placement: placeBelow ? 'below' : 'above',
+    });
+  };
+  const closeTip = () => setTip(null);
+
+  const planned = conflict?.planned || [];
+  const candidate = conflict?.candidate || [];
+  if (planned.length === 0 && candidate.length === 0) return null;
+
+  // 同一所学校可能因为多个考试字段重复出现，按 学校名+考试类型 去重
+  const dedupe = (list) => {
+    const seen = new Set();
+    return list.filter((o) => {
+      const k = `${o.schoolName}|${o.label}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  const plannedList = dedupe(planned);
+  const candidateList = dedupe(candidate);
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        onMouseEnter={openTip}
+        onMouseLeave={closeTip}
+        onFocus={openTip}
+        onBlur={closeTip}
+        onClick={(e) => { e.stopPropagation(); if (tip) closeTip(); else openTip(); }}
+        className="inline-flex items-center justify-center"
+        style={{ color: '#dc2626', lineHeight: 0 }}
+        aria-label="考试日期撞期，查看撞期学校"
+      >
+        <AlertCircle size={14} strokeWidth={2.5} />
+      </button>
+      {tip && createPortal(
+        <div
+          className="px-2.5 py-2 rounded-lg text-left"
+          style={{
+            position: 'fixed',
+            top: tip.top,
+            left: tip.left,
+            transform: tip.placement === 'below' ? 'translateX(-50%)' : 'translate(-50%, -100%)',
+            zIndex: 9999,
+            minWidth: 180,
+            maxWidth: 280,
+            pointerEvents: 'none',
+            background: isDark ? 'rgba(17,17,27,0.97)' : 'rgba(255,255,255,0.99)',
+            border: `1px solid ${isDark ? 'rgba(239,68,68,0.45)' : 'rgba(239,68,68,0.3)'}`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.24)',
+          }}
+        >
+          <div className="text-xs font-semibold mb-1 whitespace-nowrap" style={{ color: '#dc2626' }}>
+            该日期考试撞期
+          </div>
+          {plannedList.length > 0 && (
+            <div className="mb-1">
+              <div className="text-[11px] mb-0.5" style={{ color: tokens.colors.text.muted }}>该生已报志愿校：</div>
+              {plannedList.map((o, i) => (
+                <div key={`p-${i}`} className="text-xs" style={{ color: tokens.colors.text.primary }}>
+                  • {o.schoolName}
+                  <span style={{ color: tokens.colors.text.muted }}>（{o.label}）</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {candidateList.length > 0 && (
+            <div>
+              <div className="text-[11px] mb-0.5" style={{ color: tokens.colors.text.muted }}>其他可报学校：</div>
+              {candidateList.map((o, i) => (
+                <div key={`c-${i}`} className="text-xs" style={{ color: tokens.colors.text.secondary }}>
+                  • {o.schoolName}
+                  <span style={{ color: tokens.colors.text.muted }}>（{o.label}）</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
+  );
 };
 
 const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => {
@@ -26,8 +138,6 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
   const [searchQuery, setSearchQuery] = useState('');
   // 【新需求95】高才加分校筛选：all | only
   const [filterTalentBonus, setFilterTalentBonus] = useState('all');
-  // 【新需求102】撞期筛选：all | conflict（只看与当前学生已报志愿校撞期的学校）
-  const [filterConflict, setFilterConflict] = useState('all');
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -154,8 +264,8 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
 
   // 搜索过滤
   const filteredMonthsData = useMemo(() => {
-    // 无搜索 & 无高才加分筛选 & 无撞期筛选 → 直接返回
-    if (!searchQuery && filterTalentBonus === 'all' && filterConflict === 'all') return monthsData;
+    // 无搜索 & 无高才加分筛选 → 直接返回
+    if (!searchQuery && filterTalentBonus === 'all') return monthsData;
     return monthsData.map(md => ({
       ...md,
       schools: md.schools.filter(s => {
@@ -165,21 +275,27 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
           || s.location?.includes(searchQuery);
         // 【新需求95】高才加分校筛选
         const matchTalent = filterTalentBonus === 'all' || (filterTalentBonus === 'only' && !!s.isTalentBonus);
-        // 【新需求102】只看与已报志愿校撞期的学校
-        const matchConflict = filterConflict === 'all' || (conflictWithPlanned[s.id]?.length > 0);
-        return matchSearch && matchTalent && matchConflict;
+        return matchSearch && matchTalent;
       }),
     }));
-  }, [monthsData, searchQuery, filterTalentBonus, filterConflict, conflictWithPlanned]);
+  }, [monthsData, searchQuery, filterTalentBonus]);
 
-  // 当前窗口内"与已报志愿校撞期"的学校数（统计卡用）
-  const plannedConflictCount = useMemo(() => {
-    const seen = new Set();
-    filteredMonthsData.forEach(md => md.schools.forEach((s) => {
-      if (conflictWithPlanned[s.id]?.length > 0) seen.add(s.id);
-    }));
-    return seen.size;
-  }, [filteredMonthsData, conflictWithPlanned]);
+  // 【新需求103】把某所学校的撞期结果整理成 date → { planned: [], candidate: [] }
+  //   供详情弹窗在对应考试日期旁挂红色叹号（不再在卡片上做徽章/筛选）
+  const buildConflictByDate = (school) => {
+    const map = new Map();
+    const ensure = (date) => {
+      if (!map.has(date)) map.set(date, { planned: [], candidate: [] });
+      return map.get(date);
+    };
+    (conflictWithPlanned[school.id] || []).forEach((h) => {
+      ensure(h.date).planned.push(...h.others);
+    });
+    getSchoolConflicts(candidateConflicts, school).forEach((h) => {
+      ensure(h.date).candidate.push(...h.others);
+    });
+    return map;
+  };
 
   // 获取相关学生信息（已申请该学校的学生）—— 从 props 中的 studentData 获取
   const getStudentsForSchool = (schoolName) => {
@@ -217,33 +333,13 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
             <ExternalLink size={12} />
             点击任意学校卡片可查看详细报考信息（重要日期、认证需求、募集要项等）
           </p>
-          {/* 【新需求102】撞期基准说明：让老师清楚红色徽章是跟谁比出来的 */}
+          {/* 【新需求103】撞期改为"点开卡片后在考试日期旁显示红色叹号"，这里只做一句轻提示 */}
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>
             <AlertTriangle size={12} style={{ color: '#dc2626' }} />
-            撞期基准：
-            <span className="font-medium" style={{ color: tokens.colors.text.secondary }}>
-              {currentStudent?.name || '当前学生'}
-            </span>
-            已报 {plannedSchools.length} 所志愿校（红=与已报同日考试，橙=候选校之间同日考试）
+            若考试日期与其他学校撞期，详情弹窗对应日期会出现红色叹号，悬停可查看撞期学校
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 【新需求102】只看撞期学校 */}
-          <button
-            type="button"
-            onClick={() => setFilterConflict(filterConflict === 'conflict' ? 'all' : 'conflict')}
-            className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1"
-            style={{
-              background: filterConflict === 'conflict'
-                ? (isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.1)')
-                : (isDark ? 'rgba(255,255,255,0.06)' : '#fff'),
-              border: `1px solid ${filterConflict === 'conflict' ? 'rgba(239,68,68,0.4)' : tokens.colors.border.subtle}`,
-              color: filterConflict === 'conflict' ? '#dc2626' : tokens.colors.text.secondary,
-            }}
-            title="只显示与当前学生已报志愿校考试撞期的学校">
-            <AlertTriangle size={14} />
-            {filterConflict === 'conflict' ? '仅撞期学校' : '撞期筛选'}
-          </button>
           {/* 【新需求95】高才加分校筛选 */}
           <button
             type="button"
@@ -278,14 +374,12 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { value: schoolDb.length, label: '信息库总数', color: '#3b82f6', bg: isDark ? 'rgba(59,130,246,0.12)' : 'linear-gradient(135deg, #eff6ff, #dbeafe)' },
           { value: totalUpcoming, label: '近6月可报', color: '#22c55e', bg: isDark ? 'rgba(34,197,94,0.12)' : 'linear-gradient(135deg, #f0fdf4, #dcfce7)' },
           { value: filteredMonthsData[0]?.schools.length || 0, label: '本月可报', color: '#a855f7', bg: isDark ? 'rgba(168,85,247,0.12)' : 'linear-gradient(135deg, #faf5ff, #f3e8ff)' },
           { value: filteredMonthsData[1]?.schools.length || 0, label: '下月可报', color: '#f97316', bg: isDark ? 'rgba(249,115,22,0.12)' : 'linear-gradient(135deg, #fff7ed, #ffedd5)' },
-          // 【新需求102】与已报志愿校撞期的候选校数量
-          { value: plannedConflictCount, label: '与已报撞期', color: '#dc2626', bg: isDark ? 'rgba(239,68,68,0.12)' : 'linear-gradient(135deg, #fef2f2, #fee2e2)' },
         ].map((card, i) => (
           <div key={i} className="p-4 rounded-xl text-center" style={{
             background: card.bg,
@@ -364,16 +458,6 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                     {md.schools.map(school => {
                       const relatedStudents = getStudentsForSchool(school.name);
                       const typeColor = TYPE_COLORS[school.type] || 'bg-gray-500';
-                      // 【新需求102】两类撞期：① 与当前学生已报志愿校 ② 与其他候选校
-                      const plannedHits = conflictWithPlanned[school.id] || [];
-                      const candidateHits = getSchoolConflicts(candidateConflicts, school);
-                      // 撞期学校左侧加色条：红（与已报撞期）优先于橙（候选校之间撞期）
-                      //注意要拼进 hover 前后的 boxShadow，否则鼠标移出后色条会被冲掉
-                      const conflictBar = plannedHits.length > 0
-                        ? 'inset 3px 0 0 0 #dc2626'
-                        : candidateHits.length > 0 ? 'inset 3px 0 0 0 #f97316' : '';
-                      const baseShadow = [glassCardStyle.boxShadow, conflictBar].filter(Boolean).join(', ') || 'none';
-                      const hoverShadow = [tokens.shadow.elevationHover, conflictBar].filter(Boolean).join(', ');
 
                       return (
                         <div key={school.id}
@@ -381,16 +465,15 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                           style={{
                             ...glassCardStyle,
                             transition: 'all 250ms cubic-bezier(0.16,1,0.3,1)',
-                            boxShadow: baseShadow,
                           }}
                           onClick={() => setDetailSchool(school)}
                           title={`点击查看 ${school.name} 的详细报考信息`}
                           onMouseEnter={e => {
-                            e.currentTarget.style.boxShadow = hoverShadow;
+                            e.currentTarget.style.boxShadow = tokens.shadow.elevationHover;
                             e.currentTarget.style.transform = 'translateY(-2px)';
                           }}
                           onMouseLeave={e => {
-                            e.currentTarget.style.boxShadow = baseShadow;
+                            e.currentTarget.style.boxShadow = glassCardStyle.boxShadow || 'none';
                             e.currentTarget.style.transform = 'translateY(0)';
                           }}
                         >
@@ -420,26 +503,6 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                                     style={{ background: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
                                     title="高才加分校：学生申请可获得附加加分">
                                     ⭐
-                                  </span>
-                                )}
-                                {/* 【新需求102】与当前学生已报志愿校撞期（红色，最高优先级） */}
-                                {plannedHits.length > 0 && (
-                                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
-                                    style={{ background: isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.12)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.4)' }}
-                                    title={plannedHits.map(h => `${h.date}（${h.label}）与已报 ${h.others.map(o => `${o.schoolName}·${o.label}`).join('、')} 同日`).join('\n')}>
-                                    <AlertTriangle size={11} />
-                                    <span className="hidden sm:inline">撞期</span>
-                                    {plannedHits.length}
-                                  </span>
-                                )}
-                                {/* 【新需求102】候选校之间同日考试（橙色，提示"这两所只能选一所"）*/}
-                                {plannedHits.length === 0 && candidateHits.length > 0 && (
-                                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap"
-                                    style={{ background: isDark ? 'rgba(249,115,22,0.18)' : 'rgba(249,115,22,0.12)', color: '#ea580c', border: '1px solid rgba(249,115,22,0.35)' }}
-                                    title={candidateHits.map(h => `${h.date}（${h.label}）与 ${h.others.map(o => `${o.schoolName}·${o.label}`).join('、')} 同日考试`).join('\n')}>
-                                    <AlertTriangle size={11} />
-                                    <span className="hidden sm:inline">同日</span>
-                                    {new Set(candidateHits.flatMap(h => h.others.map(o => o.schoolName))).size}
                                   </span>
                                 )}
                                 {user.role !== 'student' && relatedStudents.length > 0 && (
@@ -546,79 +609,20 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                 </div>
                 );
               })()}
-              {/* 【新需求102】撞期提示块：进详情就能确认这所学校的考试会不会撞车 */}
-              {(() => {
-                const pHits = conflictWithPlanned[detailSchool.id] || [];
-                const cHits = getSchoolConflicts(candidateConflicts, detailSchool);
-                if (pHits.length === 0 && cHits.length === 0) return null;
-                const Block = ({ hits, color, bgDark, bgLight, title, tip }) => (
-                  <div className="rounded-lg p-3 text-xs" style={{
-                    background: isDark ? bgDark : bgLight,
-                    border: `1px solid ${color}55`,
-                  }}>
-                    <div className="font-semibold flex items-center gap-1.5 mb-1" style={{ color }}>
-                      <AlertTriangle size={13} /> {title}
-                    </div>
-                    {hits.map((h, i) => (
-                      <div key={`${h.date}-${i}`} style={{ color: tokens.colors.text.secondary }}>
-                        <span className="font-medium" style={{ color }}>{h.date}</span>
-                        {` ${h.label} ↔ `}
-                        {h.others.map(o => `${o.schoolName}（${o.label}）`).join('、')}
-                      </div>
-                    ))}
-                    <div className="mt-1" style={{ color: tokens.colors.text.muted }}>{tip}</div>
-                  </div>
-                );
-                return (
-                  <div className="space-y-2">
-                    {pHits.length > 0 && (
-                      <Block
-                        hits={pHits} color="#dc2626"
-                        bgDark="rgba(239,68,68,0.12)" bgLight="rgba(239,68,68,0.07)"
-                        title={`与 ${currentStudent?.name || '当前学生'} 已报志愿校撞期（${pHits.length} 处）`}
-                        tip="同一天只能参加一所学校的考试，报名前请先确认取舍。"
-                      />
-                    )}
-                    {cHits.length > 0 && (
-                      <Block
-                        hits={cHits} color="#ea580c"
-                        bgDark="rgba(249,115,22,0.12)" bgLight="rgba(249,115,22,0.07)"
-                        title={`与其他可报学校同日考试（${cHits.length} 处）`}
-                        tip="这些学校的考试撞在同一天，给同一名学生排考时只能选其中一所。"
-                      />
-                    )}
-                  </div>
-                );
-              })()}
-
               {/* 重要日期 */}
               <div>
-                <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-semibold" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
+                  {/* 【新需求103】撞期基准说明（叹号是跟谁比出来的） */}
+                  <span className="text-[11px]" style={{ color: tokens.colors.text.muted }}>
+                    撞期基准：{currentStudent?.name || '当前学生'} 已报 {plannedSchools.length} 所志愿校
+                  </span>
+                </div>
                 {(() => {
-                  //【新需求102】该校所有撞期日期集合 → 用于把对应考试日期格子标红
-                  const conflictDateMap = new Map();
-                  [...(conflictWithPlanned[detailSchool.id] || [])].forEach(h => {
-                    conflictDateMap.set(h.date, { color: '#dc2626', others: h.others });
-                  });
-                  getSchoolConflicts(candidateConflicts, detailSchool).forEach(h => {
-                    // 已被"与已报撞期"标红的日期优先保留红色
-                    if (!conflictDateMap.has(h.date)) {
-                      conflictDateMap.set(h.date, { color: '#ea580c', others: h.others });
-                    }
-                  });
-                  // 考试类日期格子样式：撞期 → 高亮底色 + 描边；否则用原样式
-                  const examCell = (rawDate, baseStyle) => {
-                    const hit = conflictDateMap.get(normalizeDate(rawDate));
-                    if (!hit) return { style: baseStyle, color: null, title: '' };
-                    return {
-                      style: {
-                        background: `${hit.color}22`,
-                        border: `1px solid ${hit.color}77`,
-                      },
-                      color: hit.color,
-                      title: `与 ${hit.others.map(o => `${o.schoolName}（${o.label}）`).join('、')} 同日`,
-                    };
-                  };
+                  // 【新需求103】该校每个撞期日期 → { planned: [...], candidate: [...] }
+                  //   考试日期格子保持原样式，只在标题右侧挂一个红色叹号，hover 显示撞期学校名
+                  const conflictByDate = buildConflictByDate(detailSchool);
+                  const markFor = (rawDate) => conflictByDate.get(normalizeDate(rawDate)) || null;
                   const dates = detailSchool.importantDates || detailSchool.important_dates;
                   if (dates && dates.length > 0) {
                     return dates.map((dg, gi) => {
@@ -640,48 +644,46 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
                           <div className="grid grid-cols-2 gap-2">
                             {asd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿开始</div><div className="text-sm font-semibold" style={{ color: tokens.colors.text.secondary }}>{asd}</div></div>}
                             {aed && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>出愿截止</div><div className="text-sm font-semibold" style={{ color: '#ef4444' }}>{aed}</div>{dg.deadlineType && <div className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>{dg.deadlineType}</div>}</div>}
-                            {/* 【新需求102】考试类日期若撞期 → 格子高亮 + ⚠ + hover 说明与谁同日 */}
-                            {fxd && (() => { const c = examCell(fxd, cellStyle); return (
-                              <div className="rounded-lg p-2.5 text-center" style={c.style} title={c.title}>
-                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: c.color || tokens.colors.text.muted }}>
-                                  一审考试{c.color && <AlertTriangle size={10} />}
+                            {/* 【新需求103】考试类日期若撞期 → 标题右侧红色叹号，悬停显示撞期学校名*/}
+                            {fxd && (
+                              <div className="rounded-lg p-2.5 text-center" style={cellStyle}>
+                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: tokens.colors.text.muted }}>
+                                  一审考试<ExamConflictMark conflict={markFor(fxd)} isDark={isDark} tokens={tokens} />
                                 </div>
-                                <div className="text-sm font-semibold" style={{ color: c.color || '#0ea5e9' }}>{fxd}</div>
+                                <div className="text-sm font-semibold" style={{ color: '#0ea5e9' }}>{fxd}</div>
                               </div>
-                            ); })()}
+                            )}
                             {frd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>一审发表</div><div className="text-sm font-semibold" style={{ color: '#14b8a6' }}>{frd}</div></div>}
-                            {sxd && (() => { const c = examCell(sxd, cellStyle); return (
-                              <div className="rounded-lg p-2.5 text-center" style={c.style} title={c.title}>
-                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: c.color || tokens.colors.text.muted }}>
-                                  二审考试{c.color && <AlertTriangle size={10} />}
+                            {sxd && (
+                              <div className="rounded-lg p-2.5 text-center" style={cellStyle}>
+                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: tokens.colors.text.muted }}>
+                                  二审考试<ExamConflictMark conflict={markFor(sxd)} isDark={isDark} tokens={tokens} />
                                 </div>
-                                <div className="text-sm font-semibold" style={{ color: c.color || '#ec4899' }}>{sxd}</div>
+                                <div className="text-sm font-semibold" style={{ color: '#ec4899' }}>{sxd}</div>
                               </div>
-                            ); })()}
+                            )}
                             {srd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>二审发表</div><div className="text-sm font-semibold" style={{ color: '#d946ef' }}>{srd}</div></div>}
-                            {ed && (() => { const c = examCell(ed, cellStyle); return (
-                              <div className="rounded-lg p-2.5 text-center" style={c.style} title={c.title}>
-                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: c.color || tokens.colors.text.muted }}>
-                                  考试日期{c.color && <AlertTriangle size={10} />}
+                            {ed && (
+                              <div className="rounded-lg p-2.5 text-center" style={cellStyle}>
+                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: tokens.colors.text.muted }}>
+                                  考试日期<ExamConflictMark conflict={markFor(ed)} isDark={isDark} tokens={tokens} />
                                 </div>
-                                <div className="text-sm font-semibold" style={{ color: c.color || '#3b82f6' }}>{ed}</div>
+                                <div className="text-sm font-semibold" style={{ color: '#3b82f6' }}>{ed}</div>
                               </div>
-                            ); })()}
+                            )}
                             {rd && <div className="rounded-lg p-2.5 text-center" style={cellStyle}><div className="text-xs" style={{ color: tokens.colors.text.muted }}>合格发表</div><div className="text-sm font-semibold" style={{ color: '#22c55e' }}>{rd}</div></div>}
-                            {customDates.map((cd, i) => {
-                              // 只有"考试类"自定义日期才参与撞期高亮（书类提交等非考试项不标记）
-                              const c = isExamLikeLabel(cd.label)
-                                ? examCell(cd.date, cellStyle)
-                                : { style: cellStyle, color: null, title: '' };
-                              return (
-                                <div key={`c-${i}`} className="rounded-lg p-2.5 text-center" style={c.style} title={c.title}>
-                                  <div className="text-xs flex items-center justify-center gap-1" style={{ color: c.color || tokens.colors.text.muted }}>
-                                    {cd.label}{c.color && <AlertTriangle size={10} />}
-                                  </div>
-                                  <div className="text-sm font-semibold" style={{ color: c.color || '#8b5cf6' }}>{cd.date}</div>
+                            {customDates.map((cd, i) => (
+                              <div key={`c-${i}`} className="rounded-lg p-2.5 text-center" style={cellStyle}>
+                                <div className="text-xs flex items-center justify-center gap-1" style={{ color: tokens.colors.text.muted }}>
+                                  {cd.label}
+                                  {/* 只有"考试类"自定义日期才挂叹号（书类提交等非考试项不标记） */}
+                                  {isExamLikeLabel(cd.label) && (
+                                    <ExamConflictMark conflict={markFor(cd.date)} isDark={isDark} tokens={tokens} />
+                                  )}
                                 </div>
-                              );
-                            })}
+                                <div className="text-sm font-semibold" style={{ color: '#8b5cf6' }}>{cd.date}</div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       );
