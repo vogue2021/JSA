@@ -611,13 +611,8 @@ const UpcomingSchools = ({ studentList, studentData, currentStudent, user }) => 
               })()}
               {/* 重要日期 */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-semibold" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
-                  {/* 【新需求103】撞期基准说明（叹号是跟谁比出来的） */}
-                  <span className="text-[11px]" style={{ color: tokens.colors.text.muted }}>
-                    撞期基准：{currentStudent?.name || '当前学生'} 已报 {plannedSchools.length} 所志愿校
-                  </span>
-                </div>
+                {/* 【新需求104】移除"撞期基准：XXX 已报 N 所志愿校"提示行 —— 撞期信息统一由日期旁的红色叹号承载 */}
+                <h5 className="text-xs font-semibold mb-2" style={{ color: tokens.colors.text.muted }}>重要日期</h5>
                 {(() => {
                   // 【新需求103】该校每个撞期日期 → { planned: [...], candidate: [...] }
                   //   考试日期格子保持原样式，只在标题右侧挂一个红色叹号，hover 显示撞期学校名
