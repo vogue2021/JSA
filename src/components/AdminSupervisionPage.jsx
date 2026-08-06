@@ -1,17 +1,21 @@
 // 【新需求99】管理员监管页面
-// 管理员专属，按老师维度切换，Excel 风格表格：
+// 【新需求101】① 改为权限化：管理员 + 被授予 view_supervision 权限的老师均可访问
+//              ② 增加"校内考撞期"检测列，把同一学生名下不同学校考试日期撞在同一天的情况标红
+// 按老师维度切换，Excel 风格表格：
 //   每行 = 学生
-//   列 = 基础信息录入完整度 / 成绩录入完整度 / 报考学校 & 每校申请状态
-// 用于日常监管：一眼看出哪个老师带的学生资料还没录、成绩还没登、报考进度到哪一步。
+//   列 = 基础信息录入完整度 / 成绩录入完整度 / 考试撞期 / 报考学校 & 每校申请状态
+// 用于日常监管：一眼看出哪个老师带的学生资料还没录、成绩还没登、报考进度到哪一步、考试是否撞期。
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Users, GraduationCap, RefreshCw, Search, Download,
   Check, X as XIcon, AlertCircle, ChevronDown, ChevronRight,
-  School as SchoolIcon, ClipboardList, Filter
+  School as SchoolIcon, ClipboardList, Filter, AlertTriangle
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { studentsAPI, teachersAPI, schoolsAPI } from '../services/api';
+// 【新需求101】校内考撞期检测（纯计算工具，与学校页面共用同一套口径）
+import { detectExamConflicts, getSchoolConflicts, collectExamDates, formatConflictSummary } from '../utils/examConflictUtils';
 
 // 学校申请状态 → 中文文案 + 颜色
 const STATUS_MAP = {
@@ -52,7 +56,14 @@ function checkScores(s) {
 
 const AdminSupervisionPage = () => {
   const { tokens, isDark } = useTheme();
-  const { user, showNotification } = useApp();
+  const { user, showNotification, hasPermission } = useApp();
+
+  // 【新需求101】访问权限：管理员始终可看；老师需被勾选 view_supervision
+  const canView = user?.role === 'admin'
+    || (user?.role === 'teacher' && hasPermission?.('view_supervision'));
+  // 数据范围：管理员 / 拥有 view_all_students 的老师可按任意老师维度切换；
+  //   普通被授权老师只能看自己负责的学生（后端 /students 已强制按teacher_id 过滤，前端同步收敛UI）
+  const canSeeAllTeachers = user?.role === 'admin' || hasPermission?.('view_all_students');
 
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
@@ -66,18 +77,6 @@ const AdminSupervisionPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 学生信息完整度过滤
   const [expandedRows, setExpandedRows] = useState(new Set()); // 展开显示学校详情的行
-
-  // 仅 admin 访问
-  if (user?.role !== 'admin') {
-    return (
-      <div className="glass-panel p-8 text-center rounded-2xl">
-        <AlertCircle size={48} className="mx-auto mb-3" style={{ color: tokens.colors.text.muted }} />
-        <div style={{ color: tokens.colors.text.secondary }}>
-          该页面仅供管理员查看
-        </div>
-      </div>
-    );
-  }
 
   // 加载数据：老师 + 学生 + 每个学生的学校
   const loadAll = useCallback(async () => {
@@ -104,15 +103,29 @@ const AdminSupervisionPage = () => {
         await Promise.all(slice.map(async (stu) => {
           try {
             const data = await schoolsAPI.getByStudent(stu.studentId);
-            buckets[stu.studentId] = Array.isArray(data) ? data.map(s => ({
-              id: s.id,
-              name: s.name,
-              nameJa: s.name_ja || '',
-              type: s.type || '',
-              program: s.program || '',
-              status: s.status || 'not_started',
-              applicationEndDate: s.application_end_date || '',
-            })) : [];
+            buckets[stu.studentId] = Array.isArray(data) ? data.map(s => {
+              // 【新需求101】extra_dates 里藏着一审/二审/自定义日期，撞期检测必须一起带出来
+              let extra = {};
+              const rawExtra = s.extra_dates;
+              if (rawExtra && typeof rawExtra === 'object') extra = rawExtra;
+              else if (typeof rawExtra === 'string' && rawExtra.trim()) {
+                try { extra = JSON.parse(rawExtra) || {}; } catch { extra = {}; }
+              }
+              return {
+                id: s.id,
+                name: s.name,
+                nameJa: s.name_ja || '',
+                type: s.type || '',
+                program: s.program || '',
+                status: s.status || 'not_started',
+                applicationEndDate: s.application_end_date || '',
+                // 考试类日期（撞期检测数据源）
+                examDate: s.exam_date || '',
+                firstExamDate: extra.firstExamDate || '',
+                secondExamDate: extra.secondExamDate || '',
+                customDates: Array.isArray(extra.customDates) ? extra.customDates : [],
+              };
+            }) : [];
           } catch {
             buckets[stu.studentId] = [];
           } finally {
@@ -131,8 +144,17 @@ const AdminSupervisionPage = () => {
   }, [showNotification]);
 
   useEffect(() => {
+    // 无权限时不发起任何请求
+    if (!canView) return;
     loadAll();
-  }, [loadAll]);
+  }, [canView, loadAll]);
+
+  // 【新需求101】非全量范围的老师：后端 /students 已按 teacher_id / academic_advisor_id /
+  //   consultant_id 收敛过数据，前端只要保持 'all' 视图即可（若强制切到自己的 teacher_id，
+  //   会漏掉"我是学管/顾问但不是升学老师"的那部分学生）。
+  useEffect(() => {
+    if (!canSeeAllTeachers) setSelectedTeacher('all');
+  }, [canSeeAllTeachers]);
 
   // 按 teacher_id 分组学生（升学老师 teacherId 为主口径；未分配走 unassigned）
   const teacherToStudents = useMemo(() => {
@@ -202,23 +224,35 @@ const AdminSupervisionPage = () => {
     return m;
   }, [teachers]);
 
+  // 【新需求101】逐个学生做校内考撞期检测：{ [studentId]: conflictResult }
+  //   口径与学校页面完全一致（同一学生名下 >=2 所不同学校的考试日期落在同一天）
+  const conflictByStudent = useMemo(() => {
+    const map = {};
+    for (const [studentId, list] of Object.entries(schoolsByStudent)) {
+      map[studentId] = detectExamConflicts(list);
+    }
+    return map;
+  }, [schoolsByStudent]);
+
   // 汇总卡片数据
   const summary = useMemo(() => {
-    let infoComplete = 0, scoreComplete = 0, hasSchool = 0;
+    let infoComplete = 0, scoreComplete = 0, hasSchool = 0, conflictStudents = 0;
     for (const s of filteredStudents) {
       const i = checkBasicInfo(s);
       const c = checkScores(s);
       if (i.done === i.total) infoComplete++;
       if (c.done === c.total) scoreComplete++;
       if ((schoolsByStudent[s.studentId] || []).length > 0) hasSchool++;
+      if (conflictByStudent[s.studentId]?.hasConflict) conflictStudents++;
     }
     return {
       total: filteredStudents.length,
       infoComplete,
       scoreComplete,
       hasSchool,
+      conflictStudents,
     };
-  }, [filteredStudents, schoolsByStudent]);
+  }, [filteredStudents, schoolsByStudent, conflictByStudent]);
 
   // 切换展开
   const toggleExpand = (id) => {
@@ -236,12 +270,15 @@ const AdminSupervisionPage = () => {
       '负责老师', '学生姓名', '学号', '文理科',
       '邮箱√', '电话√', '语言学校√',
       'JLPT√', 'EJU√', '英语√',
-      '报考学校数', '报考学校（学校 | 状态 | 类型）'
+      '报考学校数', '报考学校（学校 | 状态 | 类型）',
+      // 【新需求101】撞期信息随导出一起带走，方便线下排考
+      '考试撞期数', '撞期明细（日期：学校(考试类型)）'
     ]);
     for (const s of filteredStudents) {
       const info = checkBasicInfo(s);
       const scr = checkScores(s);
       const schools = schoolsByStudent[s.studentId] || [];
+      const conflict = conflictByStudent[s.studentId];
       const schoolCell = schools.map(sc =>
         `${sc.name}${sc.program ? '('+sc.program+')' : ''} | ${statusPill(sc.status).label} | ${sc.type}`
       ).join(' ； ');
@@ -258,6 +295,8 @@ const AdminSupervisionPage = () => {
         scr.items[2].ok ? '✔' : '',
         schools.length,
         schoolCell,
+        conflict?.conflictDateCount || 0,
+        formatConflictSummary(conflict),
       ]);
     }
     const csv = rows.map(r => r.map(cell => {
@@ -277,6 +316,18 @@ const AdminSupervisionPage = () => {
   };
 
   // ─── 渲染 ─────────────────────────────────────────────────────────────────
+  // 【新需求101】权限守卫放在所有 Hook 之后，避免条件式提前 return 破坏 Hook 调用顺序
+  if (!canView) {
+    return (
+      <div className="glass-panel p-8 text-center rounded-2xl">
+        <AlertCircle size={48} className="mx-auto mb-3" style={{ color: tokens.colors.text.muted }} />
+        <div style={{ color: tokens.colors.text.secondary }}>
+          该页面需要「监管台」权限，请联系管理员开通
+        </div>
+      </div>
+    );
+  }
+
   const okIcon = <Check size={14} style={{ color: '#16a34a' }} />;
   const noIcon = <XIcon size={14} style={{ color: '#dc2626' }} />;
 
@@ -313,7 +364,7 @@ const AdminSupervisionPage = () => {
             <span className="text-xs px-2 py-0.5 rounded" style={{
               background: isDark ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)',
               color: isDark ? '#c7d2fe' : '#4338ca',
-            }}>管理员</span>
+            }}>{user?.role === 'admin' ? '管理员' : (canSeeAllTeachers ? '老师·全部学生' : '老师·我的学生')}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -346,7 +397,7 @@ const AdminSupervisionPage = () => {
         </div>
 
         {/* 汇总卡 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' }}>
             <div className="text-xs" style={{ color: tokens.colors.text.muted }}>学生数</div>
             <div className="text-xl font-bold" style={{ color: tokens.colors.text.primary }}>{summary.total}</div>
@@ -369,6 +420,20 @@ const AdminSupervisionPage = () => {
               {summary.hasSchool}<span className="text-sm font-normal" style={{ color: tokens.colors.text.muted }}> / {summary.total}</span>
             </div>
           </div>
+          {/* 【新需求101】考试撞期学生数 */}
+          <div className="p-3 rounded-lg" style={{
+            background: summary.conflictStudents > 0
+              ? (isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.08)')
+              : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+            border: summary.conflictStudents > 0 ? `1px solid ${isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.25)'}` : '1px solid transparent',
+          }}>
+            <div className="text-xs flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>
+              <AlertTriangle size={12} /> 考试撞期
+            </div>
+            <div className="text-xl font-bold" style={{ color: summary.conflictStudents > 0 ? '#dc2626' : tokens.colors.text.primary }}>
+              {summary.conflictStudents}<span className="text-sm font-normal" style={{ color: tokens.colors.text.muted }}> / {summary.total}</span>
+            </div>
+          </div>
         </div>
 
         {/* 按老师维度切换 */}
@@ -377,6 +442,15 @@ const AdminSupervisionPage = () => {
             <GraduationCap size={14} />
             <span>按老师筛选：</span>
           </div>
+          {/* 【新需求101】没有"查看所有学生"权限的老师只呈现自己这一维度*/}
+          {!canSeeAllTeachers ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <TeacherTab id="self" label="我的学生" count={students.length} active onClick={() => {}} />
+              <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
+                （仅显示您负责的学生，如需查看全部请联系管理员开通「查看所有学生」）
+              </span>
+            </div>
+          ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             <TeacherTab id="all" label="全部" count={students.length}
               active={selectedTeacher === 'all'} onClick={() => setSelectedTeacher('all')} />
@@ -398,6 +472,7 @@ const AdminSupervisionPage = () => {
               onClick={() => setSelectedTeacher('unassigned')}
             />
           </div>
+          )}
         </div>
 
         {/* 搜索/筛选 */}
@@ -475,8 +550,12 @@ const AdminSupervisionPage = () => {
                 <th className="px-3 py-2 text-center font-semibold" style={{ color: tokens.colors.text.secondary }}>
                   EJU
                 </th>
-                <th className="px-3 py-2 text-center font-semibold" style={{ color: tokens.colors.text.secondary }}>
+                <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
                   英语
+                </th>
+                {/* 【新需求101】考试撞期列 */}
+                <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
+                  考试撞期
                 </th>
                 <th className="px-3 py-2 text-left font-semibold" style={{ color: tokens.colors.text.secondary }}>
                   报考学校 & 状态
@@ -486,7 +565,7 @@ const AdminSupervisionPage = () => {
             <tbody>
               {filteredStudents.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-sm" style={{ color: tokens.colors.text.muted }}>
+                  <td colSpan={12} className="py-8 text-center text-sm" style={{ color: tokens.colors.text.muted }}>
                     暂无匹配的学生
                   </td>
                 </tr>
@@ -495,6 +574,7 @@ const AdminSupervisionPage = () => {
                 const info = checkBasicInfo(s);
                 const scr = checkScores(s);
                 const schools = schoolsByStudent[s.studentId] || [];
+                const conflict = conflictByStudent[s.studentId];
                 const isExpanded = expandedRows.has(s.studentId);
                 const teacherName = teacherNameById[s.teacherId] || '（未分配）';
                 return (
@@ -534,6 +614,24 @@ const AdminSupervisionPage = () => {
                       <td className="px-3 py-2 text-center">{scr.items[0].ok ? okIcon : noIcon}</td>
                       <td className="px-3 py-2 text-center">{scr.items[1].ok ? okIcon : noIcon}</td>
                       <td className="px-3 py-2 text-center">{scr.items[2].ok ? okIcon : noIcon}</td>
+                      {/* 【新需求101】撞期标记：>=2 所不同学校考试同日 → 标红并提示明细 */}
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        {conflict?.hasConflict ? (
+                          <button
+                            onClick={() => toggleExpand(s.studentId)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold"
+                            style={{ background: 'rgba(239,68,68,0.14)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.35)' }}
+                            title={formatConflictSummary(conflict)}
+                          >
+                            <AlertTriangle size={12} />
+                            {conflict.conflictDateCount} 处
+                          </button>
+                        ) : (
+                          <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
+                            {schools.length > 1 ? '无' : '-'}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         {schools.length === 0 ? (
                           <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
@@ -573,7 +671,26 @@ const AdminSupervisionPage = () => {
                     {isExpanded && schools.length > 0 && (
                       <tr style={{ background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
                         <td></td>
-                        <td colSpan={10} className="px-3 py-2">
+                        <td colSpan={11} className="px-3 py-2">
+                          {/* 【新需求101】撞期汇总条：按日期列出当天全部撞在一起的学校 */}
+                          {conflict?.hasConflict && (
+                            <div className="mb-2 p-2 rounded-lg text-xs" style={{
+                              background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.07)',
+                              border: `1px solid ${isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.22)'}`,
+                            }}>
+                              <div className="font-semibold flex items-center gap-1 mb-1" style={{ color: '#dc2626' }}>
+                                <AlertTriangle size={12} />
+                                校内考撞期 {conflict.conflictDateCount} 处（同一天需要去2 所以上学校考试，必须调整）
+                              </div>
+                              {conflict.conflictDates.map(({ date, entries }) => (
+                                <div key={date} style={{ color: tokens.colors.text.secondary }}>
+                                  <span className="font-medium" style={{ color: '#dc2626' }}>{date}</span>
+                                  {' — '}
+                                  {entries.map(e => `${e.schoolName}（${e.label}）`).join('、')}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="text-xs mb-1" style={{ color: tokens.colors.text.muted }}>
                             报考学校明细（{schools.length}）
                           </div>
@@ -585,17 +702,24 @@ const AdminSupervisionPage = () => {
                                   <th className="px-2 py-1 text-left font-normal">研究科/专业</th>
                                   <th className="px-2 py-1 text-left font-normal">类型</th>
                                   <th className="px-2 py-1 text-left font-normal">出愿截止</th>
+                                  <th className="px-2 py-1 text-left font-normal">考试日期</th>
                                   <th className="px-2 py-1 text-left font-normal">状态</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {schools.map((sc) => {
                                   const p = statusPill(sc.status);
+                                  const scConflicts = getSchoolConflicts(conflict, sc);
+                                  const conflictDates = new Set(scConflicts.map(c => c.date));
+                                  const examDates = collectExamDates(sc);
                                   return (
                                     <tr key={sc.id}>
                                       <td className="px-2 py-1" style={{ color: tokens.colors.text.primary }}>
                                         {sc.name}
                                         {sc.nameJa && <span className="ml-1 opacity-60">({sc.nameJa})</span>}
+                                        {scConflicts.length > 0 && (
+                                          <AlertTriangle size={11} className="inline ml-1" style={{ color: '#dc2626' }} />
+                                        )}
                                       </td>
                                       <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>
                                         {sc.program || '-'}
@@ -605,6 +729,32 @@ const AdminSupervisionPage = () => {
                                       </td>
                                       <td className="px-2 py-1" style={{ color: tokens.colors.text.secondary }}>
                                         {sc.applicationEndDate || '-'}
+                                      </td>
+                                      {/* 【新需求101】考试日期列：撞期的日期标红加粗 */}
+                                      <td className="px-2 py-1">
+                                        {examDates.length === 0 ? (
+                                          <span style={{ color: tokens.colors.text.muted }}>-</span>
+                                        ) : (
+                                          <div className="flex flex-wrap gap-1">
+                                            {examDates.map((d, di) => {
+                                              const hit = conflictDates.has(d.date);
+                                              return (
+                                                <span
+                                                  key={`${d.date}-${di}`}
+                                                  className="px-1.5 py-0.5 rounded whitespace-nowrap"
+                                                  style={hit
+                                                    ? { background: 'rgba(239,68,68,0.14)', color: '#dc2626', fontWeight: 600, border: '1px solid rgba(239,68,68,0.35)' }
+                                                    : { color: tokens.colors.text.secondary }}
+                                                  title={hit
+                                                    ? `与其他学校同日：${scConflicts.filter(c => c.date === d.date).flatMap(c => c.others.map(o => `${o.schoolName}(${o.label})`)).join('、')}`
+                                                    : ''}
+                                                >
+                                                  {d.label}: {d.date}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="px-2 py-1">
                                         <span className="px-1.5 py-0.5 rounded" style={{ background: p.bg, color: p.fg }}>
@@ -641,6 +791,14 @@ const AdminSupervisionPage = () => {
         <div className="text-xs mt-2" style={{ color: tokens.colors.text.muted }}>
           <Check size={12} className="inline mr-1" style={{ color: '#16a34a' }} />= 已录入 &nbsp;
           <XIcon size={12} className="inline mr-1" style={{ color: '#dc2626' }} />= 未录入
+        </div>
+        {/* 【新需求101】撞期口径说明 */}
+        <div className="text-xs mt-1 flex items-start gap-1" style={{ color: tokens.colors.text.muted }}>
+          <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#dc2626' }} />
+          <span>
+            = 校内考撞期：同一学生名下【2 所及以上不同学校】的考试类日期（校内考 / 一审 / 二审 / 面试等自定义考试日）落在同一天。
+            同一所学校内部多个考试日期同天不计为撞期。
+          </span>
         </div>
       </div>
     </div>

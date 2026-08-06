@@ -11,6 +11,8 @@ import {
   Copy, Megaphone
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
+// 【新需求101】校内考撞期检测工具（与监管台共用同一套判定口径）
+import { detectExamConflicts, getSchoolConflicts, normalizeDate } from './utils/examConflictUtils';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -4588,7 +4590,12 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
   );
 
   // 学校管理页面
-  const SchoolsView = () => (
+  const SchoolsView = () => {
+    // 【新需求101】当前学生全部志愿校的"校内考撞期"检测：
+    //   同一天出现 >= 2 所不同学校的考试类日期（校内考 / 一审 / 二审 / 面试等自定义考试日）→ 判定冲突。
+    //   学生一天只能去一个考场，老师选校/排考时必须先看到这里的红色提示。
+    const examConflicts = detectExamConflicts(schools);
+    return (
     <div className="space-y-6">
       {/* 工具栏：学生选择器 + 添加学校按钮 */}
       {user.role !== 'student' ? (
@@ -4641,20 +4648,75 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         </div>
       ) : null}
 
+      {/* 【新需求101】校内考撞期警告横幅：把撞在同一天的学校按日期列出来 */}
+      {examConflicts.hasConflict && (
+        <div className="glass-panel p-4 rounded-xl" style={{
+          background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.07)',
+          border: `1px solid ${isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.25)'}`,
+        }}>
+          <div className="flex items-start gap-2">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" style={{ color: '#dc2626' }} />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm mb-1" style={{ color: '#dc2626' }}>
+                考试撞期提醒：发现 {examConflicts.conflictDateCount} 个日期存在冲突（涉及 {examConflicts.involvedSchoolCount} 所学校）
+              </div>
+              <div className="space-y-1">
+                {examConflicts.conflictDates.map(({ date, entries }) => (
+                  <div key={date} className="text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="px-2 py-0.5 rounded font-semibold text-xs" style={{
+                      background: isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.12)', color: '#dc2626',
+                    }}>{date}</span>
+                    <span style={{ color: tokens.colors.text.secondary }}>
+                      {entries.map(e => `${e.schoolName}（${e.label}）`).join('  ×  ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs mt-2" style={{ color: tokens.colors.text.muted }}>
+                同一天只能参加一所学校的考试，请与学生确认取舍，或改报其他日程的学校 / 学部。
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {schools.map(school => {
           const progress = calculateSchoolProgress(school.name);
+          // 【新需求101】该校命中的撞期条目 + 命中日期集合（用于把对应日期格子标红）
+          const schoolConflicts = getSchoolConflicts(examConflicts, school);
+          const conflictDates = new Set(schoolConflicts.map(c => c.date));
+          const hasConflict = schoolConflicts.length > 0;
+          //撞期日期格子的统一样式
+          const conflictCellStyle = {
+            background: isDark ? 'rgba(239,68,68,0.16)' : 'rgba(239,68,68,0.09)',
+            boxShadow: `inset 0 0 0 1px ${isDark ? 'rgba(239,68,68,0.45)' : 'rgba(239,68,68,0.35)'}`,
+          };
+          const conflictTitle = (date) => schoolConflicts
+            .filter(c => c.date === date)
+            .flatMap(c => c.others.map(o => `${o.schoolName}（${o.label}）`))
+            .join('、');
           return (
             <div key={school.id} className={`glass-card p-5 ${user.role === 'student' ? 'cursor-pointer' : ''}`}
               onClick={user.role === 'student' ? () => setSchoolDetailModal(school) : undefined}
+              style={hasConflict ? { boxShadow: `inset 3px 0 0 0 #dc2626` } : undefined}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <h3 className="font-bold text-xl">{school.name}</h3>
                     <span className="text-xs px-2 py-1 rounded-full" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.secondary }}>
                       {school.type}
                     </span>
+                    {/* 【新需求101】撞期徽章 */}
+                    {hasConflict && (
+                      <span
+                        className="text-xs px-2 py-1 rounded-full font-semibold inline-flex items-center gap-1"
+                        style={{ background: isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.12)', color: '#dc2626' }}
+                        title={schoolConflicts.map(c => `${c.date}与 ${c.others.map(o => o.schoolName).join('、')} 同日`).join('；')}
+                      >
+                        <AlertCircle size={12} /> 考试撞期
+                      </span>
+                    )}
                   </div>
                   <span className={`inline-block text-xs px-3 py-1 rounded-full border ${getStatusColor(school.status)}`}>
                     {getStatusText(school.status)}
@@ -4727,9 +4789,18 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       <div className="text-[11px] mt-0.5 font-medium" style={{ color: isDark ? '#fdba74' : '#c2410c' }}>{school.deadlineType}</div>
                     )}
                   </div>
-                  <div className="p-2 rounded" style={{ background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}>
-                    <div className="text-xs" style={{ color: isDark ? '#93c5fd' : '#2563eb' }}>考试日期</div>
-                    <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.examDate}</div>
+                  {/* 【新需求101】考试日期若与其他学校撞期 → 红底 + ⚠ 标记*/}
+                  <div className="p-2 rounded"
+                    style={conflictDates.has(normalizeDate(school.examDate))
+                      ? conflictCellStyle
+                      : { background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.06)' }}
+                    title={conflictDates.has(normalizeDate(school.examDate)) ? `与${conflictTitle(normalizeDate(school.examDate))} 同日` : ''}
+                  >
+                    <div className="text-xs flex items-center gap-1" style={{ color: conflictDates.has(normalizeDate(school.examDate)) ? '#dc2626' : (isDark ? '#93c5fd' : '#2563eb') }}>
+                      考试日期
+                      {conflictDates.has(normalizeDate(school.examDate)) && <AlertCircle size={11} />}
+                    </div>
+                    <div className="font-semibold text-sm" style={{ color: conflictDates.has(normalizeDate(school.examDate)) ? '#dc2626' : tokens.colors.text.primary }}>{school.examDate}</div>
                   </div>
                   <div className="p-2 rounded" style={{ background: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)' }}>
                     <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>合格发表</div>
@@ -4737,9 +4808,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   </div>
                   {/* 【新需求47】一审/二审/自定义日期（仅在有值时显示） */}
                   {school.firstExamDate && (
-                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)' }}>
-                      <div className="text-xs" style={{ color: isDark ? '#7dd3fc' : '#0284c7' }}>一审考试</div>
-                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.firstExamDate}</div>
+                    <div className="p-2 rounded"
+                      style={conflictDates.has(normalizeDate(school.firstExamDate))
+                        ? conflictCellStyle
+                        : { background: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)' }}
+                      title={conflictDates.has(normalizeDate(school.firstExamDate)) ? `与 ${conflictTitle(normalizeDate(school.firstExamDate))} 同日` : ''}
+                    >
+                      <div className="text-xs flex items-center gap-1" style={{ color: conflictDates.has(normalizeDate(school.firstExamDate)) ? '#dc2626' : (isDark ? '#7dd3fc' : '#0284c7') }}>
+                        一审考试
+                        {conflictDates.has(normalizeDate(school.firstExamDate)) && <AlertCircle size={11} />}
+                      </div>
+                      <div className="font-semibold text-sm" style={{ color: conflictDates.has(normalizeDate(school.firstExamDate)) ? '#dc2626' : tokens.colors.text.primary }}>{school.firstExamDate}</div>
                     </div>
                   )}
                   {school.firstResultDate && (
@@ -4749,9 +4828,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     </div>
                   )}
                   {school.secondExamDate && (
-                    <div className="p-2 rounded" style={{ background: isDark ? 'rgba(236,72,153,0.1)' : 'rgba(236,72,153,0.06)' }}>
-                      <div className="text-xs" style={{ color: isDark ? '#f9a8d4' : '#db2777' }}>二审考试</div>
-                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondExamDate}</div>
+                    <div className="p-2 rounded"
+                      style={conflictDates.has(normalizeDate(school.secondExamDate))
+                        ? conflictCellStyle
+                        : { background: isDark ? 'rgba(236,72,153,0.1)' : 'rgba(236,72,153,0.06)' }}
+                      title={conflictDates.has(normalizeDate(school.secondExamDate)) ? `与 ${conflictTitle(normalizeDate(school.secondExamDate))} 同日` : ''}
+                    >
+                      <div className="text-xs flex items-center gap-1" style={{ color: conflictDates.has(normalizeDate(school.secondExamDate)) ? '#dc2626' : (isDark ? '#f9a8d4' : '#db2777') }}>
+                        二审考试
+                        {conflictDates.has(normalizeDate(school.secondExamDate)) && <AlertCircle size={11} />}
+                      </div>
+                      <div className="font-semibold text-sm" style={{ color: conflictDates.has(normalizeDate(school.secondExamDate)) ? '#dc2626' : tokens.colors.text.primary }}>{school.secondExamDate}</div>
                     </div>
                   )}
                   {school.secondResultDate && (
@@ -4760,12 +4847,22 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{school.secondResultDate}</div>
                     </div>
                   )}
-                  {Array.isArray(school.customDates) && school.customDates.filter(cd => cd && cd.label && cd.date).map((cd, ci) => (
-                    <div key={`cd-${ci}`} className="p-2 rounded" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
-                      <div className="text-xs" style={{ color: isDark ? '#c4b5fd' : '#7c3aed' }}>{cd.label}</div>
-                      <div className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{cd.date}</div>
-                    </div>
-                  ))}
+                  {Array.isArray(school.customDates) && school.customDates.filter(cd => cd && cd.label && cd.date).map((cd, ci) => {
+                    // 【新需求101】自定义日期里的"考试类"条目若撞期，同样标红
+                    const cdHit = conflictDates.has(normalizeDate(cd.date));
+                    return (
+                      <div key={`cd-${ci}`} className="p-2 rounded"
+                        style={cdHit ? conflictCellStyle : { background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}
+                        title={cdHit ? `与 ${conflictTitle(normalizeDate(cd.date))} 同日` : ''}
+                      >
+                        <div className="text-xs flex items-center gap-1" style={{ color: cdHit ? '#dc2626' : (isDark ? '#c4b5fd' : '#7c3aed') }}>
+                          {cd.label}
+                          {cdHit && <AlertCircle size={11} />}
+                        </div>
+                        <div className="font-semibold text-sm" style={{ color: cdHit ? '#dc2626' : tokens.colors.text.primary }}>{cd.date}</div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {school.teacherNotes && (
@@ -4796,7 +4893,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         })}
       </div>
     </div>
-  );
+    );
+  };
 
   // 材料清单页面
   const ChecklistView = () => (
@@ -5146,8 +5244,10 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     ...(user.role === 'admin' || user.role === 'teacher' ? [{ id: 'students', label: '学生列表', icon: Users }] : []),
     ...(user.role !== 'student' ? [{ id: 'profile', label: '学生信息', icon: UserCircle }] : []),
     ...(user.role === 'admin' ? [{ id: 'teachers', label: '老师管理', icon: GraduationCap }] : []),
-    // 【新需求99】监管台 - 仅管理员可见，用于总览老师-学生-报考进度
-    ...(user.role === 'admin' ? [{ id: 'supervision', label: '监管台', icon: Shield }] : []),
+    // 【新需求99】监管台 - 用于总览老师-学生-报考进度
+    // 【新需求101】改为权限化：管理员始终可见；老师需管理员勾选 view_supervision 权限后才出现
+    ...(user.role === 'admin' || (user.role === 'teacher' && hasPermission('view_supervision'))
+      ? [{ id: 'supervision', label: '监管台', icon: Shield }] : []),
     // 学校信息库 - 学生不显示，老师需权限
     ...(user.role !== 'student' && (user.role === 'admin' || hasPermission('manage_school_db')) ? [{ id: 'schooldb', label: '学校信息库', icon: BookOpen }] : []),
     // 塔内备考资料库 - 需求38：老师可编辑，学生只读公开资料
@@ -6043,6 +6143,29 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 {/* 重要日期 */}
                 <div>
                 <h4 className="font-semibold mb-3 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><Calendar size={16} /> 重要日期</h4>
+                  {/* 【新需求101】该校考试与本人其他志愿校撞期时，在详情弹窗顶部明确提示 */}
+                  {(() => {
+                    const cfs = getSchoolConflicts(detectExamConflicts(schools), schoolDetailModal);
+                    if (cfs.length === 0) return null;
+                    return (
+                      <div className="mb-3 p-3 rounded-lg text-sm" style={{
+                        background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.07)',
+                        border: `1px solid ${isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.25)'}`,
+                      }}>
+                        <div className="font-semibold flex items-center gap-1.5 mb-1" style={{ color: '#dc2626' }}>
+                          <AlertCircle size={14} /> 考试撞期提醒
+                        </div>
+                        {cfs.map((c, i) => (
+                          <div key={`${c.date}-${i}`} style={{ color: tokens.colors.text.secondary }}>
+                            <span className="font-medium" style={{ color: '#dc2626' }}>{c.date}</span>
+                            {` ${c.label} 与 `}
+                            {c.others.map(o => `${o.schoolName}（${o.label}）`).join('、')}
+                            {' 撞在同一天'}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="grid grid-cols-2 gap-3">
                     {schoolDetailModal.applicationStartDate && (
                       <div className="p-3 rounded-lg" style={{ background: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.06)' }}>
