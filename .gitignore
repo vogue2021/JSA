@@ -48,3 +48,6 @@ backend/database.sqlite
 *.sqlite-wal
 .wrangler/
 Microsoft PowerPoint *.png
+
+# D1 数据库导出备份（含用户隐私数据，禁止入库）
+workers/backups/
