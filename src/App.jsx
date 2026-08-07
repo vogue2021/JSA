@@ -4060,7 +4060,17 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                                     if (account.role === 'student') {
                                       try {
                                         // 1) 清掉与该学生绑定的本地缓存（accountList 里字段是驼峰 studentId）
-                                        const sid = account.studentId;
+                                        // 【新需求105】关键修复：users.student_id 在"添加学生/学生注册"两条路径下
+                                        //   根本没有回写，所以 account.studentId 经常是空的—— 一旦为空，
+                                        //   下面 3 步本地缓存清理会被整体跳过，被删学生的旧数据继续留在浏览器里。
+                                        //   兜底：用 account.id / email 从 studentList 里反查真实学号。
+                                        const sid = account.studentId
+                                          || (studentList || []).find(s =>
+                                                (s.userId && String(s.userId) === String(account.id))
+                                || (s.id && String(s.id) === String(account.id))
+                                             || (account.email && s.email && s.email === account.email)
+                                             )?.studentId
+                                          || '';
                                         if (sid) {
                                           localStorage.removeItem(`studentData_${sid}`);
                                         }

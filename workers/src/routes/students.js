@@ -8,6 +8,15 @@ const isAdmin = (user) => user?.role === 'admin'
 const isTeacher = (user) => user?.role === 'teacher'
 const isStudent = (user) => user?.role === 'student'
 
+// ─── 【新需求105】孤儿学生防护 ────────────────────────────────────────────────
+// 背景：历史 bug（见 users.js 删除逻辑注释）会造成 users 行已被硬删、students 行却残留
+//   且 is_active 仍为 1 的"孤儿学生"，表现为"账号已经删了，系统还显示这个学生的信息"。
+// 处理：所有列表类查询统一追加这个条件做自愈式过滤——user_id 有值但在 users 表里查不到，
+//   就不再视为有效学生（即使库里还没跑清理脚本，界面也立刻恢复正常）。
+//注意：user_id 为 NULL /空串 的记录是"未开通账号的学生"（has_account = 0），
+//   属于合法数据，必须保留，绝不能一并过滤掉。
+const ORPHAN_GUARD = " AND (user_id IS NULL OR user_id = '' OR user_id IN (SELECT id FROM users))"
+
 // 【新需求70】判断老师是否拥有某个权限（从 authMiddleware 注入的 user.permissions 读取）。
 //   permissions 为空数组或 null→返回 false。admin 始终返回 true。
 //   这里使用纯同步判断，不再查一次 DB（authMiddleware 已为老师拉取 permissions）。
@@ -86,7 +95,7 @@ students.get('/search/query', async (c) => {
   const { q, teacher_id } = c.req.query()
   const db = c.env.DB
 
-  let sql = 'SELECT * FROM students WHERE is_active = 1'
+  let sql = 'SELECT * FROM students WHERE is_active = 1' + ORPHAN_GUARD
   const params = []
 
   if (isTeacher(user)) {
@@ -115,7 +124,7 @@ students.get('/', async (c) => {
   const user = c.get('user')
   const db = c.env.DB
 
-  let sql = 'SELECT * FROM students WHERE is_active = 1'
+  let sql = 'SELECT * FROM students WHERE is_active = 1' + ORPHAN_GUARD
   const params = []
 
   if (isAdmin(user)) {
@@ -233,8 +242,10 @@ students.get('/:id', async (c) => {
   const db = c.env.DB
 
   // id 可能是 student_id 或 user_id
+  // 【新需求105】补上 is_active = 1 过滤：原先这里没有过滤，导致被软删（is_active=0）的学生
+  //   依旧能通过详情接口被完整读出（学生信息页、监管台明细等都会走到这里）。
   const student = await db.prepare(
-    'SELECT * FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+    'SELECT * FROM students WHERE (student_id = ? OR user_id = ?) AND is_active = 1' + ORPHAN_GUARD + ' LIMIT 1'
   ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
@@ -478,17 +489,27 @@ students.delete('/:id', async (c) => {
   const db = c.env.DB
 
   const student = await db.prepare(
-    'SELECT student_id FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
+    'SELECT student_id, user_id FROM students WHERE student_id = ? OR user_id = ? LIMIT 1'
   ).bind(id, id).first()
 
   if (!student) return c.json({ success: false, message: '学生不存在' }, 404)
 
-  // 软删除
-  await db.prepare(
-    "UPDATE students SET is_active = 0, updated_at = datetime('now') WHERE student_id = ?"
-  ).bind(student.student_id).run()
+  //【新需求105】统一"删除"语义：原先这里只把 students.is_active 置 0，**完全不动 users 表**，
+  //   于是被删学生的账号依旧可以登录、依旧出现在【账号管理】列表里，
+  //   与 DELETE /api/users/:id（硬删）两套接口语义不一致，是"删了还在"的另一个来源。
+  //   修复：软删学生的同时把关联账号一并停用，保证任何入口都不会再把它当成有效学生。
+  const batch = [
+    db.prepare(
+      "UPDATE students SET is_active = 0, updated_at = datetime('now') WHERE student_id = ?"
+    ).bind(student.student_id),
+    // 双向匹配：users.id = students.user_id 或 users.student_id = 该学号
+    db.prepare(
+      'UPDATE users SET is_active = 0 WHERE (id IS NOT NULL AND id = ?) OR student_id = ?'
+    ).bind(student.user_id || '__none__', student.student_id),
+  ]
+  await db.batch(batch)
 
-  return c.json({ success: true, message: '学生已删除' })
+  return c.json({ success: true, message: '学生已删除（账号已同步停用）' })
 })
 
 // ─── 追加备注（原子操作，避免并发覆盖）───────────────────────────────────────

@@ -37,11 +37,34 @@ users.delete('/:id', async (c) => {
   const target = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first()
   if (!target) return c.json({ success: false, message: '用户不存在' }, 404)
 
+  // ─── 【新需求105】关键修复：不能只信users.student_id / users.teacher_id ───
+  //根因：创建学生账号的两条主要路径都**没有** 回写 users.student_id：
+  //     - students.js POST  `INSERT INTO users (id, email, password, role, name)`
+  //     - auth.js  注册     `INSERT INTO users (id, email, password, role, name)`
+  //   而下面的级联清理原先以 `if (target.student_id)` 为入口条件，导致这类账号被删时
+  //   **级联一次都没执行** → users 行没了，students 行还留着且 is_active 仍为 1
+  //   → /students 列表照样返回该学生 → 表现为"账号已删除但系统还显示这个学生"。
+  //   修复：users列为空时，反查关联表兜底解析真实 student_id / teacher_id。
+  let sid = target.student_id || null
+  if (!sid) {
+    const srow = await db.prepare(
+      'SELECT student_id FROM students WHERE user_id = ? LIMIT 1'
+    ).bind(id).first()
+    sid = srow?.student_id || null
+  }
+  let tid = target.teacher_id || null
+  if (!tid) {
+    const trow = await db.prepare(
+      'SELECT teacher_id FROM teachers WHERE user_id = ? LIMIT 1'
+    ).bind(id).first()
+    tid = trow?.teacher_id || null
+  }
+
   // 如果是老师，检查是否有学生（含升学老师和学管老师两种身份）
-  if (target.role === 'teacher' && target.teacher_id) {
+  if (target.role === 'teacher' && tid) {
     const studentCount = await db.prepare(
       'SELECT COUNT(*) as count FROM students WHERE teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?'
-    ).bind(target.teacher_id, target.teacher_id, target.teacher_id).first()
+    ).bind(tid, tid, tid).first()
     if (studentCount?.count > 0) {
       return c.json({ success: false, message: `该老师还有 ${studentCount.count} 个学生（含作为学管老师负责的学生），请先转移学生` }, 400)
     }
@@ -49,23 +72,25 @@ users.delete('/:id', async (c) => {
 
   const batch = [db.prepare('DELETE FROM users WHERE id = ?').bind(id)]
   // 级联清理老师/学生关联
-  if (target.teacher_id) {
-    batch.push(db.prepare('DELETE FROM teachers WHERE teacher_id = ?').bind(target.teacher_id))
+  if (tid) {
+    batch.push(db.prepare('DELETE FROM teachers WHERE teacher_id = ?').bind(tid))
   }
-  if (target.student_id) {
+  if (sid) {
     // 【新需求65】管理员注销学生账号 → 完全抹除该学生及其所有关联数据。
     //   背景：需求 63/64 仅做软删（is_active=0）+ 前端刷新，但用户反馈"还是会显示"。
     //   决定：直接物理删除 students 行 + 手动级联删除所有以 student_id 为外键的表，
     //         确保学生信息页 / 学生列表 / 时间线 / 学校 / 材料 等任何入口都看不到该学生。
     //   注意：Cloudflare D1 默认不强制 FK 约束，因此即使 schema 写了 ON DELETE CASCADE
     //         也必须手动 DELETE。
-    const sid = target.student_id
     batch.push(db.prepare('DELETE FROM events WHERE student_id = ?').bind(sid))
     batch.push(db.prepare('DELETE FROM materials WHERE student_id = ?').bind(sid))
     batch.push(db.prepare('DELETE FROM schools WHERE student_id = ?').bind(sid))
     batch.push(db.prepare('DELETE FROM deadline_reminders WHERE student_id = ?').bind(sid))
     batch.push(db.prepare('DELETE FROM students WHERE student_id = ?').bind(sid))
   }
+  // 【新需求105】最后再兜一层：按 user_id 清掉任何仍指向该账号的 students 行，
+  //   覆盖"同一 user_id 对应多条 students 记录"等历史脏数据情形。
+  batch.push(db.prepare('DELETE FROM students WHERE user_id = ?').bind(id))
   // feedbacks 表是必有的（schema.sql 第 8 节定义），直接放进事务
   batch.push(db.prepare('DELETE FROM feedbacks WHERE user_id = ?').bind(id))
 

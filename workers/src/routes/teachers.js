@@ -48,8 +48,10 @@ teachers.get('/:id/students', async (c) => {
 
   if (!teacher) return c.json({ success: false, message: '老师不存在' }, 404)
 
+  //【新需求105】同步加上"孤儿学生"过滤（账号已删但students 行残留的不再计入老师名下）
   const { results: studentList } = await db.prepare(
-'SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?) AND is_active = 1'
+    "SELECT * FROM students WHERE (teacher_id = ? OR academic_advisor_id = ? OR consultant_id = ?) AND is_active = 1"
+    + " AND (user_id IS NULL OR user_id = '' OR user_id IN (SELECT id FROM users))"
   ).bind(teacher.teacher_id, teacher.teacher_id, teacher.teacher_id).all()
 
   // 为每个学生附加统计信息
