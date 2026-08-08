@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, School, FileText, CheckSquare, Plus,
@@ -8,7 +8,9 @@ import {
   GraduationCap, Mail, Lock, ArrowRight, Link2, ExternalLink,
   BookOpen, Home, Settings, HelpCircle, ChevronLeft, Shield, UserPlus,
   LayoutGrid, LayoutList, UserCircle, BarChart3, Palette, Sun, Moon, Camera, RefreshCw,
-  Copy, Megaphone
+  Copy, Megaphone,
+  // 【新需求107】学校页面表格视图的切换图标
+  Table as TableIcon
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 // 【新需求101】校内考撞期检测工具（与监管台共用同一套判定口径）
@@ -164,6 +166,23 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [timelineViewMode, setTimelineViewMode] = useState('card'); // 'card' or 'linear'
+  // 【新需求107】学校页面显示方式：'card'（卡片，信息全）| 'table'（表格，可横向比较）
+  //   放在 App 顶层而不是 SchoolsView 内部 —— SchoolsView 是内联组件，
+  //   每次 App 重渲染都是新的组件类型，React 会卸载重建，写在内部的 useState 会被重置。
+  //   同时持久化到 localStorage：这是使用习惯偏好，不该每次进页面都重选。
+  const SCHOOL_VIEW_STORAGE_KEY = 'jsa_school_view_mode';
+  const [schoolViewMode, setSchoolViewMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SCHOOL_VIEW_STORAGE_KEY);
+      return saved === 'table' || saved === 'card' ? saved : 'card';
+    } catch {
+      return 'card';
+    }
+  });
+  const changeSchoolViewMode = useCallback((mode) => {
+    setSchoolViewMode(mode);
+    try { localStorage.setItem(SCHOOL_VIEW_STORAGE_KEY, mode); } catch { /* 隐私模式下写入失败可忽略 */ }
+  }, []);
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -4634,6 +4653,40 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     //   同一天出现 >= 2 所不同学校的考试类日期（校内考 / 一审 / 二审 / 面试等自定义考试日）→ 判定冲突。
     //   学生一天只能去一个考场，老师选校/排考时必须先看到这里的红色提示。
     const examConflicts = detectExamConflicts(schools);
+    const canEditSchools = user.role === 'teacher' || user.role === 'admin';
+
+    // 【新需求107】显示方式切换器。
+    //   卡片视图信息最全但一屏只能看 3 所；表格视图牺牲部分细节，
+    //   换来"多所学校同一维度横向对比"的能力（尤其是出愿截止和考试日期的先后顺序）。
+    const viewToggle = (
+      <div className="flex items-center gap-1 p-0.5 rounded-lg flex-shrink-0" style={{
+        background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      }}>
+        {[
+          { id: 'card', label: '卡片', icon: LayoutGrid },
+          { id: 'table', label: '表格', icon: TableIcon },
+        ].map(({ id, label, icon: Icon }) => {
+          const active = schoolViewMode === id;
+          return (
+            <button
+              key={id}
+              onClick={() => changeSchoolViewMode(id)}
+              title={id === 'card' ? '卡片视图：每所学校完整信息' : '表格视图：多所学校横向对比'}
+              className="px-2.5 py-1 rounded-md text-xs font-semibold transition flex items-center gap-1.5"
+              style={{
+                background: active ? (isDark ? 'rgba(59,130,246,0.28)' : '#fff') : 'transparent',
+                color: active ? (isDark ? '#93c5fd' : '#2563eb') : tokens.colors.text.muted,
+                boxShadow: active && !isDark ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+
     return (
     <div className="space-y-6">
       {/* 工具栏：学生选择器 + 添加学校按钮 */}
@@ -4665,27 +4718,40 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               </option>
             ))}
           </select>
-          {(user.role === 'teacher' || user.role === 'admin') && (
-            <button
-              onClick={() => {
-                // 【新需求69】闸门：无 edit_schools 权限弹窗提示
-                if (!requireEditPermission('schools', { student: currentStudent })) return;
-                setEditingSchool(null);
-                setShowSchoolModal(true);
-              }}
-              disabled={!canEdit('schools')}
-              title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : ''}
-              className="ml-auto px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 flex-shrink-0"
-              style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('schools') ? 1 : 0.5, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
-              onMouseEnter={e => { if (canEdit('schools')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)' }}
-              onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
-            >
-              <Plus size={16} />
-              添加学校
-            </button>
-          )}
+          {/* 【新需求107】显示方式切换（老师/管理员：与学生选择器同行） */}
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            {viewToggle}
+            {(user.role === 'teacher' || user.role === 'admin') && (
+              <button
+                onClick={() => {
+                  // 【新需求69】闸门：无 edit_schools 权限弹窗提示
+                  if (!requireEditPermission('schools', { student: currentStudent })) return;
+                  setEditingSchool(null);
+                  setShowSchoolModal(true);
+                }}
+                disabled={!canEdit('schools')}
+                title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : ''}
+                className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 flex-shrink-0"
+                style={{ background: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)', color: isDark ? '#c4b5fd' : '#7c3aed', opacity: canEdit('schools') ? 1 : 0.5, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+                onMouseEnter={e => { if (canEdit('schools')) e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.18)' }}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.1)'}
+              >
+                <Plus size={16} />
+                添加学校
+              </button>
+            )}
+          </div>
         </div>
-      ) : null}
+      ) : (
+        /* 【新需求107】学生端也要能切换显示方式 —— 学生同样需要横向比较各校日程 */
+        <div className="glass-panel p-3 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm" style={{ color: tokens.colors.text.muted }}>
+            <School size={16} />
+            <span>我的志愿校（{schools.length}）</span>
+          </div>
+          <div className="ml-auto">{viewToggle}</div>
+        </div>
+      )}
 
       {/* 【新需求101】校内考撞期警告横幅：把撞在同一天的学校按日期列出来 */}
       {examConflicts.hasConflict && (
@@ -4718,6 +4784,163 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           </div>
         </div>
       )}
+      {/* 【新需求107】空状态：两种视图共用 */}
+      {schools.length === 0 && (
+        <div className="glass-panel p-10 text-center">
+          <School size={36} className="mx-auto mb-3" style={{ color: tokens.colors.text.muted, opacity: 0.5 }} />
+          <p className="text-sm" style={{ color: tokens.colors.text.muted }}>
+            {user.role === 'student' ? '还没有志愿校，请联系你的老师添加' : '该学生还没有志愿校，点击右上角「添加学校」开始'}
+          </p>
+        </div>
+      )}
+
+      {/* 【新需求107】表格视图：牺牲部分细节，换取多所学校在同一维度上的横向对比 */}
+      {schools.length > 0 && schoolViewMode === 'table' && (
+        <div className="glass-panel overflow-x-auto">
+          <table className="w-full text-sm" style={{ minWidth: 1080 }}>
+            <thead>
+              <tr style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}>
+                {['学校 / 学部专攻', '类型', '状态', '出愿开始', '出愿截止', '考试日期', '合格发表', '材料进度', ...(canEditSchools ? ['操作'] : [])].map((h, i) => (
+                  <th key={i} className={`px-3 py-2 font-semibold whitespace-nowrap ${h === '材料进度' || h === '操作' ? 'text-center' : 'text-left'}`}
+                    style={{ color: tokens.colors.text.secondary }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {schools.map(school => {
+                const progress = calculateSchoolProgress(school.name);
+                const schoolConflicts = getSchoolConflicts(examConflicts, school);
+                const conflictDates = new Set(schoolConflicts.map(c => c.date));
+                const hasConflict = schoolConflicts.length > 0;
+                const conflictTitleFor = (date) => schoolConflicts
+                  .filter(c => c.date === date)
+                  .flatMap(c => c.others.map(o => `${o.schoolName}（${o.label}）`))
+                  .join('、');
+                // 撞期日期用红字 + ⚠ 标出，与卡片视图口径一致
+                const dateText = (date, label) => {
+                  if (!date) return null;
+                  const hit = conflictDates.has(normalizeDate(date));
+                  return (
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap"
+                      style={{ color: hit ? '#dc2626' : tokens.colors.text.primary, fontWeight: hit ? 600 : 400 }}
+                      title={hit ? `${label} 与 ${conflictTitleFor(normalizeDate(date))} 同日` : undefined}>
+                      {hit && <AlertCircle size={11} />}
+                      {date}
+                    </span>
+                  );
+                };
+                // 一审/二审/自定义考试日期在表格里以小字副行呈现，避免信息丢失
+                const extraExamDates = [
+                  school.firstExamDate && { label: '一审', date: school.firstExamDate },
+                  school.secondExamDate && { label: '二审', date: school.secondExamDate },
+                  ...(Array.isArray(school.customDates) ? school.customDates : [])
+                    .filter(cd => cd && cd.label && cd.date && isExamLikeLabel(cd.label))
+                    .map(cd => ({ label: cd.label, date: cd.date })),
+                ].filter(Boolean);
+
+                return (
+                  <tr key={school.id}
+                    className={`transition-colors ${user.role === 'student' ? 'cursor-pointer hover:bg-white/5' : ''}`}
+                    onClick={user.role === 'student' ? () => setSchoolDetailModal(school) : undefined}
+                    style={{
+                      borderTop: `1px solid ${tokens.colors.border.subtle}`,
+                      ...(hasConflict ? { boxShadow: 'inset 3px 0 0 0 #dc2626' } : {}),
+                    }}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold" style={{ color: tokens.colors.text.primary }}>{school.name}</span>
+                        {hasConflict && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded font-semibold inline-flex items-center gap-1"
+                            style={{ background: isDark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.12)', color: '#dc2626' }}
+                            title={schoolConflicts.map(c => `${c.date} 与 ${c.others.map(o => o.schoolName).join('、')} 同日`).join('；')}>
+                            <AlertCircle size={10} /> 撞期
+                          </span>
+                        )}
+                      </div>
+                      {school.program && (
+                        <div className="text-xs mt-0.5" style={{ color: tokens.colors.text.muted }}>{school.program}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>{school.type || '-'}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${getStatusColor(school.status)}`}>
+                        {getStatusText(school.status)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: tokens.colors.text.primary }}>{school.applicationStartDate || '-'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span style={{ color: tokens.colors.text.primary }}>{school.applicationEndDate || '-'}</span>
+                      {/* 【新需求88】出愿截止类型（消印/必着/当面受付）—— 决定实际寄送时间，必须一起看到 */}
+                      {school.deadlineType && (
+                        <div className="text-[11px] font-medium" style={{ color: isDark ? '#fdba74' : '#c2410c' }}>{school.deadlineType}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {dateText(school.examDate, '考试日期') || <span style={{ color: tokens.colors.text.muted }}>-</span>}
+                      {extraExamDates.length > 0 && (
+                        <div className="mt-0.5 space-y-0.5">
+                          {extraExamDates.map((d, di) => (
+                            <div key={di} className="text-[11px] flex items-center gap-1">
+                              <span style={{ color: tokens.colors.text.muted }}>{d.label}</span>
+                              {dateText(d.date, d.label)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: tokens.colors.text.primary }}>{school.resultDate || '-'}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2 justify-center">
+                        <div className="w-16 rounded-full h-1.5 flex-shrink-0" style={{ background: isDark ? 'rgba(255,255,255,0.12)' : '#e5e7eb' }}>
+                          <div className="h-1.5 rounded-full bg-gradient-to-r from-blue-500 to-purple-500" style={{ width: `${progress.percentage}%` }} />
+                        </div>
+                        <span className="text-xs whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
+                          {progress.completed}/{progress.total}
+                        </span>
+                      </div>
+                    </td>
+                    {canEditSchools && (
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!requireEditPermission('schools', { student: currentStudent })) return;
+                              setEditingSchool(school);
+                              setShowSchoolModal(true);
+                            }}
+                            disabled={!canEdit('schools')}
+                            title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '编辑'}
+                            className="p-1.5 rounded-lg transition"
+                            style={{ color: tokens.colors.text.secondary, opacity: canEdit('schools') ? 1 : 0.4, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+                          >
+                            <Edit size={15} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSchool(school.id); }}
+                            disabled={!canEdit('schools')}
+                            title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '删除'}
+                            className="p-1.5 rounded-lg transition"
+                            style={{ color: '#ef4444', opacity: canEdit('schools') ? 1 : 0.4, cursor: canEdit('schools') ? 'pointer' : 'not-allowed' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 【新需求107】卡片视图（原有形态，保持不变） */}
+      {schools.length > 0 && schoolViewMode === 'card' && (
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {schools.map(school => {
           const progress = calculateSchoolProgress(school.name);
@@ -4932,6 +5155,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           );
         })}
       </div>
+      )}
     </div>
     );
   };

@@ -9,6 +9,8 @@ import { studentsAPI } from '../services/api';
 import { PACKAGE_OPTIONS, getPackageDisplayName, normalizePackageName } from '../utils/packageUtils';
 // 【新需求106】"确认无相关成绩"标记
 import { normalizeScoreNoneFlags, pruneConflictingFlags } from '../utils/scoreNoneUtils';
+// 【新需求107】EJU 总分口径与监管台共用
+import { calcEjuTotal as calcEjuTotalShared } from '../utils/scoreDisplayUtils';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { user, studentList, setStudentList, showNotification, getTeacherList, canEditStudent, requireEditPermission } = useApp();
@@ -190,23 +192,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   //   - 理科：加上 物理+化学+生物（学生只选2科，未填的按0计）
   //   - 文科：加上 文综
   //   - 兼容旧数据：如果没有物理/化学/生物但有 science 字段，则加 science
-  const calcEjuTotal = (score) => {
-    const num = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-    const jp = num(score.japanese);
-    const math = num(score.math);
-    const phys = num(score.physics);
-    const chem = num(score.chemistry);
-    const bio = num(score.biology);
-    const scienceSum = phys + chem + bio;
-    const legacyScience = num(score.science); // 旧数据兼容
-    const general = num(score.generalSubjects);
-    // 优先使用新的三科拆分；若都为空且有旧 science 字段，则用旧字段
-    const sciencePart = scienceSum > 0 ? scienceSum : legacyScience;
-    return jp + math + sciencePart + general;
-  };
+  // 【新需求107】实现已抽到 utils/scoreDisplayUtils.js，与监管台共用同一口径——
+  //   否则同一个学生在学生信息页与监管台可能看到不同的总分。
+  const calcEjuTotal = calcEjuTotalShared;
 
   // 新备注输入
   const [newNote, setNewNote] = useState('');
