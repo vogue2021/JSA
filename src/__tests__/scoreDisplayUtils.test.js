@@ -11,7 +11,7 @@ import {
   pickBestJlpt, formatJlptSummary,
   pickBestEju, formatEjuSummary,
   pickBestEnglishByType, formatEnglishSummary,
-  getScoreDisplay,
+  getScoreDisplay, groupScoresByYear,
 } from '../utils/scoreDisplayUtils';
 
 describe('calcEjuTotal', () => {
@@ -152,5 +152,70 @@ describe('getScoreDisplay', () => {
   it('完全无数据时返回空字符串而不是抛错', () => {
     expect(getScoreDisplay({}, 'jlpt').summary).toBe('');
     expect(getScoreDisplay(null, 'eju').summary).toBe('');
+  });
+});
+
+// ─── 【新需求108】按年度分组（问号浮窗的数据源）──────────────────────────────
+describe('groupScoresByYear', () => {
+  it('JLPT 按年份分组，年份降序（最近的排前面）', () => {
+    const groups = groupScoresByYear({
+      jlptScores: [
+        { date: '2024-07', level: 'N3', score: 100 },
+        { date: '2025-12', level: 'N1', score: 160 },
+        { date: '2025-07', level: 'N2', score: 140 },
+      ],
+    }, 'jlpt');
+    expect(groups.map(g => g.year)).toEqual(['2025', '2024']);
+    // 年内也按时间倒序：12月 排在 07月 之前
+    expect(groups[0].items.map(i => i.when)).toEqual(['12月', '07月']);
+    expect(groups[0].items[0].main).toBe('N1 160 分');
+  });
+
+  it('EJU 的各科分项进入 detail，总分进 main', () => {
+    const groups = groupScoresByYear({
+      ejuScores: [{ date: '2025-11', japanese: 320, math: 170, generalSubjects: 160 }],
+    }, 'eju');
+    expect(groups[0].items[0].main).toBe('总分 650');
+    expect(groups[0].items[0].detail).toContain('日语 320');
+    expect(groups[0].items[0].detail).toContain('文综 160');
+  });
+
+  it('英语按 YYYY-MM-DD 显示到日', () => {
+    const groups = groupScoresByYear({
+      englishScores: [{ date: '2025-05-18', type: 'TOEFL', score: 95 }],
+    }, 'english');
+    expect(groups[0].year).toBe('2025');
+    expect(groups[0].items[0].when).toBe('05-18');
+    expect(groups[0].items[0].main).toContain('TOEFL');
+  });
+
+  it('日期缺失的记录归入「年份未填」并排在最后，分数不丢', () => {
+    const groups = groupScoresByYear({
+      jlptScores: [
+        { date: '', level: 'N2', score: 130 },
+        { date: '2025-07', level: 'N1', score: 150 },
+      ],
+    }, 'jlpt');
+    expect(groups[groups.length - 1].year).toBe('年份未填');
+    expect(groups[groups.length - 1].items[0].main).toBe('N2 130 分');
+  });
+
+  it('只有旧单值字段时仍能给出一条明细（不能让浮窗空着）', () => {
+    const groups = groupScoresByYear({ jlptScores: [], jlptScore: 'N2-140' }, 'jlpt');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items[0].main).toBe('N2 140');
+  });
+
+  it('无任何成绩时返回空数组（组件据此不渲染问号）', () => {
+    expect(groupScoresByYear({}, 'jlpt')).toEqual([]);
+    expect(groupScoresByYear({ ejuScores: [] }, 'eju')).toEqual([]);
+    expect(groupScoresByYear(null, 'english')).toEqual([]);
+  });
+
+  it('未填分数不显示为 0 分（与 toNum 的空值修复保持一致）', () => {
+    const groups = groupScoresByYear({
+      jlptScores: [{ date: '2025-07', level: 'N2', score: '' }],
+    }, 'jlpt');
+    expect(groups[0].items[0].main).toBe('N2');
   });
 });

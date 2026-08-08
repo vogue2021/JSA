@@ -25,6 +25,8 @@ import { getPackageDisplayName } from '../utils/packageUtils';
 import { normalizeScoreNoneFlags, resolveScoreState } from '../utils/scoreNoneUtils';
 // 【新需求107】成绩具体分数的摘要与历史文本
 import { getScoreDisplay } from '../utils/scoreDisplayUtils';
+// 【新需求108】成绩明细问号浮窗（按年度展示）
+import ScoreDetailPopover from './ScoreDetailPopover';
 
 // 学校申请状态 → 中文文案 + 颜色
 const STATUS_MAP = {
@@ -365,19 +367,17 @@ const AdminSupervisionPage = () => {
       // 【新需求106】邮箱√/电话√ 两列去掉，改为直接导出项目套餐/毕业高中/学籍信息的实际值
       '项目套餐', '毕业高中', '学籍信息', '语言学校√',
       // 【新需求106】成绩列由「√/空」两态改为「✔ / 无 / 空」三态
-      // 【新需求107】进一步改为导出**具体分数**；另附三列完整历史，方便线下比对与筛选
-      'JLPT（最高级别）', 'EJU（最高总分）', '英语（各类型最高）',
+      // 【新需求107→108】107曾把主列换成具体分数摘要；108 要求界面回到"是否录入"，
+      //   CSV 主列同步改回三态以便与界面核对；具体分数保留在「全部记录」列 ——
+      //   导出的价值本就在线下详查，这部分信息不该丢。
+      'JLPT√', 'EJU√', '英语√',
       'JLPT 全部记录', 'EJU 全部记录', '英语全部记录',
       '报考学校数', '报考学校（学校 | 状态 | 类型）',
       // 【新需求101】撞期信息随导出一起带走，方便线下排考
       '考试撞期数', '撞期明细（日期：学校(考试类型)）'
     ]);
-    // 【新需求107】成绩导出口径：有成绩 → 具体分数摘要；已确认无相关成绩 → 无；未确认 → 空
-    //   （需求106 的 ✔ 升级为实际分数，信息量更大且仍能一眼区分三态）
-    const scoreText = (item, student, key) => {
-      if (!item.has) return item.none ? '无' : '';
-      return getScoreDisplay(student, key).summary || '✔';
-    };
+    // 【新需求108】成绩三态导出口径：有成绩 → ✔；已确认无相关成绩 → 无；未确认 → 空
+    const scoreText = (item) => (item.has ? '✔' : (item.none ? '无' : ''));
     // CSV 单元格内的换行会破坏表格可读性，历史记录改用分号连接
     const historyText = (item, student, key) => {
       if (!item.has) return '';
@@ -402,9 +402,9 @@ const AdminSupervisionPage = () => {
         info.items[1].value,
         info.items[2].value,
         info.items[3].ok ? '✔' : '',
-        scoreText(scr.items[0], s, 'jlpt'),
-        scoreText(scr.items[1], s, 'eju'),
-        scoreText(scr.items[2], s, 'english'),
+        scoreText(scr.items[0]),
+        scoreText(scr.items[1]),
+        scoreText(scr.items[2]),
         historyText(scr.items[0], s, 'jlpt'),
         historyText(scr.items[1], s, 'eju'),
         historyText(scr.items[2], s, 'english'),
@@ -496,22 +496,23 @@ const AdminSupervisionPage = () => {
       color: tokens.colors.text.muted,
     }}>无</span>
   );
-  // 【新需求107】成绩单元格：有成绩时直接显示**具体分数**而不只是打勾。
-  //   监管者要的是"日语到什么水平了""EJU 够不够报某校"，光看✔ 判断不了。
-  //   摘要取最好成绩（口径见 scoreDisplayUtils），完整历史通过悬停查看，信息不丢失。
-  //   已确认无 → 「无」；未确认 → ✘（保持需求106 的三态语义）
+  // 【新需求107→ 108修正】成绩单元格。
+  //   107曾把具体分数直接铺在单元格里，但这会让表格变宽、也削弱了监管台
+  //   "一眼扫出谁还没录"的核心用途。
+  //   108 回到「是否录入」为主视图：✔ / 「无」/ ✘ 三态（延续需求106 语义），
+  //   已录入时在对勾旁加一个问号，悬停问号用浮窗展示各年度具体成绩。
   const scoreValueCell = (item, student, key) => {
     if (!item.has) return item.none ? noneText : noIcon;
-    const { summary, history } = getScoreDisplay(student, key);
-    // 极端情况：数组里全是空记录导致算不出摘要，退回绿勾而不是显示空白
-    if (!summary) return okIcon;
     return (
-      <span
-        className="text-xs font-semibold whitespace-nowrap cursor-help"
-        style={{ color: tokens.colors.text.primary }}
-        title={history ? `${item.label} 成绩记录：\n${history}` : undefined}
-      >
-        {summary}
+      <span className="inline-flex items-center justify-center gap-1">
+        {okIcon}
+        <ScoreDetailPopover
+          student={student}
+          scoreKey={key}
+          label={item.label}
+          isDark={isDark}
+          tokens={tokens}
+        />
       </span>
     );
   };
@@ -802,17 +803,17 @@ const AdminSupervisionPage = () => {
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
                   语言学校
                 </th>
-                {/* 【新需求107】成绩列改为显示具体分数，表头标注取值口径避免误读 */}
+                {/* 【新需求108】成绩列回到「是否录入」，已录入时可通过问号浮窗查看各年度明细 */}
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}
-                  title="显示最高级别的成绩（同级别取最高分），悬停单元格可看全部考试记录">
+                  title="是否已录入 JLPT 成绩；已录入时点击/悬停问号可查看各年度具体成绩">
                   JLPT
                 </th>
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}
-                  title="显示总分最高的一次（括号内为该次日语分），悬停单元格可看各科分项">
+                  title="是否已录入 EJU 成绩；已录入时点击/悬停问号可查看各年度总分与各科分项">
                   EJU
                 </th>
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}
-                  title="按考试类型分别取最高分（TOEFL / IELTS / TOEIC 分值不可比），悬停单元格可看全部记录">
+                  title="是否已录入英语成绩；已录入时点击/悬停问号可查看各年度考试类型与分数">
                   英语
                 </th>
                 {/* 【新需求101】考试撞期列 */}

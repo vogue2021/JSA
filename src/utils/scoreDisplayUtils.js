@@ -4,7 +4,16 @@
 //   监管者想知道"这个学生日语到什么水平了""EJU 够不够报某所学校"，
 //   必须点进每个学生的详情页才能看到，效率很低。
 //
-// 本模块负责把「一个学生的多次考试记录」压缩成「一句话摘要」，同时提供完整历史文本用于悬停查看。
+// 【新需求108 修正】107曾把分数直接铺在监管台单元格里，但这让表格变宽、
+//   也削弱了"一眼扫出谁还没录"的核心用途。108 改为：单元格回到「是否录入」，
+//   已录入时在对勾旁给一个问号，悬停问号用浮窗按年度展示明细。
+//   因此当前的分工是：
+//     · groupScoresByYear —— 监管台问号浮窗（界面主用）
+//     · formatXxxHistory  —— CSV 导出的「全部记录」列
+//     · formatXxxSummary / pickBestXxx —— 摘要口径。界面已不直接使用，
+//       但仍通过 getScoreDisplay().summary 对外保留：这是一套完整且有测试覆盖的
+//       口径实现，后续若需要在别处（如学生列表、报表）显示"最好成绩"可直接复用。
+//       ⚠️ 不要因为"界面没用到"就删掉——删掉等于丢失下面这几条口径判断。
 //
 // 取值口径（重要，直接影响监管判断）：
 //   · JLPT   —— 取**最高级别**（N1 > N2 > … > N5）；同级别内取最高分
@@ -217,4 +226,131 @@ export function getScoreDisplay(student, key) {
     return { summary: String(student.englishScore), history: String(student.englishScore) };
   }
   return { summary: formatEnglishSummary(arr), history: formatEnglishHistory(arr) };
+}
+
+// ─── 按年度分组（【新需求108】浮窗展示用）─────────────────────────────────────
+//
+// 需求108 要求"鼠标悬停显示录入的各年度具体成绩"，所以这里返回**结构化数据**
+// 而不是上面那些纯文本 —— 浮窗需要按年度分区渲染，纯字符串没法做分组样式。
+
+const YEAR_UNKNOWN = '年份未填';
+
+/** 从 'YYYY-MM' / 'YYYY-MM-DD' 提取年份；取不到返回占位符 */
+function pickYear(date) {
+  const m = /^(\d{4})/.exec(String(date || ''));
+  return m ? m[1] : YEAR_UNKNOWN;
+}
+
+/** 年内的时间标签：有「日」显示 MM-DD，只有月显示 MM 月 */
+function pickWhen(date) {
+  const s = String(date || '');
+  const md = /^\d{4}-(\d{2})-(\d{2})/.exec(s);
+  if (md) return `${md[1]}-${md[2]}`;
+  const m = /^\d{4}-(\d{2})/.exec(s);
+  return m ? `${m[1]}月` : '—';
+}
+
+/**把条目数组按年份分组，年份降序（最近的排前面），未填年份排最后 */
+function groupByYear(entries) {
+  const map = new Map();
+  for (const e of entries) {
+    if (!map.has(e.year)) map.set(e.year, []);
+    map.get(e.year).push(e);
+  }
+  return [...map.entries()]
+    .map(([year, items]) => ({ year, items }))
+    .sort((a, b) => {
+      if (a.year === YEAR_UNKNOWN) return 1;
+      if (b.year === YEAR_UNKNOWN) return -1;
+      return b.year.localeCompare(a.year);
+    });
+}
+
+/**
+ * 【新需求108】把某一类成绩整理成"按年度分组"的结构，供浮窗渲染。
+ * @param {object} student
+ * @param {'jlpt'|'eju'|'english'} key
+ * @returns {Array<{year: string, items: Array<{when: string, main: string, detail: string}>}>}
+ *   main   = 该次考试的核心结果（级别+分 / 总分 / 类型+分）
+ *   detail = 补充信息（目前只有 EJU 的各科分项）
+ */
+export function groupScoresByYear(student, key) {
+  if (!student) return [];
+
+  if (key === 'jlpt') {
+    const arr = Array.isArray(student.jlptScores) ? student.jlptScores : [];
+    if (arr.length === 0) {
+      // 兼容只有旧单值字段的历史数据：年份未知，但分数不该丢
+      if (student.jlptScore) {
+        return [{ year: YEAR_UNKNOWN, items: [{ when: '—', main: String(student.jlptScore).replace('-', ' '), detail: '' }] }];
+      }
+      return [];
+    }
+    const entries = arr
+      .filter(s => s && (s.level || s.score))
+      .map(s => {
+        const score = toNum(s.score);
+        return {
+          year: pickYear(s.date),
+          when: pickWhen(s.date),
+          main: s.level
+            ? (score != null ? `${s.level} ${score} 分` : String(s.level))
+            : (score != null ? `${score} 分` : '—'),
+          detail: '',
+          _sort: String(s.date || ''),
+        };
+      })
+      // 年内按时间倒序
+      .sort((a, b) => b._sort.localeCompare(a._sort));
+    return groupByYear(entries);
+  }
+
+  if (key === 'eju') {
+    const arr = Array.isArray(student.ejuScores) ? student.ejuScores : [];
+    const subjects = [
+      ['japanese', '日语'], ['descriptive', '记述'], ['math', '数学'],
+      ['physics', '物理'], ['chemistry', '化学'], ['biology', '生物'],
+      ['generalSubjects', '文综'], ['science', '理综(旧)'],
+    ];
+    const entries = arr.filter(Boolean).map(s => {
+      const computed = calcEjuTotal(s);
+      const total = computed > 0 ? computed : (toNum(s.totalScore) ?? 0);
+      const detail = subjects
+        .filter(([k]) => s[k] !== '' && s[k] != null)
+        .map(([k, label]) => `${label} ${s[k]}`)
+        .join('　');
+      return {
+        year: pickYear(s.date),
+        when: pickWhen(s.date),
+        main: `总分 ${total}`,
+        detail,
+        _sort: String(s.date || ''),
+      };
+    }).sort((a, b) => b._sort.localeCompare(a._sort));
+    return groupByYear(entries);
+  }
+
+  const arr = Array.isArray(student.englishScores) ? student.englishScores : [];
+  if (arr.length === 0) {
+    if (student.englishScore) {
+      return [{ year: YEAR_UNKNOWN, items: [{ when: '—', main: String(student.englishScore), detail: '' }] }];
+    }
+    return [];
+  }
+  const entries = arr
+    .filter(s => s && (s.type || s.score))
+    .map(s => {
+      const score = toNum(s.score);
+      return {
+        year: pickYear(s.date),
+        when: pickWhen(s.date),
+        main: s.type
+          ? (score != null ? `${s.type}　${score}` : String(s.type))
+          : (score != null ? String(score) : '—'),
+        detail: '',
+        _sort: String(s.date || ''),
+      };
+    })
+    .sort((a, b) => b._sort.localeCompare(a._sort));
+  return groupByYear(entries);
 }
