@@ -7,6 +7,8 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { studentsAPI } from '../services/api';
 import { PACKAGE_OPTIONS, getPackageDisplayName, normalizePackageName } from '../utils/packageUtils';
+// 【新需求106】"确认无相关成绩"标记
+import { normalizeScoreNoneFlags, pruneConflictingFlags } from '../utils/scoreNoneUtils';
 
 const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   const { user, studentList, setStudentList, showNotification, getTeacherList, canEditStudent, requireEditPermission } = useApp();
@@ -72,7 +74,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     followUpNotes: Array.isArray(studentInfo.followUpNotes) ? studentInfo.followUpNotes : [],
     photo: studentInfo.photo || '',
     email: studentInfo.email || student.email || '',
-    targetLevel: studentInfo.targetLevel || student.targetLevel || '修士',
+    // 【新需求106】目标学位默认值由 '修士' 改为 '学部'
+    targetLevel: studentInfo.targetLevel || student.targetLevel || '学部',
     packageName: normalizePackageName(studentInfo.packageName || ''),
     packageEndDate: studentInfo.packageEndDate || '',
     academicAdvisorId: studentInfo.academicAdvisorId || '',
@@ -82,6 +85,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
     subject: studentInfo.subject || '',
     hasChinaHighSchoolRecord: studentInfo.hasChinaHighSchoolRecord || '',
     overseasCertifications: Array.isArray(studentInfo.overseasCertifications) ? studentInfo.overseasCertifications : [],
+    // 【新需求106】"确认无相关成绩"标记 { jlpt, eju, english }
+    scoreNoneFlags: normalizeScoreNoneFlags(studentInfo.scoreNoneFlags),
   });
 
   // 套餐列表（新需求81：1+2 → 1，1+2+3 → 1+2，括号备注旧名）
@@ -118,7 +123,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       })) : (info.followUpNotes ? [{ id: Date.now(), content: info.followUpNotes, date: new Date().toISOString().split('T')[0], author: '系统', role: 'admin' }] : []),
       photo: info.photo || '',
       email: info.email || student.email || '',
-      targetLevel: info.targetLevel || student.targetLevel || '修士',
+      // 【新需求106】目标学位默认值由 '修士' 改为 '学部'
+      targetLevel: info.targetLevel || student.targetLevel || '学部',
       packageName: normalizePackageName(info.packageName || ''),
       packageEndDate: info.packageEndDate || '',
       academicAdvisorId: info.academicAdvisorId || '',
@@ -128,6 +134,8 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
       subject: info.subject || '',
       hasChinaHighSchoolRecord: info.hasChinaHighSchoolRecord || '',
       overseasCertifications: Array.isArray(info.overseasCertifications) ? info.overseasCertifications : [],
+      // 【新需求106】"确认无相关成绩"标记
+      scoreNoneFlags: normalizeScoreNoneFlags(info.scoreNoneFlags),
     });
     setIsEditing(false);
     setActiveSection('basic');
@@ -207,9 +215,49 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
   // 现在根据 canEditStudent：admin / 学生本人 / 老师负责的学生 / 拥有 edit_all_students 权限的老师 才可编辑。
   const canEdit = canEditStudent ? canEditStudent(student) : (user.role === 'teacher' || user.role === 'admin');
 
+  // 【新需求106】"无相关成绩"开关。
+  // 写成普通渲染函数而非内嵌组件 —— 内嵌组件每次渲染都是新的组件类型，
+  // 会导致 React 卸载重建、勾选时丢焦点。
+  const renderNoScoreToggle = (scoreKey, hasScores) => {
+    const checked = !!formData.scoreNoneFlags?.[scoreKey];
+    // 已经录了成绩：不提供该开关（保存时也会自动作废，见 handleSave 的 pruneConflictingFlags）
+    if (hasScores) return null;
+    if (!isEditing) {
+      return checked ? (
+        <span className="text-xs px-2 py-0.5 rounded" style={{
+          background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+          color: tokens.colors.text.muted,
+        }}>已确认无相关成绩</span>
+      ) : null;
+    }
+    return (
+      <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none px-2 py-1 rounded transition"
+        style={{
+          background: checked
+            ? (isDark ? 'rgba(148,163,184,0.22)' : 'rgba(100,116,139,0.12)')
+            : 'transparent',
+          color: checked ? tokens.colors.text.primary : tokens.colors.text.muted,
+          border: `1px solid ${checked ? (isDark ? 'rgba(148,163,184,0.5)' : 'rgba(100,116,139,0.35)') : tokens.colors.border.subtle}`,
+        }}>
+        <input type="checkbox" checked={checked} className="w-3.5 h-3.5"
+          onChange={e => setFormData({
+            ...formData,
+            scoreNoneFlags: { ...formData.scoreNoneFlags, [scoreKey]: e.target.checked || undefined },
+          })} />
+        无相关成绩
+      </label>
+    );
+  };
+
   const handleSave = async () => {
     // 【新需求69】保存前再次闸门校验，防止绕过禁用样式直接调用
     if (requireEditPermission && !requireEditPermission('students', { student })) return;
+    // 【新需求106】收敛"既有成绩又标记无"的矛盾状态：已录入成绩的类别，「无」标记自动作废
+    const cleanFlags = pruneConflictingFlags(formData.scoreNoneFlags, {
+      jlpt: (formData.jlptScores || []).length > 0,
+      eju: (formData.ejuScores || []).length > 0,
+      english: (formData.englishScores || []).length > 0,
+    });
     // 先调用 API 持久化到数据库
     try {
       await studentsAPI.update(student.studentId, {
@@ -238,19 +286,23 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         overseas_certifications: formData.overseasCertifications,
         // 【新需求84】保存目标学位（学部/修士/博士），修复刷新后回退到默认值的 bug
         target_level: formData.targetLevel,
+        // 【新需求106】保存"确认无相关成绩"标记
+        score_none_flags: cleanFlags,
       });
     } catch (err) {
       console.error('保存学生信息失败:', err);
       if (showNotification) showNotification('保存失败，请重试');
       return; // 不更新本地状态，避免假成功
     }
-    // API 成功后更新本地状态
+    // API 成功后更新本地状态（用收敛后的 flags，保证与库内一致）
+    const savedData = { ...formData, scoreNoneFlags: cleanFlags };
+    setFormData(savedData);
     setStudentList(prev => prev.map(s =>
-      s.studentId === student.studentId ? { ...s, ...formData } : s
+      s.studentId === student.studentId ? { ...s, ...savedData } : s
     ));
     setIsEditing(false);
     if (showNotification) showNotification('学生信息已保存');
-    if (onUpdate) onUpdate({ ...studentInfo, ...formData });
+    if (onUpdate) onUpdate({ ...studentInfo, ...savedData });
   };
 
   const handleAddNote = async () => {
@@ -687,7 +739,11 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
         <div className="space-y-6">
           {/* 日语成绩 (JLPT) - 可追加 */}
           <div className="glass-panel p-4 sm:p-6">
-            <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 日语成绩 (JLPT)</h4>
+            {/* 【新需求106】标题行右侧提供「无相关成绩」开关 */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <h4 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 日语成绩 (JLPT)</h4>
+              {renderNoScoreToggle('jlpt', formData.jlptScores.length > 0)}
+            </div>
             {formData.jlptScores.length > 0 && (
               <div className="overflow-x-auto mb-4">
                 <table className="w-full text-sm">
@@ -721,7 +777,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               </div>
             )}
             {formData.jlptScores.length === 0 && !isEditing && (
-              <p className="text-themed-muted text-center py-4">暂无 JLPT 成绩记录</p>
+              <p className="text-themed-muted text-center py-4">
+                {formData.scoreNoneFlags?.jlpt ? '已确认该学生无 JLPT 成绩' : '暂无 JLPT 成绩记录'}
+              </p>
             )}
             {isEditing && (
               <div className="bg-themed-elevated rounded-lg p-4">
@@ -757,7 +815,11 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
 
           {/* 英语成绩 - 可追加 */}
           <div className="glass-panel p-4 sm:p-6">
-            <h4 className="font-bold text-lg mb-4 flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 英语成绩</h4>
+            {/* 【新需求106】标题行右侧提供「无相关成绩」开关 */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <h4 className="font-bold text-lg flex items-center gap-2" style={{ color: tokens.colors.text.primary }}><BookOpen size={20} /> 英语成绩</h4>
+              {renderNoScoreToggle('english', formData.englishScores.length > 0)}
+            </div>
             {formData.englishScores.length > 0 && (
               <div className="overflow-x-auto mb-4">
                 <table className="w-full text-sm">
@@ -789,7 +851,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
               </div>
             )}
             {formData.englishScores.length === 0 && !isEditing && (
-              <p className="text-themed-muted text-center py-4">暂无英语成绩记录</p>
+              <p className="text-themed-muted text-center py-4">
+                {formData.scoreNoneFlags?.english ? '已确认该学生无英语成绩' : '暂无英语成绩记录'}
+              </p>
             )}
             {isEditing && (
               <div className="bg-themed-elevated rounded-lg p-4">
@@ -821,10 +885,13 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
           </div>
 
           <div className="glass-panel p-4 sm:p-6">
-            <h4 className="font-bold text-lg mb-4 flex items-center gap-2">
-              <Calendar size={20} /> EJU 成绩记录
-            </h4>
-
+            {/* 【新需求106】标题行右侧提供「无相关成绩」开关 */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <h4 className="font-bold text-lg flex items-center gap-2">
+                <Calendar size={20} /> EJU 成绩记录
+              </h4>
+              {renderNoScoreToggle('eju', formData.ejuScores.length > 0)}
+            </div>
             {formData.ejuScores.length > 0 && (
               isMobile ? (
                 /* 移动端：卡片式展示 EJU 成绩 */
@@ -924,7 +991,9 @@ const StudentProfile = ({ student, studentData, onBack, onUpdate }) => {
             )}
 
             {formData.ejuScores.length === 0 && !isEditing && (
-              <p className="text-themed-muted text-center py-6">暂无 EJU 成绩记录</p>
+              <p className="text-themed-muted text-center py-6">
+                {formData.scoreNoneFlags?.eju ? '已确认该学生无 EJU 成绩' : '暂无 EJU 成绩记录'}
+              </p>
             )}
 
             {isEditing && (

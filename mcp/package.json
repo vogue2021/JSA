@@ -1,0 +1,20 @@
+{
+  "name": "jsa-d1-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JSA 生产/测试 D1 数据库的 MCP 服务 —— 让 AI Agent 安全地读写业务数据",
+  "type": "module",
+  "bin": {
+    "jsa-d1-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "doctor": "node src/doctor.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

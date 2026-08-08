@@ -84,7 +84,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         studentId: user.studentId,
         email: user.email,
         targetCountry: '日本',
-        targetLevel: '修士',
+        targetLevel: '学部',
         avatar: '👨‍🎓',
         teacherId: user.teacherId
       };
@@ -94,7 +94,7 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
         name: '张三',
         studentId: '2024001',
         targetCountry: '日本',
-        targetLevel: '修士',
+        targetLevel: '学部',
         email: 'zhangsan@example.com',
         avatar: '👨‍🎓',
         teacherId: user.teacherId || 'teacher_1'
@@ -2843,7 +2843,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
       setCurrentStudent({
         ...student,
         targetCountry: '日本',
-        targetLevel: student.targetLevel || '修士',
+        targetLevel: student.targetLevel || '学部',
         email: student.email || `${student.name.toLowerCase()}@example.com`
       });
       setShowStudentList(false);
@@ -3298,7 +3298,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
           // 【新需求68】同步顾问老师字段到本地状态
           consultantId: d.consultantId || d.consultant_id || newStudent.consultantId || '',
             targetCountry: '日本',
-            targetLevel: '修士',
+            // 【新需求106】默认学位改为「学部」；优先采用后端返回值，避免本地状态与库内不一致
+            targetLevel: d.targetLevel || d.target_level || '学部',
             subject: d.subject || newStudent.subject,
             tags: d.tags || newStudent.tags,
             hasAccount: !!d.hasAccount || wantsAccount,
@@ -4190,7 +4191,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               setCurrentStudent({
                 ...selected,
                 targetCountry: '日本',
-                targetLevel: selected.targetLevel || '修士',
+                targetLevel: selected.targetLevel || '学部',
                 email: selected.email || `${selected.name.toLowerCase()}@example.com`
               });
             }
@@ -4650,7 +4651,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 setCurrentStudent({
                   ...selected,
                   targetCountry: '日本',
-                  targetLevel: selected.targetLevel || '修士',
+                  targetLevel: selected.targetLevel || '学部',
                   email: selected.email || `${selected.name.toLowerCase()}@example.com`
                 });
               }
@@ -4953,7 +4954,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                 setCurrentStudent({
                   ...selected,
                   targetCountry: '日本',
-                  targetLevel: selected.targetLevel || '修士',
+                  targetLevel: selected.targetLevel || '学部',
                   email: selected.email || `${selected.name.toLowerCase()}@example.com`
                 });
               }
@@ -5903,7 +5904,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               setCurrentStudent({
                 ...student,
                 targetCountry: '日本',
-                targetLevel: student.targetLevel || '修士',
+                targetLevel: student.targetLevel || '学部',
                 email: student.email || `${student.name.toLowerCase()}@example.com`
               });
               setActiveTab('profile');
@@ -5964,7 +5965,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               setCurrentStudent({
                 ...student,
                 targetCountry: '日本',
-                targetLevel: student.targetLevel || '修士',
+                targetLevel: student.targetLevel || '学部',
                 email: student.email || `${student.name.toLowerCase()}@example.com`
               });
               setActiveTab('profile');

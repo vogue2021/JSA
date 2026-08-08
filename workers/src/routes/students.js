@@ -78,8 +78,17 @@ function formatStudent(row) {
     xuebangId: row.xuebang_id || '',
     hasChinaHighSchoolRecord: row.has_china_high_school_record || '',
     overseasCertifications: (() => { try { return JSON.parse(row.overseas_certifications || '[]') } catch { return [] } })(),
-    // 【新需求84】目标学位（学部/修士/博士）。row.target_level 列在旧库可能不存在，做兜底为 '修士'
-    targetLevel: row.target_level || '修士',
+    // 【新需求106】"确认无相关成绩"标记：{ jlpt: bool, eju: bool, english: bool }
+    //   与"还没录"区分开 —— 监管台据此显示「无」而不是红叉。旧库无此列时兜底为 {}。
+    scoreNoneFlags: (() => {
+      try {
+        const v = JSON.parse(row.score_none_flags || '{}')
+        return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}
+      } catch { return {} }
+    })(),
+    // 【新需求84】目标学位（学部/修士/博士）。row.target_level 列在旧库可能不存在。
+    // 【新需求106】兜底默认值由 '修士' 改为 '学部'
+    targetLevel: row.target_level || '学部',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -365,8 +374,9 @@ students.post('/', async (c) => {
       body.package_name || '', body.package_end_date || '',
       JSON.stringify(body.tags || []), body.subject || '',
       hasAccount,
-      // 【新需求84】创建学生时同步写入目标学位，未传则默认 '修士'
-      body.target_level || '修士'
+      // 【新需求84】创建学生时同步写入目标学位
+      // 【新需求106】未传则默认 '学部'（原为 '修士'）
+      body.target_level || '学部'
     )
   ]
   if (wantsAccount) {
@@ -439,6 +449,18 @@ students.put('/:id', async (c) => {
   if (body.english_scores !== undefined) { fields.push('english_scores = ?'); params.push(JSON.stringify(body.english_scores)) }
   if (body.tags !== undefined) { fields.push('tags = ?'); params.push(JSON.stringify(body.tags)) }
   if (body.overseas_certifications !== undefined) { fields.push('overseas_certifications = ?'); params.push(JSON.stringify(body.overseas_certifications)) }
+  // 【新需求106】"确认无相关成绩"标记。只接受 jlpt/eju/english 三个已知键且强制转为布尔，
+  //   避免前端（或伪造请求）往这一列塞入任意结构 —— 该列会被前端直接 JSON.parse 后使用。
+  if (body.score_none_flags !== undefined) {
+    const raw = body.score_none_flags
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {}
+    const safe = {}
+    for (const k of ['jlpt', 'eju', 'english']) {
+      if (src[k]) safe[k] = true
+    }
+    fields.push('score_none_flags = ?')
+    params.push(JSON.stringify(safe))
+  }
   if (body.follow_up_notes !== undefined) {
     fields.push('follow_up_notes = ?')
     params.push(typeof body.follow_up_notes === 'string' ? body.follow_up_notes : JSON.stringify(body.follow_up_notes))

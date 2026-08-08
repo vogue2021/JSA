@@ -47,7 +47,8 @@ const SettingsPage = ({ user, allUsers, setAllUsers, onLogout, initTab, onInitTa
       studentId: user.studentId || '',
       highSchool: saved.highSchool || '',
       languageSchool: saved.languageSchool || '',
-      targetLevel: saved.targetLevel || '修士',
+      // 【新需求106】目标学位默认值由 '修士' 改为 '学部'
+      targetLevel: saved.targetLevel || '学部',
       // 老师专属
       department: saved.department || '',
       school: saved.school || '',

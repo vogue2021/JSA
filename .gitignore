@@ -51,3 +51,9 @@ Microsoft PowerPoint *.png
 
 # D1 数据库导出备份（含用户隐私数据，禁止入库）
 workers/backups/
+
+# 【新需求106】MCP 服务：凭据与审计日志绝对不能入库
+mcp/.env
+mcp/.env.local
+mcp/logs/
+mcp/node_modules/

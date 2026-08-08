@@ -48,8 +48,12 @@ CREATE TABLE IF NOT EXISTS students (
   xuebang_id TEXT DEFAULT '',
   has_china_high_school_record TEXT DEFAULT '',
   overseas_certifications TEXT DEFAULT '[]',
-  -- 【新需求84】目标学位（学部/修士/博士），默认 '修士' 与前端兜底一致
-  target_level TEXT DEFAULT '修士',
+  -- 【新需求106】"确认无相关成绩"标记，JSON: {"jlpt":true,"eju":true,"english":true}
+  -- 用于区分"还没录成绩"与"确认没有这项成绩"，监管台据此显示「无」而非红叉
+  score_none_flags TEXT DEFAULT '{}',
+  -- 【新需求84】目标学位（学部/修士/博士）
+  -- 【新需求106】默认值由 '修士' 改为 '学部'，与前端兜底保持一致
+  target_level TEXT DEFAULT '学部',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

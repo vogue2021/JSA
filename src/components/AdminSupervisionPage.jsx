@@ -1,9 +1,12 @@
 // 【新需求99】管理员监管页面
 // 【新需求101】① 改为权限化：管理员 + 被授予 view_supervision 权限的老师均可访问
 //              ② 增加"校内考撞期"检测列，把同一学生名下不同学校考试日期撞在同一天的情况标红
+// 【新需求103】增加"按大学维度"视图
+// 【新需求106】① 基础信息列去掉「邮箱 / 电话」，追加「项目套餐 / 毕业高中 / 学籍」（直接展示实际值）
+//              ② 成绩列支持第三态「无」—— 老师在学生信息页明确标记"无相关成绩"后，这里显示「无」而不是红叉
 // 按老师维度切换，Excel 风格表格：
 //   每行 = 学生
-//   列 = 基础信息录入完整度 / 成绩录入完整度 / 考试撞期 / 报考学校 & 每校申请状态
+//   列 = 基础信息 / 成绩录入完整度 / 考试撞期 / 报考学校 & 每校申请状态
 // 用于日常监管：一眼看出哪个老师带的学生资料还没录、成绩还没登、报考进度到哪一步、考试是否撞期。
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -16,6 +19,10 @@ import { useApp } from '../context/AppContext';
 import { studentsAPI, teachersAPI, schoolsAPI } from '../services/api';
 // 【新需求101】校内考撞期检测（纯计算工具，与学校页面共用同一套口径）
 import { detectExamConflicts, getSchoolConflicts, collectExamDates, formatConflictSummary } from '../utils/examConflictUtils';
+// 【新需求106】项目套餐历史名称 → 现行名称的规范化（与学生信息页共用同一套映射）
+import { getPackageDisplayName } from '../utils/packageUtils';
+// 【新需求106】"确认无相关成绩"三态口径（与学生信息页共用，避免口径漂移）
+import { normalizeScoreNoneFlags, resolveScoreState } from '../utils/scoreNoneUtils';
 
 // 学校申请状态 → 中文文案 + 颜色
 const STATUS_MAP = {
@@ -29,26 +36,34 @@ const STATUS_MAP = {
 
 const statusPill = (status) => STATUS_MAP[status] || { label: status || '未知', bg: '#e5e7eb', fg: '#374151' };
 
-// 判断基础信息是否录入（3 项核心字段：邮箱 / 电话 / 语言学校）
+// 【新需求106】基础信息核查项调整：
+//   去掉「邮箱 / 电话」（监管场景不关心联系方式是否填了），
+//   追加「项目套餐 / 毕业高中 / 学籍信息」这三项签约与背景关键信息。
+//   项目套餐、毕业高中、学籍信息在表格里直接展示**实际值**（比打勾更有监管价值），
+//   语言学校沿用 ✔/✘ 的录入状态口径。
 function checkBasicInfo(s) {
   const items = [
-    { key: 'email', label: '邮箱', ok: !!(s.email && String(s.email).trim()) },
-    { key: 'phone', label: '电话', ok: !!(s.phone && String(s.phone).trim()) },
-    { key: 'languageSchool', label: '语言学校', ok: !!(s.languageSchool && String(s.languageSchool).trim()) },
+    { key: 'packageName', label: '项目套餐', value: s.packageName || '', ok: !!(s.packageName && String(s.packageName).trim()) },
+    { key: 'highSchool', label: '毕业高中', value: s.highSchool || '', ok: !!(s.highSchool && String(s.highSchool).trim()) },
+    { key: 'hasChinaHighSchoolRecord', label: '学籍信息', value: s.hasChinaHighSchoolRecord || '', ok: !!(s.hasChinaHighSchoolRecord && String(s.hasChinaHighSchoolRecord).trim()) },
+    { key: 'languageSchool', label: '语言学校', value: s.languageSchool || '', ok: !!(s.languageSchool && String(s.languageSchool).trim()) },
   ];
   const done = items.filter(i => i.ok).length;
   return { items, done, total: items.length };
 }
 
 // 判断成绩是否录入（3 项：JLPT / EJU / 英语）
+// 【新需求106】三态口径：
+//   has= 确实录了成绩            → 显示 ✔
+//   none = 没成绩，但老师**明确标记了「无」** → 显示「无」
+//   其余 = 尚未确认                → 显示 ✘
+// 明确标记「无」同样算"已确认"，计入完整度 —— 否则没有考试成绩的学生完整度永远无法达标。
 function checkScores(s) {
-  const jlpt = Array.isArray(s.jlptScores) ? s.jlptScores.length > 0 : !!s.jlptScore;
-  const eju  = Array.isArray(s.ejuScores)  && s.ejuScores.length > 0;
-  const eng  = Array.isArray(s.englishScores) ? s.englishScores.length > 0 : !!s.englishScore;
+  const flags = normalizeScoreNoneFlags(s.scoreNoneFlags);
   const items = [
-    { key: 'jlpt', label: 'JLPT', ok: jlpt },
-    { key: 'eju',  label: 'EJU',  ok: eju  },
-    { key: 'eng',  label: '英语', ok: eng  },
+    { key: 'jlpt', label: 'JLPT', ...resolveScoreState(Array.isArray(s.jlptScores) ? s.jlptScores.length > 0 : !!s.jlptScore, flags, 'jlpt') },
+    { key: 'eju', label: 'EJU', ...resolveScoreState(Array.isArray(s.ejuScores) && s.ejuScores.length > 0, flags, 'eju') },
+    { key: 'eng', label: '英语', ...resolveScoreState(Array.isArray(s.englishScores) ? s.englishScores.length > 0 : !!s.englishScore, flags, 'english') },
   ];
   const done = items.filter(i => i.ok).length;
   return { items, done, total: items.length };
@@ -345,12 +360,16 @@ const AdminSupervisionPage = () => {
     const rows = [];
     rows.push([
       '负责老师', '学生姓名', '学号', '文理科',
-      '邮箱√', '电话√', '语言学校√',
-      'JLPT√', 'EJU√', '英语√',
+      // 【新需求106】邮箱√/电话√ 两列去掉，改为直接导出项目套餐/毕业高中/学籍信息的实际值
+      '项目套餐', '毕业高中', '学籍信息', '语言学校√',
+      // 【新需求106】成绩列由「√/空」两态改为「✔ / 无 / 空」三态
+      'JLPT', 'EJU', '英语',
       '报考学校数', '报考学校（学校 | 状态 | 类型）',
       // 【新需求101】撞期信息随导出一起带走，方便线下排考
       '考试撞期数', '撞期明细（日期：学校(考试类型)）'
     ]);
+    // 【新需求106】成绩三态导出口径：有成绩 → ✔；已确认无相关成绩 → 无；未确认 → 空
+    const scoreText = (item) => (item.has ? '✔' : (item.none ? '无' : ''));
     for (const s of filteredStudents) {
       const info = checkBasicInfo(s);
       const scr = checkScores(s);
@@ -364,12 +383,13 @@ const AdminSupervisionPage = () => {
         s.name || '',
         s.studentId || '',
         s.subject || '',
-        info.items[0].ok ? '✔' : '',
-        info.items[1].ok ? '✔' : '',
-        info.items[2].ok ? '✔' : '',
-        scr.items[0].ok ? '✔' : '',
-        scr.items[1].ok ? '✔' : '',
-        scr.items[2].ok ? '✔' : '',
+        info.items[0].value ? getPackageDisplayName(info.items[0].value) : '',
+        info.items[1].value,
+        info.items[2].value,
+        info.items[3].ok ? '✔' : '',
+        scoreText(scr.items[0]),
+        scoreText(scr.items[1]),
+        scoreText(scr.items[2]),
         schools.length,
         schoolCell,
         conflict?.conflictDateCount || 0,
@@ -451,6 +471,19 @@ const AdminSupervisionPage = () => {
 
   const okIcon = <Check size={14} style={{ color: '#16a34a' }} />;
   const noIcon = <XIcon size={14} style={{ color: '#dc2626' }} />;
+  // 【新需求106】"确认无相关成绩"的第三态：既不是绿勾（有成绩），也不是红叉（没录）
+  const noneText = (
+    <span className="text-xs px-1.5 py-0.5 rounded" style={{
+      background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      color: tokens.colors.text.muted,
+    }}>无</span>
+  );
+  // 成绩单元格：有成绩 → ✔；已确认无 → 「无」；未确认 → ✘
+  const scoreCell = (item) => (item.has ? okIcon : (item.none ? noneText : noIcon));
+  // 文本型单元格：空值统一显示灰色占位，避免与"已录入"混淆
+  const textCell = (v) => (v && String(v).trim())
+    ? <span style={{ color: tokens.colors.text.primary }}>{v}</span>
+    : <span style={{ color: tokens.colors.text.muted }}>-</span>;
 
   const TeacherTab = ({ id, label, count, active, onClick }) => (
     <button
@@ -665,7 +698,7 @@ const AdminSupervisionPage = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={viewMode === 'university' ? '搜索大学名 / 学生姓名 / 学号' : '搜索姓名 / 学号 / 邮箱'}
+              placeholder={viewMode === 'university' ? '搜索大学名 / 学生姓名 / 学号' : '搜索姓名 / 学号'}
               className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none"
               style={{
                 background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
@@ -721,11 +754,15 @@ const AdminSupervisionPage = () => {
                 <th className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
                   文理
                 </th>
-                <th className="px-3 py-2 text-center font-semibold" style={{ color: tokens.colors.text.secondary }}>
-                  邮箱
+                {/* 【新需求106】移除「邮箱 / 电话」，追加「项目套餐 / 毕业高中 / 学籍」并直接展示实际值 */}
+                <th className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
+                  项目套餐
                 </th>
-                <th className="px-3 py-2 text-center font-semibold" style={{ color: tokens.colors.text.secondary }}>
-                  电话
+                <th className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
+                  毕业高中
+                </th>
+                <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
+                  学籍
                 </th>
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap" style={{ color: tokens.colors.text.secondary }}>
                   语言学校
@@ -751,7 +788,8 @@ const AdminSupervisionPage = () => {
             <tbody>
               {filteredStudents.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={12} className="py-8 text-center text-sm" style={{ color: tokens.colors.text.muted }}>
+                  {/* 【新需求106】列数由 12 增至 13（移除邮箱/电话 2 列，追加套餐/高中/学籍 3 列） */}
+                  <td colSpan={13} className="py-8 text-center text-sm" style={{ color: tokens.colors.text.muted }}>
                     暂无匹配的学生
                   </td>
                 </tr>
@@ -794,12 +832,18 @@ const AdminSupervisionPage = () => {
                       <td className="px-3 py-2 whitespace-nowrap text-xs" style={{ color: tokens.colors.text.muted }}>
                         {s.subject || '-'}
                       </td>
-                      <td className="px-3 py-2 text-center">{info.items[0].ok ? okIcon : noIcon}</td>
-                      <td className="px-3 py-2 text-center">{info.items[1].ok ? okIcon : noIcon}</td>
-                      <td className="px-3 py-2 text-center">{info.items[2].ok ? okIcon : noIcon}</td>
-                      <td className="px-3 py-2 text-center">{scr.items[0].ok ? okIcon : noIcon}</td>
-                      <td className="px-3 py-2 text-center">{scr.items[1].ok ? okIcon : noIcon}</td>
-                      <td className="px-3 py-2 text-center">{scr.items[2].ok ? okIcon : noIcon}</td>
+                      {/* 【新需求106】项目套餐 / 毕业高中 / 学籍 直接展示实际值；语言学校保持录入状态口径 */}
+                      <td className="px-3 py-2 whitespace-nowrap" title={info.items[0].value}>
+                        {textCell(info.items[0].value ? getPackageDisplayName(info.items[0].value) : '')}
+                      </td>
+                      <td className="px-3 py-2 max-w-[10rem] truncate" title={info.items[1].value}>
+                        {textCell(info.items[1].value)}
+                      </td>
+                      <td className="px-3 py-2 text-center whitespace-nowrap">{textCell(info.items[2].value)}</td>
+                      <td className="px-3 py-2 text-center">{info.items[3].ok ? okIcon : noIcon}</td>
+                      <td className="px-3 py-2 text-center">{scoreCell(scr.items[0])}</td>
+                      <td className="px-3 py-2 text-center">{scoreCell(scr.items[1])}</td>
+                      <td className="px-3 py-2 text-center">{scoreCell(scr.items[2])}</td>
                       {/* 【新需求101】撞期标记：>=2 所不同学校考试同日 → 标红并提示明细 */}
                       <td className="px-3 py-2 text-center whitespace-nowrap">
                         {conflict?.hasConflict ? (
@@ -857,7 +901,7 @@ const AdminSupervisionPage = () => {
                     {isExpanded && schools.length > 0 && (
                       <tr style={{ background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
                         <td></td>
-                        <td colSpan={11} className="px-3 py-2">
+                        <td colSpan={12} className="px-3 py-2">
                           {/* 【新需求101】撞期汇总条：按日期列出当天全部撞在一起的学校 */}
                           {conflict?.hasConflict && (
                             <div className="mb-2 p-2 rounded-lg text-xs" style={{
