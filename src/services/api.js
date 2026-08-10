@@ -30,7 +30,14 @@ async function apiRequest(endpoint, options = {}) {
         return;
       }
 
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      // 【新需求109】把 HTTP 状态码与后端错误码附加到 Error 对象上。
+      //   原先只抛出 message，上层想区分"越权(403)"和"网络故障"只能对中文文案做
+      //   正则匹配—— 文案一改判断就失效。附加结构化字段后调用方可精确判断，
+      //   这是"学生端一片空白但看不出原因"那个问题能被快速定位的前提。
+      const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      error.status = response.status;
+      error.code = errorData.code || '';
+      throw error;
     }
 
     // 处理 204 No Content 响应

@@ -15,6 +15,11 @@ import {
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 // 【新需求101】校内考撞期检测工具（与监管台共用同一套判定口径）
 import { detectExamConflicts, getSchoolConflicts, normalizeDate, isExamLikeLabel } from './utils/examConflictUtils';
+// 【新需求109】currentStudent 归属守卫 + 加载失败分类（修学生端看不到自己数据的bug）
+import {
+  resolveInitialCurrentStudent, isForeignStudentCache,
+  buildSelfCurrentStudent, classifyLoadFailure,
+} from './utils/currentStudentGuard';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ThemeCustomizer from './components/ThemeCustomizer';
@@ -67,42 +72,11 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   // 【新需求69】引入 canEdit / canEditStudent / requireEditPermission 用于按钮禁用 + 操作前权限校验
   const { hasPermission, showNotification, loadStudentList, canEdit, canEditStudent, requireEditPermission } = useApp();
   // 先初始化 currentStudent - 从 localStorage 恢复或使用默认值
-  const [currentStudent, setCurrentStudent] = useState(() => {
-    // 尝试从 localStorage 恢复上次选择的学生
-    const savedStudent = localStorage.getItem('currentStudent');
-    if (savedStudent) {
-      try {
-        return JSON.parse(savedStudent);
-      } catch (e) {
-        console.error('Failed to parse saved student:', e);
-      }
-    }
-
-    // 如果没有保存的学生,使用默认值
-    if (user.role === 'student') {
-      return {
-        id: 1,
-        name: user.name,
-        studentId: user.studentId,
-        email: user.email,
-        targetCountry: '日本',
-        targetLevel: '学部',
-        avatar: '👨‍🎓',
-        teacherId: user.teacherId
-      };
-    } else {
-      return {
-        id: 1,
-        name: '张三',
-        studentId: '2024001',
-        targetCountry: '日本',
-        targetLevel: '学部',
-        email: 'zhangsan@example.com',
-        avatar: '👨‍🎓',
-        teacherId: user.teacherId || 'teacher_1'
-      };
-    }
-  });
+  // 【新需求109】恢复缓存前必须校验归属。实现抽到 utils/currentStudentGuard.js 以便单元测试覆盖。
+  //   根因：`user` 存sessionStorage（关标签页即失效）、`currentStudent` 存 localStorage（持久），
+  //   两者生命周期不一致 —— "老师选过学生 X → 直接关浏览器（未点登出）→ 学生 Y 登录" 时，
+  //   Y 会恢复出别人的 X，随后请求被后端判定越权 403，界面一片空白且无提示。
+  const [currentStudent, setCurrentStudent] = useState(() => resolveInitialCurrentStudent(user));
 
   // URL 路由驱动的页面切换
   const location = useLocation();
@@ -230,7 +204,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
     if (!response.ok) {
       const err = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(err.message || `HTTP ${response.status}`);
+      // 【新需求109】与 services/api.js 保持一致：把状态码与后端错误码附到Error 上。
+      //   loadStudentDataFromAPI 的 catch 依赖这两个字段区分"越权"与"网络故障"，
+      //   只抛 message 会让判断退化成对中文文案做正则匹配。
+      const e = new Error(err.message || `HTTP ${response.status}`);
+      e.status = response.status;
+      e.code = err.code || '';
+      throw e;
     }
     if (response.status === 204) return null;
     const result = await response.json();
@@ -241,11 +221,25 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
   const loadStudentDataFromAPI = async (studentId) => {
     if (!studentId) return;
     setStudentDataLoading(true);
+    // 【新需求109】原先三个请求各自挂着 `.catch(() => [])`，任一接口失败都被**就地吞掉**，
+    //   既不提示也不打日志 —— 这是"学生端一片空白却毫无线索"的真正根源：
+    //   403（越权）与"该学生确实没数据"在界面上完全无法区分，外层 catch 也永远不会触发。
+    //   现在改为：仍然容错（单个接口失败不拖垮其他数据），但把失败原因收集起来统一提示。
+    const failures = [];
+    const safeReq = async (label, endpoint, fallback) => {
+      try {
+        return await apiReq(endpoint);
+      } catch (e) {
+        console.error(`[学生数据加载] ${label} 失败:`, e.status || '', e.code || '', e.message);
+        failures.push({ label, status: e?.status, code: e?.code, message: e?.message });
+        return fallback;
+      }
+    };
     try {
       const [eventsData, schoolsData, materialsData] = await Promise.all([
-        apiReq(`/events/student/${studentId}`).catch(() => []),
-        apiReq(`/schools/student/${studentId}`).catch(() => []),
-        apiReq(`/materials/student/${studentId}`).catch(() => ({ general: [], schoolSpecific: {} })),
+        safeReq('事件', `/events/student/${studentId}`, []),
+        safeReq('学校', `/schools/student/${studentId}`, []),
+        safeReq('材料', `/materials/student/${studentId}`, { general: [], schoolSpecific: {} }),
       ]);
 
       // 将 API 返回的 events 转换为前端格式
@@ -352,9 +346,36 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
         ...prev,
         [studentId]: { events, schools, checklist: { general, schoolSpecific } }
       }));
+
+      // 【新需求109】把被 safeReq 收集到的失败原因反馈给用户。
+      //   放在写入 studentData 之后：成功的部分照常显示，失败的部分给出可行动的提示。
+      //   分类逻辑抽到 utils/currentStudentGuard.js（有单元测试覆盖）。
+      const failureInfo = classifyLoadFailure(failures);
+      if (failureInfo) {
+        showNotification?.(failureInfo.message, 'error');
+      }
     } catch (err) {
       console.error('加载学生数据失败:', err);
-      // 降级：使用空数据
+      // 兜底：safeReq 之外的意外异常（例如数据格式化过程出错）。
+      //   权限类错误已在上面按接口粒度提示，这里只处理剩余情况。
+      const msg = String(err?.message || err || '');
+      const isForbidden = err?.status === 403
+        || err?.code === 'PERMISSION_DENIED'
+        || /403|无权/i.test(msg);
+      const isAuthExpired = err?.status === 401
+        || err?.code === 'ACCOUNT_DELETED'
+        || /401|令牌无效|已过期/i.test(msg);
+      if (isForbidden) {
+        showNotification?.(
+          '无权查看该学生的数据。若你是学生本人，请退出登录后重新登录以刷新身份信息。',
+          'error'
+        );
+      } else if (isAuthExpired) {
+        showNotification?.('登录状态已失效，请重新登录', 'error');
+      } else {
+        showNotification?.('加载数据失败，请检查网络后重试', 'error');
+      }
+      // 仍写入空数据，避免界面卡在 loading；但用户已收到明确原因提示
       setStudentData(prev => ({
         ...prev,
         [studentId]: { events: [], schools: [], checklist: { general: [], schoolSpecific: {} } }
@@ -505,6 +526,21 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
     }
   }, [currentStudent]);
+
+  // 【新需求109】第二道防线：运行时纠偏。
+  //   上面的 useState 初始化只在组件首次挂载时跑一次；但 user 是异步恢复/更新的
+  //   （AppContext 会在校验 token 后回写 sessionStorage.user），存在
+  //   "首帧 user.studentId 还是空 → 校验被跳过 → 之后才拿到真实学号" 的时序窗口。
+  //   这里持续兜底：只要发现登录学生与当前选中学生不一致，立即纠正为本人。
+  //   这也是"已经装着脏缓存的其他人电脑"在不手动清理的情况下能自动恢复的关键。
+  useEffect(() => {
+    if (!isForeignStudentCache(user, currentStudent)) return;
+    console.warn(
+      '[currentStudent] 学生角色的选中学生与本人不一致，已自动纠正。'
+      + ` 原=${currentStudent?.studentId}，纠正为=${user.studentId}`
+    );
+    setCurrentStudent(buildSelfCurrentStudent(user));
+  }, [user.role, user.studentId, currentStudent?.studentId]);
 
   // 检测屏幕大小
   useEffect(() => {
