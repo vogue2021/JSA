@@ -18,6 +18,8 @@ import studyResourcesRoutes from './routes/study_resources.js'
 // 【新需求77】站内消息发布系统 + R2 图片上传
 import messagesRoutes from './routes/messages.js'
 import uploadRoutes from './routes/upload.js'
+// 【新需求109】每日待办聚合
+import todosRoutes from './routes/todos.js'
 
 const app = new Hono()
 
@@ -75,6 +77,9 @@ app.use('/api/messages/*', authMiddleware)
 app.use('/api/messages', authMiddleware)
 // 【新需求77】上传接口：POST /api/upload/image 需鉴权；GET /api/upload/r2/* 公开读图
 app.use('/api/upload/image', authMiddleware)
+// 【新需求109】待办聚合接口需鉴权（范围控制依赖 user 上下文）
+app.use('/api/todos/*', authMiddleware)
+app.use('/api/todos', authMiddleware)
 // 注意：feedback 路由在内部自行处理鉴权（POST 允许匿名，GET/PATCH 需要 admin）
 // 不在这里挂载 authMiddleware，避免 Hono 路径匹配问题
 
@@ -92,6 +97,8 @@ app.route('/api/study-resources', studyResourcesRoutes)
 // 【新需求77】挂载消息与上传路由
 app.route('/api/messages', messagesRoutes)
 app.route('/api/upload', uploadRoutes)
+// 【新需求109】挂载待办聚合路由
+app.route('/api/todos', todosRoutes)
 
 // ─── 404 处理 ─────────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ success: false, message: '接口不存在' }, 404))

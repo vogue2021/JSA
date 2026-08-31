@@ -517,6 +517,23 @@ export const messagesAPI = {
   },
 };
 
+// 【新需求109】每日待办聚合 API
+export const todosAPI = {
+  /**
+   * 一次拿到当前用户可见范围内的全部待办原始数据。
+   * 学生 → 只有自己；老师 → 名下学生（有 view_all_students 则全部）；管理员 → 全部。
+   * 范围与权限判断都在后端做，前端不做兜底过滤（避免两套口径）。
+   * @param {{days?: number, scope?: 'mine'}} [opts] days 默认 60；scope='mine' 让老师强制只看自己负责的
+   */
+  getAll: async ({ days, scope } = {}) => {
+    const params = new URLSearchParams();
+    if (days) params.append('days', String(days));
+    if (scope) params.append('scope', scope);
+    const qs = params.toString();
+    return await apiRequest(`/todos${qs ? '?' + qs : ''}`);
+  },
+};
+
 // 【新需求77】R2 图片上传 API
 export const uploadAPI = {
   // 通过 FormData 上传图片，返回 { key, url, size, mime }
