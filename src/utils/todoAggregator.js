@@ -279,17 +279,24 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
 
 /**
  * 任务指纹：决定"哪些学生的事项算同一件事"。
- * 同一天 + 同种类 + 同学校 + 同标题 → 合并为一行。
+ * 同一天 + 同种类 + 同标题 → 合并为一行。
  *
- * 为什么把标题也纳入：同一所学校同一天可能同时有"出愿截止"和"材料截止"，
- * 只按 (日期,学校) 分组会把不同的事糊在一起。
- * 材料按标题分组则能把"10 个学生都要交毕业证明"聚成一条。
+ * ⚠️ **不能把 schoolId 纳入指纹**（最初实现的 bug，用 staging 真实数据才发现）：
+ *   每个学生的志愿校是各自独立的一行记录，两个学生报同一所早稻田会有
+ *   **不同的 school_id**（实测 32 与 26）。把 schoolId 纳入指纹会导致
+ *   "早稻田大学 一审发表" 被拆成两条 —— 而需求要的恰恰是这种情况下合并：
+ *   「如果是学校报名，考试时间的话会有学生重叠……一个任务的 UI 设计，
+ *     需要考虑多个学生的任务」。
+ *
+ *   标题里已含学校名（"早稻田大学 一审发表"），所以 (日期 + 种类 + 标题)
+ *   足以唯一标识一件事，也天然把不同学校区分开。
+ *
+ * 为什么必须含标题而不只用 (日期, 种类)：同一天可能有多所学校的出愿截止，
+ * 它们是不同的事不能糊在一起；材料按标题分组则能把
+ * "10 个学生都要交毕业证明" 正确聚成一条。
  */
 export function todoFingerprint(item) {
-  const schoolPart = item.schoolId != null && item.schoolId !== ''
-    ? `s${item.schoolId}`
-    : `n${(item.title || '').replace(/^.*?\s/, '')}`;
-  return [item.date, item.kind, schoolPart, item.title].join('|');
+  return [item.date, item.kind, item.title].join('|');
 }
 
 /**
@@ -319,13 +326,23 @@ export function groupTodosByTask(items) {
       });
     }
     const g = map.get(key);
-    g.students.push({
-      studentId: it.studentId,
-      studentName: it.studentName,
-      completed: it.completed,
-      sourceId: it.sourceId,
-      source: it.source,
-    });
+    // 同一学生在同一任务里只出现一次。
+    // 实测原因：一个学生可能对同一所学校有**多条志愿校记录**（如早稻田的不同学部，
+    // school_id 26 与 27），它们的一审发表日期相同 → 会给同一学生生成两条同名待办。
+    // 若不去重，卡片上会出现"刘七, 刘七"这种重复标签，且 N/M 计数虚高。
+    const existing = g.students.find(s => String(s.studentId) === String(it.studentId));
+    if (existing) {
+      // 只要该生在任一条记录里已完成，就视为完成（避免重复记录把进度拉低）
+      if (it.completed) existing.completed = true;
+    } else {
+      g.students.push({
+        studentId: it.studentId,
+        studentName: it.studentName,
+        completed: it.completed,
+        sourceId: it.sourceId,
+        source: it.source,
+      });
+    }
     // 只要有一个学生的这项还没完成，整个任务就算未完成（老师需要看到还有谁没做）
     if (!it.completed) g.overdue = g.overdue || it.overdue;
   }

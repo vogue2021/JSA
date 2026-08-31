@@ -342,3 +342,92 @@ describe('区间格式日期（回归）', () => {
     expect(g.dateRaw).toBe('2026-09-11~2026-10-10');
   });
 });
+
+// ─── 回归：不同学生报同一所学校，school_id 不同但必须合并 ─────────────────────
+//
+// 用 staging 真实数据验证时发现的 bug：最初的任务指纹把 schoolId 纳入了，
+// 而每个学生的志愿校是各自独立的记录 —— 两个学生报同一所早稻田，
+// school_id 分别是 32 和 26。结果"早稻田大学 一审发表"被拆成两行，
+// 恰恰违背了需求「学生重叠时……一个任务的 UI，需要考虑多个学生」。
+describe('跨学生同校任务合并（回归 school_id 不同导致拆分）', () => {
+  it('两个学生报同一所学校、school_id 不同，仍应合并为一个任务', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [
+        { id: 32, student_id: '2026091', name: '早稻田大学', extra_dates: { firstResultDate: '2026-09-25' } },
+        { id: 26, student_id: '2026064', name: '早稻田大学', extra_dates: { firstResultDate: '2026-09-25' } },
+      ],
+      now: NOW,
+    });
+    const groups = groupTodosByTask(items);
+    const target = groups.filter(g => g.title === '早稻田大学 一审发表');
+    expect(target).toHaveLength(1);           // 关键：只有一条
+    expect(target[0].totalCount).toBe(2);     // 两个学生都挂在这条上
+    expect(target[0].students.map(s => s.studentId).sort())
+      .toEqual(['2026064', '2026091']);
+  });
+
+  it('不同学校的同类事项仍然分开（标题不同）', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [
+        { id: 1, student_id: '2026091', name: '早稻田大学', application_end_date: '2026-09-25' },
+        { id: 2, student_id: '2026091', name: '庆应大学', application_end_date: '2026-09-25' },
+      ],
+      now: NOW,
+    });
+    expect(groupTodosByTask(items)).toHaveLength(2);
+  });
+
+  it('同一天同一学校的不同事项不会被合并', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [{
+        id: 3, student_id: '2026091', name: 'A大学',
+        application_end_date: '2026-09-25',
+        extra_dates: { firstExamDate: '2026-09-25' },
+      }],
+      now: NOW,
+    });
+    const groups = groupTodosByTask(items);
+    // 出愿截止与一审考试是两件事
+    expect(groups).toHaveLength(2);
+  });
+});
+
+// ─── 回归：同一学生对同一学校有多条志愿记录时不能重复出现 ────────────────────
+//
+// 真实数据里"刘七"对早稻田有两条志愿校记录（school_id 26/27，不同学部），
+// 一审发表日期相同 → 会为同一学生生成两条同名待办。
+// 若不去重，卡片上会显示"刘七, 刘七"，且 N/M 完成计数虚高。
+describe('同一学生在同一任务中去重（回归）', () => {
+  it('同学生的多条同名待办合并为一个学生标签', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [
+        { id: 26, student_id: '2026091', name: '早稻田大学', program: '政経', extra_dates: { firstResultDate: '2026-09-25' } },
+        { id: 27, student_id: '2026091', name: '早稻田大学', program: '商学', extra_dates: { firstResultDate: '2026-09-25' } },
+      ],
+      now: NOW,
+    });
+    const g = groupTodosByTask(items).find(x => x.title === '早稻田大学 一审发表');
+    expect(g.totalCount).toBe(1);
+    expect(g.students).toHaveLength(1);
+    expect(g.students[0].studentId).toBe('2026091');
+  });
+
+  it('多条记录中任一条已完成，即视为该生已完成', () => {
+    const items = buildTodoItems({
+      students,
+      materials: [
+        { id: 1, student_id: '2026091', item: '毕业证明', type: 'general', deadline: '2026-09-05', completed: 0 },
+        { id: 2, student_id: '2026091', item: '毕业证明', type: 'general', deadline: '2026-09-05', completed: 1 },
+      ],
+      now: NOW,
+    });
+    const g = groupTodosByTask(items)[0];
+    expect(g.totalCount).toBe(1);
+    expect(g.doneCount).toBe(1);
+    expect(g.allDone).toBe(true);
+  });
+});
