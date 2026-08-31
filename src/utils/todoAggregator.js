@@ -43,7 +43,14 @@ export function getKindMeta(kind) {
   return KIND_META[kind] || KIND_META[TODO_KINDS.OTHER];
 }
 
-/** 归一为 YYYY-MM-DD；无法解析返回 '' */
+/**
+ * 归一为 YYYY-MM-DD；无法解析返回 ''。
+ *
+ * ⚠️ 线上真实数据里存在**区间格式**的日期，例如 "2026-09-11~2026-10-10"
+ *   （学校的考试期/出愿期录入成了一个区间）。这里的前缀正则会取**区间起始日**，
+ *   语义上正确（"这件事从哪天开始"就是待办要提醒的时间点），且不会丢条目。
+ *   有测试锁定这个行为，不要改成严格全串匹配 —— 那会让这类事项直接消失。
+ */
 export function normalizeDay(value) {
   if (!value) return '';
   const s = String(value).trim();
@@ -58,6 +65,14 @@ export function normalizeDay(value) {
     String(d.getMonth() + 1).padStart(2, '0'),
     String(d.getDate()).padStart(2, '0'),
   ].join('-');
+}
+
+/**
+ * 原始日期是否为区间（含 ~ 或 ～）。UI 上需要把完整区间显示出来，
+ * 否则用户只看到起始日会误以为是单日事项。
+ */
+export function isDateRange(value) {
+  return /[~～]/.test(String(value || ''));
 }
 
 /** 本地时区的今天（不要用 toISOString —— 它按 UTC 算，日本时区会差一天） */
@@ -154,6 +169,10 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
     items.push({
       ...o,
       date: day,
+      // 保留原始文本：线上存在 "2026-09-11~2026-10-10" 这类区间，
+      // date 只取起始日用于排序/分桶，UI 需要用它显示完整区间
+      dateRaw: String(o.date || ''),
+      isRange: isDateRange(o.date),
       daysLeft: left,
       overdue: left < 0 && !o.completed,
       studentName: studentName(o.studentId),
@@ -285,6 +304,9 @@ export function groupTodosByTask(items) {
       map.set(key, {
         key,
         date: it.date,
+        // 区间日期的原始文本，UI 用它显示 "2026-09-11~2026-10-10"
+        dateRaw: it.dateRaw || it.date,
+        isRange: !!it.isRange,
         kind: it.kind,
         title: it.title,
         daysLeft: it.daysLeft,

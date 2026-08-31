@@ -291,3 +291,54 @@ describe('出愿截止类型的来源（回归 no such column: deadline_type）'
     expect(exam).toBeUndefined();
   });
 });
+
+// ─── 回归：线上真实数据里存在区间格式日期 ────────────────────────────────────
+//
+// staging 实测发现 events.date 有 "2026-09-11~2026-10-10" 这种值
+// （学校的考试期/出愿期被录成了区间）。
+// 待办必须能处理它：取区间起始日用于排序分桶，同时保留原文供 UI 展示。
+// 若哪天把 normalizeDay 改成严格全串匹配，这类事项会直接从待办里消失。
+describe('区间格式日期（回归）', () => {
+  it('normalizeDay 取区间起始日，不返回空', () => {
+    expect(normalizeDay('2026-09-11~2026-10-10')).toBe('2026-09-11');
+    expect(normalizeDay('2026-09-11～2026-10-10')).toBe('2026-09-11'); // 全角波浪号
+  });
+
+  it('区间事项不会被丢弃，且保留原始文本用于展示', () => {
+    const items = buildTodoItems({
+      students,
+      events: [{
+        id: 70, student_id: '2026091', title: '早稻田大学 入学考试',
+        date: '2026-09-11~2026-10-10', category: '考试', type: 'exam',
+        completed: 0, school_id: 32,
+      }],
+      now: NOW,
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].date).toBe('2026-09-11');       // 排序/分桶用起始日
+    expect(items[0].dateRaw).toBe('2026-09-11~2026-10-10'); // UI 显示用原文
+    expect(items[0].isRange).toBe(true);
+    expect(items[0].daysLeft).toBe(11);             // 距 8/31 有 11 天
+  });
+
+  it('单日事项的 isRange 为 false，dateRaw 等于 date', () => {
+    const items = buildTodoItems({
+      students,
+      materials: [{ id: 71, student_id: '2026091', item: '证件照', deadline: '2026-09-05', completed: 0 }],
+      now: NOW,
+    });
+    expect(items[0].isRange).toBe(false);
+    expect(items[0].dateRaw).toBe('2026-09-05');
+  });
+
+  it('分组后区间信息保留到任务层', () => {
+    const items = buildTodoItems({
+      students,
+      events: [{ id: 72, student_id: '2026091', title: 'X大学 入学考试', date: '2026-09-11~2026-10-10', category: '考试', completed: 0, school_id: 80 }],
+      now: NOW,
+    });
+    const g = groupTodosByTask(items)[0];
+    expect(g.isRange).toBe(true);
+    expect(g.dateRaw).toBe('2026-09-11~2026-10-10');
+  });
+});

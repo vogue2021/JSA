@@ -244,7 +244,11 @@ const DailyTodoPage = () => {
               )}
             </div>
             <div className="flex items-center gap-2 text-xs flex-wrap" style={{ color: tokens.colors.text.muted }}>
-              <span className="inline-flex items-center gap-1"><Calendar size={11} />{task.date}</span>
+              {/* 线上存在 "2026-09-11~2026-10-10" 这类区间日期，要完整显示，
+                  否则只看到起始日会被误认为单日事项 */}
+              <span className="inline-flex items-center gap-1">
+                <Calendar size={11} />{task.isRange ? task.dateRaw : task.date}
+              </span>
               {dayBadge(task)}
               {/* 学生端不显示"1 人"这种无意义信息 */}
               {!isStudent && (
