@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TODO_KINDS, normalizeDay, todayStr, daysUntil,
   buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, sortTodos,
+  extractDeadlineTypeFromTitle,
 } from '../utils/todoAggregator';
 
 // 固定"现在"，让测试不随真实日期漂移
@@ -235,5 +236,58 @@ describe('sortTodos / bucketTodos / summarizeTodos', () => {
     expect(s.overdue).toBe(1);
     expect(s.today).toBe(1);
     expect(s.week).toBe(2); // 今天 + 明天
+  });
+});
+
+// ─── 回归：deadline_type 列不存在（线上报 no such column）─────────────────────
+//
+// 故障：接口 SELECT 了 events.deadline_type 与 schools.deadline_type，
+//   但这两张表**都没有这一列**（已核对两个库的建表语句）→
+//   D1 直接抛 `no such column: deadline_type`，整个待办页一片空白。
+//
+// 【新需求88/90】的出愿截止类型实际是：
+//   · schools —— 存在 extra_dates JSON 的 deadlineType 字段
+//   · events  —— 根本没落库，而是把类型拼在标题后缀里
+// 所以类型只能从这两个地方取，绝不能读独立列。
+describe('出愿截止类型的来源（回归 no such column: deadline_type）', () => {
+  it('从事件标题后缀提取类型', () => {
+    expect(extractDeadlineTypeFromTitle('早稲田 出愿截止（消印有効）')).toBe('消印有効');
+    expect(extractDeadlineTypeFromTitle('明治 出愿截止(必着)')).toBe('必着');
+  });
+
+  it('不误伤"出愿截止前注意事项"这类自定义标题', () => {
+    expect(extractDeadlineTypeFromTitle('出愿截止前注意事项')).toBe('');
+    expect(extractDeadlineTypeFromTitle('法政 考试')).toBe('');
+    expect(extractDeadlineTypeFromTitle(null)).toBe('');
+  });
+
+  it('事件待办的 deadlineType 来自标题，而非不存在的列', () => {
+    const items = buildTodoItems({
+      students,
+      events: [{
+        id: 1, student_id: '2026091', title: '早稲田 出愿截止（消印有効）',
+        date: '2026-09-05', category: '出愿', completed: 0, school_id: 60,
+        // 故意不提供 deadline_type —— 真实接口也不会返回它
+      }],
+      now: NOW,
+    });
+    expect(items[0].deadlineType).toBe('消印有効');
+  });
+
+  it('学校补齐的出愿截止，类型取自 extra_dates.deadlineType', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [{
+        id: 61, student_id: '2026091', name: '上智大学',
+        application_end_date: '2026-09-12',
+        extra_dates: { deadlineType: '必着' },
+      }],
+      now: NOW,
+    });
+    const t = items.find(i => i.title.includes('出愿截止'));
+    expect(t.deadlineType).toBe('必着');
+    // 非"出愿截止"的项不应带类型（考试日没有消印/必着的概念）
+    const exam = items.find(i => i.kind === TODO_KINDS.EXAM);
+    expect(exam).toBeUndefined();
   });
 });

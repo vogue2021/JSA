@@ -136,9 +136,16 @@ todos.get('/', async (c) => {
     const [events, materials, schools] = await Promise.all([
       // 日期窗口一律走参数绑定，不做字符串内插 —— 即使这两个值由服务端生成，
       // 保持全项目"SQL 值只走 bind"的一致性，避免后续有人照抄成拼接用户输入。
+      //
+      // ⚠️ 这里**不能** SELECT deadline_type：
+      //   events 表与 schools 表都没有这一列（已在两个库确认过建表语句）。
+      //   【新需求88/90】的"出愿截止类型（消印有効/必着/当面受付）"实际是：
+      //     · schools —— 存在 extra_dates JSON 里的 deadlineType 字段
+      //     · events  —— 根本没落库，而是把类型拼在标题后缀里（"○○ 出愿截止（消印有効）"）
+      //   所以类型信息统一由前端从 extra_dates 解包 / 从标题反向提取，与既有实现保持一致。
       queryInBatches(db, (ph) =>
         `SELECT id, student_id, type, title, date, category, urgent, notes, completed,
-                school_id, deadline_type
+                school_id
          FROM events
          WHERE student_id IN (${ph}) AND date >= ? AND date <= ?`
         , ids, [from, to]),
@@ -150,9 +157,10 @@ todos.get('/', async (c) => {
         , ids, [from, to]),
       // 学校本身也带一批日期端（一审/二审/自定义日期未必都展开成了 events），
       // 前端会据此补齐 events 里缺失的日期项。
+      // deadlineType 在 extra_dates 里，不是独立列。
       queryInBatches(db, (ph) =>
         `SELECT id, student_id, name, program, type, status,
-                application_start_date, application_end_date, deadline_type,
+                application_start_date, application_end_date,
                 exam_date, result_date, extra_dates
          FROM schools WHERE student_id IN (${ph})`
         , ids),

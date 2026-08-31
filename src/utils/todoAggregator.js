@@ -103,6 +103,22 @@ function classifyCustomLabel(label) {
   return TODO_KINDS.OTHER;
 }
 
+/**
+ * 从事件标题反向提取「出愿截止类型」（消印有効 / 必着 / 当面受付）。
+ *
+ * 【新需求88/90】这个类型**没有独立的数据库列** —— events 表里根本没落库，
+ * 而是把类型拼在标题后缀里（如"早稲田 出愿截止（消印有効）"）。
+ * 这与 App.jsx 里 extractDeadlineType 的口径完全一致，此处不能改成读 e.deadline_type
+ * （那一列不存在，SELECT 它会直接报 `no such column`）。
+ *
+ * 只匹配"出愿截止（XXX）"结尾的形式，避免误伤"出愿截止前注意事项"这类自定义标题。
+ */
+export function extractDeadlineTypeFromTitle(title) {
+  if (!title || typeof title !== 'string') return '';
+  const m = title.match(/出愿截止[（(]([^）)]+)[）)]\s*$/);
+  return m ? m[1].trim() : '';
+}
+
 /** 兼容后端下划线与前端驼峰两种字段名 */
 function pick(obj, ...keys) {
   for (const k of keys) {
@@ -152,17 +168,19 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
     const day = normalizeDay(pick(ev, 'date'));
     const schoolId = pick(ev, 'school_id', 'schoolId');
     if (day && schoolId) covered.add(`${schoolId}|${day}`);
+    const title = pick(ev, 'title') || '待办事项';
     push({
       source: 'event',
       sourceId: ev.id,
       kind: classifyEvent(ev),
-      title: pick(ev, 'title') || '待办事项',
+      title,
       date: pick(ev, 'date'),
       studentId,
       schoolId: schoolId || null,
       completed: Boolean(Number(pick(ev, 'completed') || 0)),
       notes: pick(ev, 'notes'),
-      deadlineType: pick(ev, 'deadline_type', 'deadlineType'),
+      // events 表没有 deadline_type 列，类型信息在标题后缀里，从标题提取
+      deadlineType: extractDeadlineTypeFromTitle(title),
     });
   });
 
@@ -211,6 +229,11 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
         schoolId: schoolId || null,
         completed: false,
         schoolStatus: pick(sc, 'status'),
+        // 【新需求88】出愿截止类型存在 extra_dates 里（无独立列），
+        //   它决定实际寄送时间，只有"出愿截止"这一项需要展示
+        deadlineType: kind === TODO_KINDS.APPLICATION_END
+          ? (extra.deadlineType || '')
+          : '',
       });
     };
 
