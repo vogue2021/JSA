@@ -9,7 +9,10 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "doctor": "node src/doctor.js"
+    "doctor": "node src/doctor.js",
+    "export": "node src/exportDb.js",
+    "export:staging": "node src/exportDb.js --target staging",
+    "test": "node src/guard.test.js && node src/exportCore.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

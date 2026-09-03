@@ -147,6 +147,79 @@ query    sql: SELECT email, password FROM users LIMIT 1
 
 ---
 
+## 全库导出到 JSON（需求110）
+
+把整个 D1 数据库的**全部数据**导出成一个 JSON 文件，用于备份、离线分析、环境间数据比对。
+
+```bash
+cd mcp
+
+npm run export                        # 生产库 → workers/backups/d1-export-production-<时间戳>.json
+npm run export:staging                # 测试库
+npm run export -- --redact            # 敏感列脱敏（用于对外分享）
+npm run export -- --tables students,schools
+npm run export -- --out /tmp/a.json   # 指定路径
+npm run export -- --stdout            # 输出到标准输出（可接管道）
+npm run export -- --help
+```
+
+不需要手动 `source .env`——脚本会自己读 `mcp/.env`（已有的 `process.env` 优先，便于 CI 覆盖）。
+
+### 输出结构
+
+```jsonc
+{
+  "meta": {              // 环境、时间、行数预期、是否脱敏
+    "format": "jsa-d1-export", "version": 1,
+    "target": "production", "exported_at": "…", "redacted": false,
+    "table_count": 15, "expected_row_total": 10056
+  },
+  "schema": {
+    "tables": { "students": [ { "name": "…", "type": "…", "pk": true } ] },
+    "ddl":    [ { "type": "table", "name": "students", "sql": "CREATE TABLE …" } ]
+  },
+  "tables": {
+    "students": [ { /* 一行一条记录 */ } ],
+    "audit_logs": []     // 空表是 []，不是 null、不是缺键
+  },
+  "verification": {      // 逐表比对"导出前 COUNT(*)"与"实际写出行数"
+    "ok": true, "tables": { "students": { "expected": 143, "exported": 143, "ok": true } },
+    "mismatches": [], "paging": { "students": "rowid" }, "duration_ms": 4231
+  }
+}
+```
+
+一并导出 `schema.ddl`，所以这份 JSON 不只是数据快照，**具备重建整库的信息**。
+
+### 几个刻意的设计
+
+| 点 | 原因 |
+| --- | --- |
+| **rowid 游标分页**，不用 `LIMIT/OFFSET` | OFFSET 在大表上是 O(n)，且没有稳定 `ORDER BY` 时翻页会重复/漏行。rowid 唯一且单调，是最可靠的游标。`WITHOUT ROWID` 表自动退回 OFFSET 并在 `verification.paging` 里标注 |
+| **流式写出**，不 `JSON.stringify(整库)` | 一次性构造会让整份数据同时以对象和字符串两种形态驻留内存。现在内存只与单个批次相关 |
+| **先写 `.partial`，回读解析成功后才改名** | 半截/损坏的备份最要命 —— 必须在它取得正式文件名之前被发现 |
+| **逐表计数核对，不一致以退出码 2 结束** | 一份对不上数的备份比没有备份更危险，它会让人误以为数据是全的 |
+| **默认只许写 `workers/backups/`** | 该目录已被 `.gitignore`。导出物含 143 名真实学生的姓名/邮箱/电话，落在会被 git 追踪的位置，下一次 `git add .` 就把隐私推上远端且历史难清。写别处需 `--force` 并会打警告 |
+| **文件权限收紧为 `0600`** | 同机其它用户无法读取 |
+| **默认不脱敏** | 备份的用途是恢复，脱敏后就恢复不了账号。要对外分享时才加 `--redact` |
+
+### 与 `wrangler d1 export` 的分工
+
+| | 产物 | 适合 |
+| --- | --- | --- |
+| `wrangler d1 export` | `.sql` | 直接灌回数据库 |
+| `npm run export` | `.json` | 程序读取、环境间比对、数据分析、喂给脚本/Agent |
+
+两者互补，重大变更前建议都做一份。
+
+### 导出结果自检
+
+```bash
+cd mcp && npm test     # guard.test.js（36 项）+ exportCore.test.js（47 项）
+```
+
+---
+
 ## 审计日志
 
 写操作（含被拒绝的尝试）逐条落在 `mcp/logs/audit-YYYY-MM-DD.log`，每行一条 JSON：
@@ -165,6 +238,7 @@ query    sql: SELECT email, password FROM users LIMIT 1
 
 ## 已知边界
 
-- **无事务回滚**。D1 的 REST query接口不支持 `BEGIN`/`COMMIT`，因此写操作一旦 `confirm` 执行就无法回滚。这也是为什么要有预演 + 影响行数预估这一步。重大变更前请先`npx wrangler d1 export` 备份。
+- **无事务回滚**。D1 的 REST query接口不支持 `BEGIN`/`COMMIT`，因此写操作一旦 `confirm` 执行就无法回滚。这也是为什么要有预演 + 影响行数预估这一步。重大变更前请先 `npm run export` 或 `npx wrangler d1 export` 备份。
 - **`INSERT` 无法预估影响行数**。预演只能对带 `WHERE` 的 `UPDATE`/`DELETE` 生效。
 - **schema 变更不走 MCP**。这是刻意的设计，不是缺失—— 建表改表必须留在 `workers/migration-*.sql` 里，才能被 git 追踪、被 review。
+- **导出不是原子快照**。D1 REST 无法开只读事务，逐表分页期间若有并发写入，`verification` 会报计数不一致（此时重跑即可）。它是"接近一致"的备份，不是数据库级 snapshot。
