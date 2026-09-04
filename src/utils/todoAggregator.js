@@ -255,9 +255,9 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
     //   · 无持久化位置（source:'school' 不可勾选），到窗口自动出现、出愿开始后自动消失
     const REMIND_BEFORE_DAYS = 3;
     const startDay = normalizeDay(pick(sc, 'application_start_date', 'applicationStartDate'));
+    const st = String(pick(sc, 'status') || '');
     if (startDay) {
       const dl = daysUntil(startDay, now);
-      const st = String(pick(sc, 'status') || '');
       const earlyStage = !st || st === 'not_started' || st === 'preparing';
       if (dl !== null && dl >= 0 && dl <= REMIND_BEFORE_DAYS && earlyStage) {
         push({
@@ -267,6 +267,47 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
           title: `${schoolName} 出愿即将开始`,
           subtitle: '请提前和老师预约出愿时间',
           date: startDay,
+          studentId,
+          schoolId: schoolId || null,
+          completed: false,
+          schoolStatus: st,
+        });
+      }
+    }
+
+    // 【新需求118】考试前 21 天（含当天）生成"预约校内考准备"提醒。
+    //   · 取该校**最近一场未来的考试类日期**：入学考试 / 一审 / 二审 / 考试类自定义日期
+    //     （面试类自定义标签按 classifyCustomLabel 也归为考试类，模拟面试正适用于它）
+    //   · 合格/未合格 的学校不再提醒（流程已结束）；
+    //     出愿完成/邮寄完成 仍然提醒 —— 那正是备考期，与 116 的出愿预约口径不同
+    //   · 仅学生端展示（页面层对老师/管理员隐藏 reminder 种类）
+    //   · reminder 自带 [0, 21] 天时间窗，不受"关注视野"限制（见 filterByHorizon）
+    const EXAM_REMIND_DAYS = 21;
+    if (st !== 'admitted' && st !== 'rejected') {
+      const examCandidates = [
+        pick(sc, 'exam_date', 'examDate'),
+        extra.firstExamDate,
+        extra.secondExamDate,
+        ...(Array.isArray(extra.customDates) ? extra.customDates : [])
+          .filter(cd => cd && cd.label && cd.date && classifyCustomLabel(cd.label) === TODO_KINDS.EXAM)
+          .map(cd => cd.date),
+      ];
+      let nearest = null; // { day, left } —— 窗口内最近的一场考试
+      for (const raw of examCandidates) {
+        const day = normalizeDay(raw);
+        if (!day) continue;
+        const left = daysUntil(day, now);
+        if (left === null || left < 0 || left > EXAM_REMIND_DAYS) continue;
+        if (!nearest || left < nearest.left) nearest = { day, left };
+      }
+      if (nearest) {
+        push({
+          source: 'school',
+          sourceId: `${schoolId}-exam-prep-reminder-${nearest.day}`,
+          kind: TODO_KINDS.REMINDER,
+          title: `${schoolName} 考试临近`,
+          subtitle: '请提前和老师预约：模拟面试/笔试等校内考准备',
+          date: nearest.day,
           studentId,
           schoolId: schoolId || null,
           completed: false,
@@ -454,6 +495,9 @@ export function filterByHorizon(tasks, horizonDays = 3) {
   if (horizonDays == null || horizonDays < 0) return tasks;
   return tasks.filter(t => {
     if (t.overdue && !t.allDone) return true;       // 逾期未完成：始终保留
+    // 【新需求118】提醒类自带时间窗（出愿前 3 天 / 考试前 21 天），窗口外根本不会生成；
+    //   若再套 3 天视野，考试提醒要到考前 3 天才出现，21 天提前预约的意义就没了
+    if (t.kind === TODO_KINDS.REMINDER) return true;
     if (t.daysLeft == null) return false;
     return t.daysLeft >= 0 && t.daysLeft <= horizonDays;
   });

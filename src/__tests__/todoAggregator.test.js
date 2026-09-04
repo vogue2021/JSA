@@ -354,6 +354,78 @@ describe('出愿开始前 3 天的预约提醒（学生端）', () => {
   });
 });
 
+// ─── 【新需求118】考试前 21 天预约校内考准备提醒 ────────────────────────────
+// NOW = 2026-08-31
+describe('考试前 21 天的校内考准备提醒（学生端）', () => {
+  const buildWithSchools = (schools) => buildTodoItems({ students, schools, now: NOW });
+  const reminders = (items) => items.filter(i => i.kind === TODO_KINDS.REMINDER);
+
+  it('考试在 21 天内（含当天）→ 生成提醒', () => {
+    const items = buildWithSchools([
+      { id: 90, student_id: '2026091', name: 'A大学', status: 'applied', exam_date: '2026-09-21' }, // 21 天后
+      { id: 91, student_id: '2026091', name: 'B大学', status: 'submitted', exam_date: '2026-08-31' }, // 今天
+    ]);
+    const rs = reminders(items).filter(r => r.title.includes('考试临近'));
+    expect(rs).toHaveLength(2);
+    expect(rs[0].subtitle).toBe('请提前和老师预约：模拟面试/笔试等校内考准备');
+  });
+
+  it('考试在第 22 天 → 不生成提醒', () => {
+    const items = buildWithSchools([
+      { id: 92, student_id: '2026091', name: 'C大学', status: 'preparing', exam_date: '2026-09-22' },
+    ]);
+    expect(reminders(items).filter(r => r.title.includes('考试临近'))).toHaveLength(0);
+  });
+
+  it('多场考试取最近的一场（一审先于本考）；一审已过则落回本考', () => {
+    const items = buildWithSchools([
+      { id: 93, student_id: '2026091', name: 'D大学', status: 'applied', exam_date: '2026-09-20',
+        extra_dates: { firstExamDate: '2026-09-10' } },
+      { id: 94, student_id: '2026091', name: 'E大学', status: 'applied', exam_date: '2026-09-15',
+        extra_dates: { firstExamDate: '2026-08-20' } }, // 一审已过
+    ]);
+    const rs = reminders(items).filter(r => r.title.includes('考试临近'));
+    expect(rs.find(r => r.schoolId === 93)?.date).toBe('2026-09-10');
+    expect(rs.find(r => r.schoolId === 94)?.date).toBe('2026-09-15');
+  });
+
+  it('考试类自定义日期（面试）参与；非考试类（书类提交）不参与', () => {
+    const items = buildWithSchools([
+      { id: 95, student_id: '2026091', name: 'F大学', status: 'applied',
+        extra_dates: { customDates: [
+          { label: '面试', date: '2026-09-05' },
+          { label: '书类提交', date: '2026-09-03' },
+        ] } },
+    ]);
+    const rs = reminders(items).filter(r => r.title.includes('考试临近'));
+    expect(rs).toHaveLength(1);
+    expect(rs[0].date).toBe('2026-09-05'); // 面试日，不是书类提交日
+  });
+
+  it('合格/未合格的学校不再提醒；出愿完成/邮寄完成仍提醒（正是备考期）', () => {
+    const items = buildWithSchools([
+      { id: 96, student_id: '2026091', name: 'G大学', status: 'admitted', exam_date: '2026-09-05' },
+      { id: 97, student_id: '2026091', name: 'H大学', status: 'rejected', exam_date: '2026-09-05' },
+      { id: 98, student_id: '2026091', name: 'I大学', status: 'applied', exam_date: '2026-09-05' },
+      { id: 99, student_id: '2026091', name: 'J大学', status: 'submitted', exam_date: '2026-09-05' },
+    ]);
+    const rs = reminders(items).filter(r => r.title.includes('考试临近'));
+    expect(rs.map(r => r.schoolId).sort()).toEqual([98, 99]);
+  });
+
+  it('提醒不受 3 天关注视野限制（21 天窗口的提醒必须立即可见）', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [{ id: 100, student_id: '2026091', name: 'K大学', status: 'applied', exam_date: '2026-09-15' }], // 15 天后
+      materials: [{ id: 5, student_id: '2026091', item: '远期材料', type: 'general', deadline: '2026-09-15', completed: 0 }],
+      now: NOW,
+    });
+    const tasks = filterByHorizon(groupTodosByTask(items), 3);
+    expect(tasks.some(t => t.kind === TODO_KINDS.REMINDER)).toBe(true);   // 提醒保留
+    expect(tasks.some(t => t.title === '远期材料')).toBe(false);           // 普通 15 天项被收窄
+  });
+});
+
 // ─── 【新需求116 第1项】各学校时间线一览 ─────────────────────────────────────
 describe('buildSchoolTimeline —— 每所学校的关键日期总览', () => {
   it('汇总主日期 + extra_dates（字符串形态）+ 自定义日期，并按日期升序', () => {
