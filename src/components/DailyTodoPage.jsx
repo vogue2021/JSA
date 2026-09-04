@@ -25,14 +25,16 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ListChecks, RefreshCw, AlertTriangle, Calendar, Users, Search,
   Check, ExternalLink, ChevronDown, ChevronRight, Filter, School as SchoolIcon, Zap,
+  Bell, Clock,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { todosAPI, materialsAPI, eventsAPI } from '../services/api';
 import {
   buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, filterByHorizon,
-  getKindMeta, TODO_KINDS, todayStr,
+  getKindMeta, TODO_KINDS, todayStr, buildSchoolTimeline,
 } from '../utils/todoAggregator';
+import { SCHOOL_STATUS_LABELS } from '../constants/schoolProcess';
 
 const DailyTodoPage = () => {
   const { isDark, tokens } = useTheme();
@@ -94,11 +96,19 @@ const DailyTodoPage = () => {
     return groupTodosByTask(patched);
   }, [raw, localDone]);
 
+  // 【新需求116 第1项】各学校时间线一览（数据与主列表同源，不受视野/筛选影响）
+  const schoolTimelines = useMemo(
+    () => buildSchoolTimeline(raw?.schools || []),
+    [raw]
+  );
+
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     // 先按关注视野收窄（逾期未完成始终保留），再套用其余筛选
     const inHorizon = filterByHorizon(tasks, horizon);
     return inHorizon.filter(t => {
+      // 【新需求116 第2项】预约提醒只给学生看；老师端看它就是噪音
+      if (t.kind === TODO_KINDS.REMINDER && !isStudent) return false;
       if (hideDone && t.allDone) return false;
       if (kindFilter !== 'all' && t.kind !== kindFilter) return false;
       if (!kw) return true;
@@ -109,7 +119,7 @@ const DailyTodoPage = () => {
         String(s.studentName).toLowerCase().includes(kw)
         || String(s.studentId).toLowerCase().includes(kw));
     });
-  }, [tasks, keyword, kindFilter, hideDone, horizon]);
+  }, [tasks, keyword, kindFilter, hideDone, horizon, isStudent]);
 
   const buckets = useMemo(() => bucketTodos(filtered), [filtered]);
   const summary = useMemo(() => summarizeTodos(filtered), [filtered]);
@@ -264,12 +274,21 @@ const DailyTodoPage = () => {
               }}>
                 {task.title}
               </span>
-              {/* 【新需求111 第1项】材料条目补显所属学校，跨校聚合时才分得清 */}
+              {/* 【新需求116 第2项】预约提醒的副标题是提示文案，用铃铛+高亮样式，
+                  与材料条目的"所属学校"副标题区分开 */}
               {task.subtitle && (
-                <span className="inline-flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded"
-                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
-                  <SchoolIcon size={10} />{task.subtitle}
-                </span>
+                task.kind === TODO_KINDS.REMINDER ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded font-semibold"
+                    style={{ background: isDark ? 'rgba(13,148,136,0.20)' : 'rgba(13,148,136,0.12)', color: isDark ? '#2dd4bf' : '#0f766e' }}>
+                    <Bell size={10} />{task.subtitle}
+                  </span>
+                ) : (
+                  /* 【新需求111 第1项】材料条目补显所属学校，跨校聚合时才分得清 */
+                  <span className="inline-flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded"
+                    style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
+                    <SchoolIcon size={10} />{task.subtitle}
+                  </span>
+                )
               )}
               {task.url && (
                 <a href={task.url} target="_blank" rel="noopener noreferrer"
@@ -348,6 +367,8 @@ const DailyTodoPage = () => {
     { id: TODO_KINDS.MATERIAL, label: '材料' },
     { id: TODO_KINDS.APPLICATION_START, label: '出愿开始' },
     { id: TODO_KINDS.RESULT, label: '合格发表' },
+    // 【新需求116 第2项】预约提醒只有学生端会出现，老师端不给这个筛选项
+    ...(isStudent ? [{ id: TODO_KINDS.REMINDER, label: '预约提醒' }] : []),
   ];
 
   // 【新需求111 第1项】关注视野选项。默认 3 天 —— 需求明确"显示最近 3 天"。
@@ -537,6 +558,83 @@ const DailyTodoPage = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* 【新需求116 第1项】各学校时间线一览（学生端）。
+          主列表按日期聚合且默认聚焦最近 3 天，一所学校的完整日程
+          （出愿开始/截止、考试、合格发表、一审/二审、自定义日期）在这里按学校维度看全。
+          老师端的需求已由上方"跨学生聚合的待办列表"覆盖，不再重复一个巨大矩阵。 */}
+      {isStudent && schoolTimelines.length > 0 && (
+        <div className="glass-panel p-4 rounded-2xl space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Clock size={15} style={{ color: tokens.colors.text.secondary }} />
+            <span className="text-sm font-bold" style={{ color: tokens.colors.text.primary }}>各学校时间线</span>
+            <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
+              每所学校的出愿 / 考试 / 发表等全部关键日期
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {schoolTimelines.map(st => (
+              <div key={st.schoolId}
+                className="p-3 rounded-xl space-y-1.5"
+                style={{
+                  background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+                  border: `1px solid ${tokens.colors.border.subtle}`,
+                  opacity: st.allPast ? 0.55 : 1,
+                }}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm" style={{ color: tokens.colors.text.primary }}>{st.name}</span>
+                  {st.program && (
+                    <span className="text-[11px]" style={{ color: tokens.colors.text.muted }}>{st.program}</span>
+                  )}
+                  {st.status && SCHOOL_STATUS_LABELS[st.status] && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded"
+                      style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: tokens.colors.text.muted }}>
+                      {SCHOOL_STATUS_LABELS[st.status]}
+                    </span>
+                  )}
+                  {!st.allPast && st.nextDaysLeft !== null && (
+                    <span className="text-[11px] font-semibold ml-auto" style={{ color: st.nextDaysLeft === 0 ? '#ea580c' : '#d97706' }}>
+                      最近：{st.nextDaysLeft === 0 ? '今天' : st.nextDaysLeft === 1 ? '明天' : `${st.nextDaysLeft} 天后`}
+                    </span>
+                  )}
+                  {st.allPast && (
+                    <span className="text-[11px] ml-auto" style={{ color: tokens.colors.text.muted }}>日程已全部结束</span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {st.milestones.map((m, mi) => {
+                    const meta = getKindMeta(m.kind);
+                    const past = m.daysLeft !== null && m.daysLeft < 0;
+                    const isNext = !st.allPast && m.date === st.nextDate;
+                    return (
+                      <div key={`${m.label}-${m.date}-${mi}`}
+                        className="flex items-center gap-2 text-xs px-1.5 py-1 rounded"
+                        style={{
+                          background: isNext ? (isDark ? 'rgba(234,88,12,0.12)' : 'rgba(234,88,12,0.07)') : 'transparent',
+                          opacity: past ? 0.55 : 1,
+                        }}>
+                        <span className="px-1.5 py-0.5 rounded font-semibold whitespace-nowrap"
+                          style={{ background: `${meta.color}1f`, color: meta.color, fontSize: 11 }}>
+                          {m.label}{m.deadlineType ? `·${m.deadlineType}` : ''}
+                        </span>
+                        <span style={{ color: tokens.colors.text.secondary }}>
+                          {m.isRange ? m.dateRaw : m.date}
+                        </span>
+                        <span className="ml-auto whitespace-nowrap" style={{ color: past ? tokens.colors.text.muted : (m.daysLeft === 0 ? '#ea580c' : tokens.colors.text.muted), fontWeight: m.daysLeft === 0 ? 700 : 400 }}>
+                          {past ? `已过 ${Math.abs(m.daysLeft)} 天`
+                            : m.daysLeft === 0 ? '今天'
+                            : m.daysLeft === 1 ? '明天'
+                            : `${m.daysLeft} 天后`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

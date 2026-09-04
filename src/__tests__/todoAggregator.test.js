@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TODO_KINDS, normalizeDay, todayStr, daysUntil,
   buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, sortTodos,
-  extractDeadlineTypeFromTitle, filterByHorizon,
+  extractDeadlineTypeFromTitle, filterByHorizon, buildSchoolTimeline,
 } from '../utils/todoAggregator';
 
 // 固定"现在"，让测试不随真实日期漂移
@@ -305,6 +305,99 @@ describe('出愿截止类型的来源（回归 no such column: deadline_type）'
     // 非"出愿截止"的项不应带类型（考试日没有消印/必着的概念）
     const exam = items.find(i => i.kind === TODO_KINDS.EXAM);
     expect(exam).toBeUndefined();
+  });
+});
+
+// ─── 【新需求116 第2项】出愿前 3 天预约提醒 ─────────────────────────────────
+// NOW = 2026-08-31
+describe('出愿开始前 3 天的预约提醒（学生端）', () => {
+  const buildWithSchools = (schools) => buildTodoItems({ students, schools, now: NOW });
+  const reminders = (items) => items.filter(i => i.kind === TODO_KINDS.REMINDER);
+
+  it('出愿开始在 3 天内（含当天）→ 生成提醒', () => {
+    const items = buildWithSchools([
+      { id: 70, student_id: '2026091', name: 'A大学', status: 'preparing', application_start_date: '2026-09-03' }, // 3 天后
+      { id: 71, student_id: '2026091', name: 'B大学', status: 'not_started', application_start_date: '2026-08-31' }, // 今天
+      { id: 72, student_id: '2026091', name: 'C大学', status: 'preparing', application_start_date: '2026-09-01' },  // 明天
+    ]);
+    const rs = reminders(items);
+    expect(rs).toHaveLength(3);
+    expect(rs[0].title).toContain('出愿即将开始');
+    expect(rs[0].subtitle).toBe('请提前和老师预约出愿时间');
+    // 提醒挂在出愿开始当天，自然落入 今天/明天/7天内 桶
+    expect(rs.map(r => r.date).sort()).toEqual(['2026-08-31', '2026-09-01', '2026-09-03']);
+    // 无持久化位置：source 必须是 school（页面层据此禁止勾选）
+    expect(rs.every(r => r.source === 'school')).toBe(true);
+  });
+
+  it('出愿开始在第 4 天或已过 → 不生成提醒', () => {
+    const items = buildWithSchools([
+      { id: 73, student_id: '2026091', name: 'D大学', status: 'preparing', application_start_date: '2026-09-04' }, // 4 天后
+      { id: 74, student_id: '2026091', name: 'E大学', status: 'preparing', application_start_date: '2026-08-30' }, // 昨天
+    ]);
+    expect(reminders(items)).toHaveLength(0);
+  });
+
+  it('已进入出愿完成及之后状态的学校不再提醒（预约已无意义）', () => {
+    const items = buildWithSchools([
+      { id: 75, student_id: '2026091', name: 'F大学', status: 'applied', application_start_date: '2026-09-02' },
+      { id: 76, student_id: '2026091', name: 'G大学', status: 'admitted', application_start_date: '2026-09-02' },
+    ]);
+    expect(reminders(items)).toHaveLength(0);
+  });
+
+  it('提醒永不变逾期项（窗口外自动消失而不是沉入已逾期）', () => {
+    const items = buildWithSchools([
+      { id: 77, student_id: '2026091', name: 'H大学', status: 'preparing', application_start_date: '2026-08-30' },
+    ]);
+    expect(reminders(items).some(r => r.overdue)).toBe(false);
+  });
+});
+
+// ─── 【新需求116 第1项】各学校时间线一览 ─────────────────────────────────────
+describe('buildSchoolTimeline —— 每所学校的关键日期总览', () => {
+  it('汇总主日期 + extra_dates（字符串形态）+ 自定义日期，并按日期升序', () => {
+    const [st] = buildSchoolTimeline([{
+      id: 80, student_id: '2026091', name: '早稲田大学', program: '政治经济学部', status: 'preparing',
+      application_start_date: '2026-09-01', application_end_date: '2026-09-10',
+      exam_date: '2026-09-20', result_date: '2026-10-01',
+      extra_dates: JSON.stringify({
+        firstExamDate: '2026-09-15', firstResultDate: '2026-09-18',
+        deadlineType: '消印有効',
+        customDates: [{ label: '面试', date: '2026-09-22' }],
+      }),
+    }], NOW);
+    const labels = st.milestones.map(m => m.label);
+    expect(labels).toEqual(['出愿开始', '出愿截止', '一审考试', '一审发表', '考试', '面试', '合格发表']);
+    // 出愿截止携带类型
+    expect(st.milestones.find(m => m.label === '出愿截止').deadlineType).toBe('消印有効');
+    // 最近节点 = 出愿开始（明天）
+    expect(st.nextDate).toBe('2026-09-01');
+    expect(st.nextDaysLeft).toBe(1);
+    expect(st.allPast).toBe(false);
+  });
+
+  it('区间日期保留原文展示', () => {
+    const [st] = buildSchoolTimeline([{
+      id: 81, student_id: '2026091', name: '明治大学',
+      exam_date: '2026-09-11~2026-10-10',
+    }], NOW);
+    const exam = st.milestones[0];
+    expect(exam.isRange).toBe(true);
+    expect(exam.dateRaw).toBe('2026-09-11~2026-10-10');
+    expect(exam.date).toBe('2026-09-11'); // 排序/天数用起始日
+  });
+
+  it('日程全已过的学校沉底并标记 allPast；没有日期的学校不出现', () => {
+    const list = buildSchoolTimeline([
+      { id: 82, student_id: '2026091', name: '远期校', exam_date: '2026-12-01' },
+      { id: 83, student_id: '2026091', name: '历史校', exam_date: '2026-08-01', result_date: '2026-08-20' },
+      { id: 84, student_id: '2026091', name: '无日期校' },
+      { id: 85, student_id: '2026091', name: '近期校', exam_date: '2026-09-02' },
+    ], NOW);
+    expect(list.map(s => s.name)).toEqual(['近期校', '远期校', '历史校']);
+    expect(list[2].allPast).toBe(true);
+    expect(list[2].nextDate).toBe(null);
   });
 });
 

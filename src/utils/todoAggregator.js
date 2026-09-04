@@ -27,6 +27,7 @@ export const TODO_KINDS = {
   MATERIAL: 'material',                 // 材料截止
   APPLICATION_START: 'application_start',// 出愿开始
   RESULT: 'result',                     // 合格发表
+  REMINDER: 'reminder',                 // 【新需求116 第2项】出愿前预约提醒（学生端）
   OTHER: 'other',                        // 其它自定义事项
 };
 
@@ -36,6 +37,7 @@ const KIND_META = {
   [TODO_KINDS.MATERIAL]: { label: '材料截止', color: '#7c3aed', weight: 2 },
   [TODO_KINDS.APPLICATION_START]: { label: '出愿开始', color: '#16a34a', weight: 3 },
   [TODO_KINDS.RESULT]: { label: '合格发表', color: '#c026d3', weight: 4 },
+  [TODO_KINDS.REMINDER]: { label: '提醒', color: '#0d9488', weight: -1 }, // 提醒当天最优先可见
   [TODO_KINDS.OTHER]: { label: '待办', color: '#64748b', weight: 5 },
 };
 
@@ -142,6 +144,15 @@ function pick(obj, ...keys) {
   return '';
 }
 
+/** 解析 schools.extra_dates（兼容 JSON 字符串与已解析对象两种形态） */
+function parseExtraDates(sc) {
+  const e = sc?.extra_dates || sc?.extraDates || {};
+  if (typeof e === 'string') {
+    try { return JSON.parse(e || '{}'); } catch { return {}; }
+  }
+  return e && typeof e === 'object' ? e : {};
+}
+
 /**
  * 把原始数据展开成"每个学生 × 每个日期"的扁平待办项。
  *
@@ -236,13 +247,33 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
     const studentId = pick(sc, 'student_id', 'studentId');
     const schoolId = pick(sc, 'id');
     const schoolName = pick(sc, 'name');
-    const extra = (() => {
-      const e = sc.extra_dates || sc.extraDates || {};
-      if (typeof e === 'string') {
-        try { return JSON.parse(e || '{}'); } catch { return {}; }
+    const extra = parseExtraDates(sc);
+
+    // 【新需求116 第2项】出愿开始前 3 天（含当天）生成"请提前和老师预约出愿时间"提醒。
+    //   · 面向学生端（页面层会对老师/管理员隐藏该种类）
+    //   · 已进入 出愿完成/邮寄完成/合格/未合格 的学校不再提醒 —— 预约已无意义
+    //   · 无持久化位置（source:'school' 不可勾选），到窗口自动出现、出愿开始后自动消失
+    const REMIND_BEFORE_DAYS = 3;
+    const startDay = normalizeDay(pick(sc, 'application_start_date', 'applicationStartDate'));
+    if (startDay) {
+      const dl = daysUntil(startDay, now);
+      const st = String(pick(sc, 'status') || '');
+      const earlyStage = !st || st === 'not_started' || st === 'preparing';
+      if (dl !== null && dl >= 0 && dl <= REMIND_BEFORE_DAYS && earlyStage) {
+        push({
+          source: 'school',
+          sourceId: `${schoolId}-booking-reminder-${startDay}`,
+          kind: TODO_KINDS.REMINDER,
+          title: `${schoolName} 出愿即将开始`,
+          subtitle: '请提前和老师预约出愿时间',
+          date: startDay,
+          studentId,
+          schoolId: schoolId || null,
+          completed: false,
+          schoolStatus: st,
+        });
       }
-      return e && typeof e === 'object' ? e : {};
-    })();
+    }
 
     const addIfUncovered = (date, kind, label) => {
       const day = normalizeDay(date);
@@ -442,6 +473,74 @@ export function bucketTodos(tasks) {
     buckets[idx].items.push(t);
   }
   return buckets.filter(b => b.items.length > 0);
+}
+
+/**
+ * 【新需求116 第1项】每所学校的关键时间线一览。
+ *
+ * 每日待办主列表按日期聚合并默认聚焦最近 3 天，**一所学校的完整日程**
+ * （出愿开始/截止、考试、合格发表、一审/二审、自定义日期）反而看不全。
+ * 这里按学校维度把全部日期端整理成时间线，供"各学校时间线"区块渲染。
+ *
+ * @param {Array} schools  原始 schools 数据（extra_dates 可为 JSON 字符串或对象）
+ * @param {Date}  [now]
+ * @returns {Array<{schoolId, name, program, status, studentId, milestones: Array,
+ *   nextDate, nextDaysLeft, allPast}>}
+ *   milestones 按日期升序；allPast=true 的学校（日程全已过）排最后并建议 UI 降噪
+ */
+export function buildSchoolTimeline(schools = [], now = new Date()) {
+  const out = [];
+  for (const sc of schools) {
+    const extra = parseExtraDates(sc);
+    const milestones = [];
+    const add = (date, kind, label, extraFields = {}) => {
+      const day = normalizeDay(date);
+      if (!day) return;
+      milestones.push({
+        date: day,
+        dateRaw: String(date || ''),
+        isRange: isDateRange(date),
+        kind,
+        label,
+        daysLeft: daysUntil(day, now),
+        ...extraFields,
+      });
+    };
+    add(pick(sc, 'application_start_date', 'applicationStartDate'), TODO_KINDS.APPLICATION_START, '出愿开始');
+    // 【新需求88】出愿截止类型一并带上，它决定实际寄送时间
+    add(pick(sc, 'application_end_date', 'applicationEndDate'), TODO_KINDS.APPLICATION_END, '出愿截止', { deadlineType: extra.deadlineType || '' });
+    add(pick(sc, 'exam_date', 'examDate'), TODO_KINDS.EXAM, '考试');
+    add(pick(sc, 'result_date', 'resultDate'), TODO_KINDS.RESULT, '合格发表');
+    add(extra.firstExamDate, TODO_KINDS.EXAM, '一审考试');
+    add(extra.firstResultDate, TODO_KINDS.RESULT, '一审发表');
+    add(extra.secondExamDate, TODO_KINDS.EXAM, '二审考试');
+    add(extra.secondResultDate, TODO_KINDS.RESULT, '二审发表');
+    (Array.isArray(extra.customDates) ? extra.customDates : []).forEach(cd => {
+      if (cd && cd.label && cd.date) add(cd.date, classifyCustomLabel(cd.label), cd.label);
+    });
+    if (!milestones.length) continue; // 没有任何日期的学校不出现在时间线里
+
+    milestones.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const upcoming = milestones.filter(m => m.daysLeft !== null && m.daysLeft >= 0);
+    out.push({
+      schoolId: pick(sc, 'id'),
+      name: pick(sc, 'name') || '未命名学校',
+      program: pick(sc, 'program'),
+      status: pick(sc, 'status'),
+      studentId: pick(sc, 'student_id', 'studentId'),
+      milestones,
+      nextDate: upcoming.length ? upcoming[0].date : null,
+      nextDaysLeft: upcoming.length ? upcoming[0].daysLeft : null,
+      allPast: upcoming.length === 0,
+    });
+  }
+  // 最近有日程的学校排最前；日程全已过的学校沉底
+  out.sort((a, b) => {
+    if (a.allPast !== b.allPast) return a.allPast ? 1 : -1;
+    if (a.nextDaysLeft !== b.nextDaysLeft) return (a.nextDaysLeft ?? 1e9) - (b.nextDaysLeft ?? 1e9);
+    return String(a.name).localeCompare(String(b.name), 'zh');
+  });
+  return out;
 }
 
 /** 统计卡数据 */
