@@ -136,7 +136,10 @@ const DailyTodoPage = () => {
     setLocalDone(prev => new Map(prev).set(key, next));
     try {
       if (stu.source === 'material') {
-        await materialsAPI.updateStatus(stu.sourceId, next, user?.name || '');
+        // 【新需求114】必须传 role（'student'/'teacher'/'admin'），与材料页勾选口径一致。
+        //   之前传的是 user.name（学生姓名），材料页按 checkedBy === 'student' 二元判断，
+        //   学生姓名不等于 'student' → 一律显示成"老师勾选"，张冠李戴。
+        await materialsAPI.updateStatus(stu.sourceId, next, user?.role || '');
       } else {
         await eventsAPI.toggleComplete(stu.sourceId);
       }

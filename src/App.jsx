@@ -1127,6 +1127,17 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     return texts[status] || '未开始';
   };
 
+  // 【新需求114】材料勾选来源的展示口径。
+  // 写入侧约定存 role（'student'/'teacher'/'admin'）；
+  // 历史数据里存在每日待办页（需求109~112 期间）误写入的**裸姓名**（如"田柒柒"），
+  // 兜底如实显示"某某 勾选"，不能再落入"非 student 即老师"的二元误判。
+  const getCheckedByText = (checkedBy) => {
+    if (checkedBy === 'student') return '学生勾选';
+    if (checkedBy === 'teacher') return '老师勾选';
+    if (checkedBy === 'admin') return '管理员勾选';
+    return checkedBy ? `${checkedBy} 勾选` : '';
+  };
+
   const getTypeColor = (type) => {
     const colors = {
       exam: 'bg-red-50 border-red-200',
@@ -5581,17 +5592,22 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   截止: {item.deadline}
                   {item.completed && item.checkedBy && (
                     <span className="ml-2">
-                      · {item.checkedBy === 'student' ? '学生勾选' : '老师勾选'} ({item.checkedAt})
+                      · {getCheckedByText(item.checkedBy)} ({item.checkedAt})
                     </span>
                   )}
                 </div>
               </div>
               {item.completed && (
                 <div className="flex items-center gap-2">
+                  {/* 【新需求114】图标与身份三分支一致；历史裸姓名兜底为灰色用户图标 */}
                   {item.checkedBy === 'student' ? (
                     <UserCheck className="text-blue-500" size={20} />
-                  ) : (
+                  ) : item.checkedBy === 'admin' ? (
+                    <Shield className="text-amber-500" size={20} />
+                  ) : item.checkedBy === 'teacher' ? (
                     <GraduationCap className="text-purple-500" size={20} />
+                  ) : (
+                    <UserCheck className="text-gray-400" size={20} />
                   )}
                   <Check className="text-green-500" size={20} />
                 </div>
@@ -5672,17 +5688,22 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       截止: {item.deadline}
                       {item.completed && item.checkedBy && (
                         <span className="ml-2">
-                          · {item.checkedBy === 'student' ? '学生勾选' : '老师勾选'} ({item.checkedAt})
+                          · {getCheckedByText(item.checkedBy)} ({item.checkedAt})
                         </span>
                       )}
                     </div>
                   </div>
                   {item.completed && (
                     <div className="flex items-center gap-2">
+                      {/* 【新需求114】图标与身份三分支一致；历史裸姓名兜底为灰色用户图标 */}
                       {item.checkedBy === 'student' ? (
                         <UserCheck className="text-blue-500" size={20} />
-                      ) : (
+                      ) : item.checkedBy === 'admin' ? (
+                        <Shield className="text-amber-500" size={20} />
+                      ) : item.checkedBy === 'teacher' ? (
                         <GraduationCap className="text-purple-500" size={20} />
+                      ) : (
+                        <UserCheck className="text-gray-400" size={20} />
                       )}
                       <Check className="text-green-500" size={20} />
                     </div>
