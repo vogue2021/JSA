@@ -204,15 +204,26 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
   });
 
   // ─── 2. materials ────────────────────────────────────────────────────────
+  // 【新需求111 第1项】材料标题原本只有"护照复印件"这类裸名，在跨校聚合的每日待办里
+  //   完全分不清是哪所学校的材料。这里用 school_id 反查校名，作为副标题挂在 subtitle 上，
+  //   供 UI 展示（不并入 title，以免破坏"同名材料跨学生合并成一行"的指纹口径）。
+  const schoolNameById = new Map();
+  schools.forEach(sc => {
+    const sid = pick(sc, 'id');
+    const nm = pick(sc, 'name');
+    if (sid && nm) schoolNameById.set(String(sid), nm);
+  });
   materials.forEach(m => {
+    const schoolId = pick(m, 'school_id', 'schoolId') || null;
     push({
       source: 'material',
       sourceId: m.id,
       kind: TODO_KINDS.MATERIAL,
       title: pick(m, 'item') || '材料',
+      subtitle: schoolId ? (schoolNameById.get(String(schoolId)) || '') : '',
       date: pick(m, 'deadline'),
       studentId: pick(m, 'student_id', 'studentId'),
-      schoolId: pick(m, 'school_id', 'schoolId') || null,
+      schoolId,
       completed: Boolean(Number(pick(m, 'completed') || 0)),
       materialType: pick(m, 'type'),
       url: pick(m, 'url'),
@@ -294,9 +305,13 @@ export function buildTodoItems({ events = [], materials = [], schools = [], stud
  * 为什么必须含标题而不只用 (日期, 种类)：同一天可能有多所学校的出愿截止，
  * 它们是不同的事不能糊在一起；材料按标题分组则能把
  * "10 个学生都要交毕业证明" 正确聚成一条。
+ *
+ * 【新需求111 第1项】材料还需并入 subtitle（校名）：同一天两所学校都要"护照复印件"，
+ *   若只按标题合并会把不同学校的同名材料错误糊成一条。events/school 类的标题里
+ *   已含校名，subtitle 为空，指纹与旧版完全一致，不影响既有的跨学生合并行为。
  */
 export function todoFingerprint(item) {
-  return [item.date, item.kind, item.title].join('|');
+  return [item.date, item.kind, item.title, item.subtitle || ''].join('|');
 }
 
 /**
@@ -316,6 +331,7 @@ export function groupTodosByTask(items) {
         isRange: !!it.isRange,
         kind: it.kind,
         title: it.title,
+        subtitle: it.subtitle || '',
         daysLeft: it.daysLeft,
         overdue: it.overdue,
         schoolId: it.schoolId,
@@ -381,6 +397,33 @@ export const TIME_BUCKETS = [
   { id: 'month', label: '30 天内', match: (d) => d >= 8 && d <= 30 },
   { id: 'later', label: '更远', match: (d) => d > 30 },
 ];
+
+/**
+ * 【新需求111 第1项】按"关注视野（horizon）"过滤任务。
+ *
+ * 需求原话：「每日待办里面显示的应该是最近 3 天的待办，不要一股脑全显示了，
+ *   不然没有侧重点。」—— 生产库实测 90 天窗口下管理员有 4800+ 条原始待办，
+ *   确实淹没重点。
+ *
+ * 但**逾期未完成的事绝不能因此消失**（这是【新需求109】用真实故障换来的教训：
+ *   待办页最怕的就是"日期过了就从列表里不见了"）。所以过滤规则是：
+ *     · 逾期且未完成 → 永远保留，不受 horizon 限制
+ *     · 其余 → 只保留 daysLeft 在 [0, horizonDays] 内的
+ *
+ * horizonDays = null / <0 表示"不限制"（展示全部），供"查看全部"入口使用。
+ *
+ * @param {Array} tasks         groupTodosByTask 的输出
+ * @param {number|null} horizonDays  关注天数，默认 3
+ * @returns {Array}
+ */
+export function filterByHorizon(tasks, horizonDays = 3) {
+  if (horizonDays == null || horizonDays < 0) return tasks;
+  return tasks.filter(t => {
+    if (t.overdue && !t.allDone) return true;       // 逾期未完成：始终保留
+    if (t.daysLeft == null) return false;
+    return t.daysLeft >= 0 && t.daysLeft <= horizonDays;
+  });
+}
 
 /**
  * 把任务分到时间桶里。

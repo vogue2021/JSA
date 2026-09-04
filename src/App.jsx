@@ -52,6 +52,8 @@ import { exportStudentToCSV, exportEventsToICS, exportChecklistToPDF, exportTime
 // generateTestData 已移除（不再需要前端生成测试数据按钮）
 import { logAction, logInfo, logError, LOG_CATEGORIES } from './utils/logService';
 import { getPackageDisplayName } from './utils/packageUtils';
+// 【新需求111 第2项】材料默认截止日推算（出愿截止前两周），与后端 workers/src/utils/materialDeadline.js 同口径
+import { resolveMaterialDeadline, describeDefaultMaterialDeadline } from './utils/materialDeadline';
 
 // ErrorBoundary 已拆分到 src/components/common/ErrorBoundary.jsx
 // AuthPage 已拆分到 src/components/AuthPage.jsx
@@ -1068,7 +1070,8 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
       id: Date.now() + index,
       item: material.name,
       completed: false,
-      deadline: material.deadline || school.applicationEndDate,
+      // 【新需求111 第2项】留空时默认出愿截止前两周（与后端 resolveMaterialDeadline 同口径）
+      deadline: resolveMaterialDeadline(material.deadline, school.applicationEndDate),
       checkedBy: null,
       checkedAt: null,
       url: material.url || ''
@@ -2474,9 +2477,10 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
 
             <div>
               <label className="block text-sm font-medium mb-2">所需材料（将同步到材料清单）</label>
-              {/* 【新需求103】提醒老师：材料的截止日期是给学生的待办，不要直接填出愿截止当天 */}
+              {/* 【新需求103 + 111 第2项】材料截止日是给学生的待办；留空时默认出愿截止前两周 */}
               <p className="text-xs mb-2" style={{ color: tokens.colors.text.muted }}>
-                待办事项的截止日期请合理设置提前量
+                {describeDefaultMaterialDeadline(formData.applicationEndDate)
+                  || '每项材料可单独设置截止日期；留空则默认为出愿截止前两周'}
               </p>
               <div className="space-y-2 mb-2">
                 <div className="flex gap-2">

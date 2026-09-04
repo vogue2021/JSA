@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TODO_KINDS, normalizeDay, todayStr, daysUntil,
   buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, sortTodos,
-  extractDeadlineTypeFromTitle,
+  extractDeadlineTypeFromTitle, filterByHorizon,
 } from '../utils/todoAggregator';
 
 // 固定"现在"，让测试不随真实日期漂移
@@ -429,5 +429,118 @@ describe('同一学生在同一任务中去重（回归）', () => {
     expect(g.totalCount).toBe(1);
     expect(g.doneCount).toBe(1);
     expect(g.allDone).toBe(true);
+  });
+});
+
+// ─── 【新需求111 第1项】关注视野：只看最近 N 天，逾期未完成永远保留 ────────────
+describe('filterByHorizon —— 收窄到最近 N 天', () => {
+  const build = () => groupTodosByTask(buildTodoItems({
+    students,
+    materials: [
+      { id: 1, student_id: '2026091', item: '逾期未完成', type: 'general', deadline: '2026-08-20', completed: 0 },
+      { id: 2, student_id: '2026091', item: '逾期已完成', type: 'general', deadline: '2026-08-20', completed: 1 },
+      { id: 3, student_id: '2026091', item: '今天', type: 'general', deadline: '2026-08-31', completed: 0 },
+      { id: 4, student_id: '2026091', item: '3天后', type: 'general', deadline: '2026-09-03', completed: 0 },
+      { id: 5, student_id: '2026091', item: '5天后', type: 'general', deadline: '2026-09-05', completed: 0 },
+      { id: 6, student_id: '2026091', item: '远期', type: 'general', deadline: '2026-11-01', completed: 0 },
+    ],
+    now: NOW,
+  }));
+
+  it('默认 3 天：保留今天+3天内，且逾期未完成始终在内', () => {
+    const titles = filterByHorizon(build(), 3).map(t => t.title).sort();
+    expect(titles).toContain('逾期未完成');   // 逾期未完成不受 horizon 限制
+    expect(titles).toContain('今天');
+    expect(titles).toContain('3天后');
+    expect(titles).not.toContain('5天后');    // 超出 3 天
+    expect(titles).not.toContain('远期');
+  });
+
+  it('逾期但已完成的不保留（已经做完，不必再提醒）', () => {
+    const titles = filterByHorizon(build(), 3).map(t => t.title);
+    expect(titles).not.toContain('逾期已完成');
+  });
+
+  it('7 天视野纳入 5 天后的项', () => {
+    const titles = filterByHorizon(build(), 7).map(t => t.title);
+    expect(titles).toContain('5天后');
+    expect(titles).not.toContain('远期');
+  });
+
+  it('horizon 为 null 表示不限制，全部返回', () => {
+    expect(filterByHorizon(build(), null)).toHaveLength(build().length);
+  });
+
+  it('边界：恰好第 3 天在内，第 4 天在外', () => {
+    const tasks = groupTodosByTask(buildTodoItems({
+      students,
+      materials: [
+        { id: 1, student_id: '2026091', item: 'day3', type: 'general', deadline: '2026-09-03', completed: 0 },
+        { id: 2, student_id: '2026091', item: 'day4', type: 'general', deadline: '2026-09-04', completed: 0 },
+      ],
+      now: NOW,
+    }));
+    const titles = filterByHorizon(tasks, 3).map(t => t.title);
+    expect(titles).toContain('day3');
+    expect(titles).not.toContain('day4');
+  });
+});
+
+// ─── 【新需求111 第1项】材料补显所属学校 & 跨校同名材料不合并 ──────────────────
+describe('材料的学校归属（subtitle）', () => {
+  it('材料从 school_id 反查出校名挂到 subtitle', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [{ id: 100, student_id: '2026091', name: '日本大学（第1期）' }],
+      materials: [{ id: 1, student_id: '2026091', item: '护照复印件', type: 'school', school_id: 100, deadline: '2026-09-02', completed: 0 }],
+      now: NOW,
+    });
+    const m = items.find(i => i.source === 'material');
+    expect(m.subtitle).toBe('日本大学（第1期）');
+  });
+
+  it('通用材料（无 school_id）subtitle 为空', () => {
+    const items = buildTodoItems({
+      students,
+      materials: [{ id: 1, student_id: '2026091', item: '证件照', type: 'general', deadline: '2026-09-02', completed: 0 }],
+      now: NOW,
+    });
+    expect(items[0].subtitle).toBe('');
+  });
+
+  it('两所学校同一天要同名材料，不能被合并成一行', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [
+        { id: 100, student_id: '2026091', name: '日本大学' },
+        { id: 200, student_id: '2026091', name: '法政大学' },
+      ],
+      materials: [
+        { id: 1, student_id: '2026091', item: '护照复印件', type: 'school', school_id: 100, deadline: '2026-09-05', completed: 0 },
+        { id: 2, student_id: '2026091', item: '护照复印件', type: 'school', school_id: 200, deadline: '2026-09-05', completed: 0 },
+      ],
+      now: NOW,
+    });
+    const groups = groupTodosByTask(items);
+    expect(groups).toHaveLength(2);
+    expect(groups.map(g => g.subtitle).sort()).toEqual(['日本大学', '法政大学']);
+  });
+
+  it('同校同名材料的多个学生仍合并（subtitle 相同不影响跨学生聚合）', () => {
+    const items = buildTodoItems({
+      students,
+      schools: [
+        { id: 100, student_id: '2026091', name: '日本大学' },
+        { id: 101, student_id: '2026064', name: '日本大学' },
+      ],
+      materials: [
+        { id: 1, student_id: '2026091', item: '毕业证明', type: 'school', school_id: 100, deadline: '2026-09-05', completed: 0 },
+        { id: 2, student_id: '2026064', item: '毕业证明', type: 'school', school_id: 101, deadline: '2026-09-05', completed: 0 },
+      ],
+      now: NOW,
+    });
+    const g = groupTodosByTask(items).find(x => x.title === '毕业证明');
+    expect(g.totalCount).toBe(2);
+    expect(g.subtitle).toBe('日本大学');
   });
 });

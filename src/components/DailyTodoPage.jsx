@@ -28,7 +28,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { todosAPI, materialsAPI } from '../services/api';
 import {
-  buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos,
+  buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, filterByHorizon,
   getKindMeta, TODO_KINDS, todayStr,
 } from '../utils/todoAggregator';
 
@@ -45,6 +45,9 @@ const DailyTodoPage = () => {
   const [keyword, setKeyword] = useState('');
   const [kindFilter, setKindFilter] = useState('all');
   const [hideDone, setHideDone] = useState(true);
+  // 【新需求111 第1项】关注视野：默认只看最近 3 天，避免"一股脑全显示"没有侧重点。
+  //   逾期未完成不受此限制（见 filterByHorizon），永远置顶显示。null = 查看全部。
+  const [horizon, setHorizon] = useState(3);
   const [expanded, setExpanded] = useState(() => new Set());
   // 就地勾选后的本地覆盖，避免为了一个勾选重新拉取整页数据
   const [localDone, setLocalDone] = useState(() => new Map());
@@ -91,20 +94,29 @@ const DailyTodoPage = () => {
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    return tasks.filter(t => {
+    // 先按关注视野收窄（逾期未完成始终保留），再套用其余筛选
+    const inHorizon = filterByHorizon(tasks, horizon);
+    return inHorizon.filter(t => {
       if (hideDone && t.allDone) return false;
       if (kindFilter !== 'all' && t.kind !== kindFilter) return false;
       if (!kw) return true;
       if (String(t.title).toLowerCase().includes(kw)) return true;
+      if (String(t.subtitle || '').toLowerCase().includes(kw)) return true;
       // 老师端允许按学生姓名/学号搜索
       return t.students.some(s =>
         String(s.studentName).toLowerCase().includes(kw)
         || String(s.studentId).toLowerCase().includes(kw));
     });
-  }, [tasks, keyword, kindFilter, hideDone]);
+  }, [tasks, keyword, kindFilter, hideDone, horizon]);
 
   const buckets = useMemo(() => bucketTodos(filtered), [filtered]);
   const summary = useMemo(() => summarizeTodos(filtered), [filtered]);
+  // 视野之外仍有多少未完成任务（用于"查看全部"入口的提示数字）
+  const hiddenCount = useMemo(() => {
+    if (horizon == null) return 0;
+    const shownKeys = new Set(filterByHorizon(tasks, horizon).map(t => t.key));
+    return tasks.filter(t => !t.allDone && !shownKeys.has(t.key)).length;
+  }, [tasks, horizon]);
 
   // ─── 材料就地勾选 ─────────────────────────────────────────────────────────
   const toggleMaterial = async (task, stu) => {
@@ -236,6 +248,13 @@ const DailyTodoPage = () => {
               }}>
                 {task.title}
               </span>
+              {/* 【新需求111 第1项】材料条目补显所属学校，跨校聚合时才分得清 */}
+              {task.subtitle && (
+                <span className="inline-flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded"
+                  style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: tokens.colors.text.muted }}>
+                  <SchoolIcon size={10} />{task.subtitle}
+                </span>
+              )}
               {task.url && (
                 <a href={task.url} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-0.5 text-[11px]" style={{ color: '#3b82f6' }}>
@@ -315,6 +334,14 @@ const DailyTodoPage = () => {
     { id: TODO_KINDS.RESULT, label: '合格发表' },
   ];
 
+  // 【新需求111 第1项】关注视野选项。默认 3 天 —— 需求明确"显示最近 3 天"。
+  const horizonOptions = [
+    { value: 3, label: '最近 3 天' },
+    { value: 7, label: '本周' },
+    { value: 30, label: '本月' },
+    { value: null, label: '全部' },
+  ];
+
   return (
     <div className="space-y-4">
       {/* 标题栏 */}
@@ -326,7 +353,7 @@ const DailyTodoPage = () => {
               {isStudent ? '我的待办' : '学生待办总览'}
             </h2>
             <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>
-              {todayStr()} · 汇总时间线事件、材料截止与各校日程
+              {todayStr()} · {horizon != null ? `聚焦最近 ${horizon} 天（逾期未完成始终置顶）` : '显示全部待办'}
               {!isStudent && raw?.students ? ` · 覆盖 ${raw.students.length} 名学生` : ''}
             </p>
           </div>
@@ -358,6 +385,22 @@ const DailyTodoPage = () => {
 
       {/* 筛选栏 */}
       <div className="glass-panel p-3 rounded-xl flex items-center gap-2 flex-wrap">
+        {/* 【新需求111 第1项】关注视野切换：默认最近 3 天 */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <Calendar size={13} style={{ color: tokens.colors.text.muted }} />
+          {horizonOptions.map(o => (
+            <button key={String(o.value)} onClick={() => setHorizon(o.value)}
+              className="px-2 py-1 rounded-md text-xs font-medium transition"
+              style={{
+                background: horizon === o.value
+                  ? (isDark ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.14)')
+                  : 'transparent',
+                color: horizon === o.value ? (isDark ? '#93c5fd' : '#2563eb') : tokens.colors.text.muted,
+              }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: tokens.colors.text.muted }} />
           <input
@@ -400,36 +443,57 @@ const DailyTodoPage = () => {
           <div className="text-sm" style={{ color: tokens.colors.text.muted }}>
             {tasks.length === 0
               ? (isStudent ? '近期没有待办事项，保持关注老师的安排' : '所选范围内暂无待办事项')
-              : '没有符合当前筛选条件的待办'}
+              : (horizon != null && hiddenCount > 0
+                ? `最近 ${horizon} 天内没有待办`
+                : '没有符合当前筛选条件的待办')}
           </div>
+          {/* 视野内为空但视野外还有事时，给一个明确的展开入口 */}
+          {horizon != null && hiddenCount > 0 && (
+            <button onClick={() => setHorizon(null)}
+              className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.12)', color: '#2563eb' }}>
+              查看全部（还有 {hiddenCount} 项）
+            </button>
+          )}
         </div>
       ) : (
-        buckets.map(bucket => (
-          <div key={bucket.id} className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-sm font-bold" style={{
-                color: bucket.id === 'overdue' ? '#dc2626'
-                  : bucket.id === 'today' ? '#ea580c' : tokens.colors.text.secondary,
-              }}>
-                {bucket.label}
-              </span>
-              <span className="text-xs px-1.5 py-0.5 rounded-full" style={{
-                background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                color: tokens.colors.text.muted,
-              }}>
-                {bucket.items.length}
-              </span>
-              {bucket.id === 'overdue' && (
-                <span className="text-xs" style={{ color: '#dc2626' }}>
-                  这些事项已过期但未完成，请尽快确认
+        <>
+          {buckets.map(bucket => (
+            <div key={bucket.id} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-sm font-bold" style={{
+                  color: bucket.id === 'overdue' ? '#dc2626'
+                    : bucket.id === 'today' ? '#ea580c' : tokens.colors.text.secondary,
+                }}>
+                  {bucket.label}
                 </span>
-              )}
+                <span className="text-xs px-1.5 py-0.5 rounded-full" style={{
+                  background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                  color: tokens.colors.text.muted,
+                }}>
+                  {bucket.items.length}
+                </span>
+                {bucket.id === 'overdue' && (
+                  <span className="text-xs" style={{ color: '#dc2626' }}>
+                    这些事项已过期但未完成，请尽快确认
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {bucket.items.map(taskRow)}
+              </div>
             </div>
-            <div className="space-y-2">
-              {bucket.items.map(taskRow)}
+          ))}
+          {/* 【新需求111 第1项】视野已收窄时，底部提示还有多少被折叠的未来待办 */}
+          {horizon != null && hiddenCount > 0 && (
+            <div className="text-center pt-1">
+              <button onClick={() => setHorizon(null)}
+                className="text-xs underline" style={{ color: tokens.colors.text.muted }}>
+                {horizon} 天之后还有 {hiddenCount} 项待办，点击查看全部
+              </button>
             </div>
-          </div>
-        ))
+          )}
+        </>
       )}
     </div>
   );

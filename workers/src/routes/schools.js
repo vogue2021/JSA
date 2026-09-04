@@ -1,5 +1,7 @@
 // 学校路由 - Cloudflare Workers 版本
 import { Hono } from 'hono'
+// 【新需求111 第2项】材料未手填截止日时，默认取「出愿截止前 2 周」而非出愿截止当天
+import { resolveMaterialDeadline } from '../utils/materialDeadline.js'
 
 const schools = new Hono()
 
@@ -428,7 +430,9 @@ schools.post('/', async (c) => {
           VALUES (?, ?, ?, ?, ?, ?, 0)`)
           .bind(
             student_id, schoolId, mat.name, 'school',
-            mat.deadline || application_end_date, mat.url || null
+            // 【新需求111 第2项】旧实现是 `mat.deadline || application_end_date`，
+            // 等于"出愿截止当天才准备好材料"，没有任何缓冲。改为留空时取出愿截止前两周。
+            resolveMaterialDeadline(mat.deadline, application_end_date), mat.url || null
           )
       )
     })
@@ -608,7 +612,8 @@ schools.put('/:id', async (c) => {
           VALUES (?, ?, ?, ?, ?, ?, 0)`)
           .bind(
             student_id, id, mat.name || mat.item, 'school',
-            mat.deadline || updated.application_end_date, mat.url || null
+            // 【新需求111 第2项】留空时默认出愿截止前两周（旧实现直接落出愿截止当天）
+            resolveMaterialDeadline(mat.deadline, updated.application_end_date), mat.url || null
           )
       )
     })
