@@ -1163,6 +1163,58 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
     }
   };
 
+  // 【新需求112 第1项】学校申请状态的一键流转
+  // 线性流程：未开始 → 准备中 → 出愿完成 → 邮寄完成；到「邮寄完成」后是结果判定节点，
+  // 分流为 合格 / 未合格 两个终态（UI 上给两个不同颜色的按钮，不再是"下一步"）。
+  const SCHOOL_NEXT_STATUS = {
+    not_started: 'preparing',
+    preparing: 'applied',
+    applied: 'submitted',
+  };
+  const SCHOOL_TERMINAL_STATUS = new Set(['admitted', 'rejected']);
+
+  // 一键更新学校状态：走专用的 /status 端点（只更新 status 列），
+  // 不走完整 PUT —— 避免任何关联数据被牵连重建，响应也更快。
+  const handleQuickSchoolStatus = async (school, nextStatus) => {
+    if (!requireEditPermission('schools', { student: currentStudent })) return;
+    const key = currentStudent?.studentId || 'default';
+    const prevStatus = school.status;
+    // 乐观更新：卡片状态徽章立即变化
+    setStudentData(prev => {
+      const cur = prev?.[key];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...cur,
+          schools: (cur.schools || []).map(s => s.id === school.id ? { ...s, status: nextStatus } : s),
+        },
+      };
+    });
+    try {
+      await apiReq(`/schools/${school.id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (showNotification) showNotification(`${school.name} 已更新为「${getStatusText(nextStatus)}」`);
+    } catch (err) {
+      console.error('更新学校状态失败:', err);
+      // 失败回滚到原状态，不能让界面显示一个没落库的状态
+      setStudentData(prev => {
+        const cur = prev?.[key];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [key]: {
+            ...cur,
+            schools: (cur.schools || []).map(s => s.id === school.id ? { ...s, status: prevStatus } : s),
+          },
+        };
+      });
+      if (showNotification) showNotification('状态更新失败：' + err.message, 'error');
+    }
+  };
+
   // 删除学校
   const handleDeleteSchool = async (schoolId) => {
     // 【新需求69】权限闸门：无 edit_schools 权限者不允许删除
@@ -1642,7 +1694,9 @@ const [reminderSettings, setReminderSettings] = useState({ reminderTime: '09:00'
         requirements: formData.requirements,
         teacher_notes: formData.teacherNotes,
         extra_dates: extraDates,
-        materials: (formData.materials || []).map(m => ({ name: m.name, deadline: m.deadline, url: m.url }))
+        // 【新需求112 第1项】带上材料 id：后端据此匹配合并、保留勾选状态，
+        // 否则即使只改申请状态，材料页的准备状态也会被整校重置
+        materials: (formData.materials || []).map(m => ({ id: m.id, name: m.name, deadline: m.deadline, url: m.url }))
       };
 
       try {
@@ -5001,10 +5055,26 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
             .filter(c => c.date === date)
             .flatMap(c => c.others.map(o => `${o.schoolName}（${o.label}）`))
             .join('、');
+          // 【新需求112 第1项】合格/未合格是终态，卡片整体给截然不同的视觉：
+          //   合格 = 绿色描边 + 淡绿渐变；未合格 = 灰描边 + 整体降噪，
+          //   在卡片墙上一眼区分"已出结果"与"流程中"的学校。
+          const isAdmitted = school.status === 'admitted';
+          const isRejected = school.status === 'rejected';
+          const cardShadows = [];
+          if (hasConflict) cardShadows.push('inset 3px 0 0 0 #dc2626');
+          if (isAdmitted) cardShadows.push(`0 0 0 2px ${isDark ? 'rgba(34,197,94,0.6)' : 'rgba(22,163,74,0.45)'}`);
+          if (isRejected) cardShadows.push(`0 0 0 1px ${isDark ? 'rgba(156,163,175,0.35)' : 'rgba(156,163,175,0.4)'}`);
+          const cardStyle = {
+            ...(cardShadows.length ? { boxShadow: cardShadows.join(', ') } : {}),
+            ...(isAdmitted ? { background: isDark
+              ? 'linear-gradient(135deg, rgba(34,197,94,0.14), rgba(34,197,94,0.03) 55%)'
+              : 'linear-gradient(135deg, rgba(34,197,94,0.09), rgba(255,255,255,0) 55%)' } : {}),
+            ...(isRejected ? { opacity: 0.82 } : {}),
+          };
           return (
             <div key={school.id} className={`glass-card p-5 ${user.role === 'student' ? 'cursor-pointer' : ''}`}
               onClick={user.role === 'student' ? () => setSchoolDetailModal(school) : undefined}
-              style={hasConflict ? { boxShadow: `inset 3px 0 0 0 #dc2626` } : undefined}
+              style={Object.keys(cardStyle).length ? cardStyle : undefined}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -5027,6 +5097,77 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                   <span className={`inline-block text-xs px-3 py-1 rounded-full border ${getStatusColor(school.status)}`}>
                     {getStatusText(school.status)}
                   </span>
+                  {/* 【新需求112 第1项】终态结果徽标：合格与流程中状态拉开视觉差距 */}
+                  {isAdmitted && (
+                    <span className="inline-flex items-center gap-1 ml-2 text-xs px-2 py-0.5 rounded-full font-bold"
+                      style={{ background: isDark ? 'rgba(34,197,94,0.22)' : 'rgba(22,163,74,0.12)', color: isDark ? '#4ade80' : '#15803d' }}>
+                      <Check size={12} /> 恭喜合格
+                    </span>
+                  )}
+                  {isRejected && (
+                    <span className="inline-flex items-center gap-1 ml-2 text-xs px-2 py-0.5 rounded-full"
+                      style={{ background: isDark ? 'rgba(156,163,175,0.18)' : 'rgba(107,114,128,0.10)', color: tokens.colors.text.muted }}>
+                      <X size={12} /> 已结束
+                    </span>
+                  )}
+                  {/* 【新需求112 第1项】一键流转状态：不必打开编辑弹窗改"申请状态"。
+                      线性段是单个「下一步」按钮；到「邮寄完成」后是结果判定节点，
+                      分流为 合格 / 未合格 两个按钮（UI 区分：绿实色 vs 红描边）。终态不再显示。 */}
+                  {canEditSchools && !SCHOOL_TERMINAL_STATUS.has(school.status) && (
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      {SCHOOL_NEXT_STATUS[school.status] ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, SCHOOL_NEXT_STATUS[school.status]); }}
+                          disabled={!canEdit('schools')}
+                          title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : `一键更新为「${getStatusText(SCHOOL_NEXT_STATUS[school.status])}」`}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-semibold transition"
+                          style={{
+                            background: isDark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)',
+                            color: isDark ? '#93c5fd' : '#2563eb',
+                            opacity: canEdit('schools') ? 1 : 0.4,
+                            cursor: canEdit('schools') ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          <ArrowRight size={12} /> 标记为{getStatusText(SCHOOL_NEXT_STATUS[school.status])}
+                        </button>
+                      ) : school.status === 'submitted' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, 'admitted'); }}
+                            disabled={!canEdit('schools')}
+                            title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '确认合格'}
+                            className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-bold transition"
+                            style={{
+                              background: isDark ? 'rgba(34,197,94,0.25)' : 'rgba(22,163,74,0.14)',
+                              color: isDark ? '#4ade80' : '#15803d',
+                              opacity: canEdit('schools') ? 1 : 0.4,
+                              cursor: canEdit('schools') ? 'pointer' : 'not-allowed',
+                            }}
+                          >
+                            <Check size={12} /> 合格
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, 'rejected'); }}
+                            disabled={!canEdit('schools')}
+                            title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : '确认未合格'}
+                            className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-semibold transition"
+                            style={{
+                              background: 'transparent',
+                              boxShadow: `inset 0 0 0 1px ${isDark ? 'rgba(239,68,68,0.5)' : 'rgba(220,38,38,0.4)'}`,
+                              color: isDark ? '#f87171' : '#dc2626',
+                              opacity: canEdit('schools') ? 1 : 0.4,
+                              cursor: canEdit('schools') ? 'pointer' : 'not-allowed',
+                            }}
+                          >
+                            <X size={12} /> 未合格
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                   <p className="text-sm mt-2" style={{ color: tokens.colors.text.secondary }}>{school.program}</p>
                   {school.location && (
                     <p className="text-xs mt-1 flex items-center gap-1" style={{ color: tokens.colors.text.muted }}>📍 {school.location}</p>

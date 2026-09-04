@@ -87,6 +87,14 @@ export const schoolsAPI = {
       body: JSON.stringify(schoolData),
     });
   },
+  // 【新需求112 第1项】一键更新申请状态（只动 status 列，不重建材料/事件）
+  // 需求58：用 PUT 而非 PATCH，避免 Cloudflare Pages CDN 预检不放 PATCH
+  updateStatus: async (schoolId, status) => {
+    return await apiRequest(`/schools/${schoolId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+  },
   delete: async (schoolId) => {
     return await apiRequest(`/schools/${schoolId}`, {
       method: 'DELETE',

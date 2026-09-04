@@ -598,24 +598,60 @@ schools.put('/:id', async (c) => {
     )
   })
 
-  // 处理材料：删除旧材料 + 新增材料（如果前端传了 materials 字段）
+  // 处理材料（如果前端传了 materials 字段）
+  // 【新需求112 第1项】不再整体 DELETE + INSERT —— 旧实现把 completed 硬编码为 0，
+  //   导致"只改一下申请状态，材料页的勾选状态全被重置"。改为按 id/名称匹配合并：
+  //     · 仍在表单里的材料 → 只更新 deadline/url，completed/checked_by/checked_at 原样保留
+  //     · 表单里新增的材料 → INSERT（completed = 0）
+  //     · 表单里被移除的材料 → 仅删除这些行
   const bodyMaterials = body.materials
   if (Array.isArray(bodyMaterials)) {
-    // 先删除该学校关联的所有材料
-    batchStatements.push(
-      db.prepare('DELETE FROM materials WHERE school_id = ?').bind(id)
-    )
-    // 再插入新材料
+    const { results: existingMats } = await db.prepare(
+      'SELECT id, item FROM materials WHERE school_id = ?'
+    ).bind(id).all()
+    const existingById = new Map()
+    const existingByName = new Map() // item -> rows[]（同名可能多条，按序消耗）
+    ;(existingMats || []).forEach(row => {
+      existingById.set(Number(row.id), row)
+      const key = String(row.item || '')
+      if (!existingByName.has(key)) existingByName.set(key, [])
+      existingByName.get(key).push(row)
+    })
+    const matchedIds = new Set()
     bodyMaterials.forEach(mat => {
-      batchStatements.push(
-        db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
-          VALUES (?, ?, ?, ?, ?, ?, 0)`)
-          .bind(
-            student_id, id, mat.name || mat.item, 'school',
-            // 【新需求111 第2项】留空时默认出愿截止前两周（旧实现直接落出愿截止当天）
-            resolveMaterialDeadline(mat.deadline, updated.application_end_date), mat.url || null
-          )
-      )
+      const name = mat.name || mat.item
+      if (!name) return
+      // 【新需求111 第2项】留空时默认出愿截止前两周（旧实现直接落出愿截止当天）
+      const deadline = resolveMaterialDeadline(mat.deadline, updated.application_end_date)
+      const url = mat.url || null
+      let target = null
+      const mid = Number(mat.id)
+      if (Number.isFinite(mid) && mid > 0 && existingById.has(mid) && !matchedIds.has(mid)) {
+        target = existingById.get(mid)
+      } else {
+        // id 对不上（如前端新建项的 Date.now() 临时 id）→ 按材料名兜底匹配
+        const candidates = existingByName.get(String(name)) || []
+        target = candidates.find(r => !matchedIds.has(r.id)) || null
+      }
+      if (target) {
+        matchedIds.add(target.id)
+        batchStatements.push(
+          db.prepare('UPDATE materials SET deadline = ?, url = ? WHERE id = ?')
+            .bind(deadline, url, target.id)
+        )
+      } else {
+        batchStatements.push(
+          db.prepare(`INSERT INTO materials (student_id, school_id, item, type, deadline, url, completed)
+            VALUES (?, ?, ?, ?, ?, ?, 0)`)
+            .bind(student_id, id, name, 'school', deadline, url)
+        )
+      }
+    })
+    // 只删除"用户在表单里移除"的材料行
+    ;(existingMats || []).forEach(row => {
+      if (!matchedIds.has(row.id)) {
+        batchStatements.push(db.prepare('DELETE FROM materials WHERE id = ?').bind(row.id))
+      }
     })
   }
 
@@ -624,6 +660,40 @@ schools.put('/:id', async (c) => {
   const updatedSchool = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
 
   return c.json({ success: true, message: '学校信息更新成功', data: updatedSchool })
+})
+
+// PUT /api/schools/:id/status - 【新需求112 第1项】一键更新申请状态
+// 供学校卡片上的「下一步 / 合格 / 未合格」按钮使用：只更新 status 一列，
+// 不触碰 events / materials（完整 PUT 会重建关联数据，一键改状态不该付出这个代价）。
+// （需求58 教训：用 PUT 而非 PATCH —— Cloudflare Pages CDN 预检不放行 PATCH）
+schools.put('/:id/status', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const db = c.env.DB
+  // 权限口径与完整 PUT 保持一致
+  if (user && user.role === 'teacher' && !(await teacherHasEditPerm(db, user, 'edit_schools'))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '您没有学校的编辑权限，请联系管理员开通' }, 403)
+  }
+
+  const school = await db.prepare('SELECT id, student_id, status FROM schools WHERE id = ?').bind(id).first()
+  if (!school) return c.json({ success: false, message: '学校不存在' }, 404)
+  if (isTeacher(user) && !(await teacherCanEditStudent(db, user, school.student_id))) {
+    return c.json({ success: false, code: 'PERMISSION_DENIED', message: '无权修改该学校（需 edit_all_students 权限才能修改他人学生的学校）' }, 403)
+  }
+  if (isStudent(user)) {
+    return c.json({ success: false, message: '学生无权修改学校状态' }, 403)
+  }
+
+  const body = await c.req.json().catch(() => ({}))
+  const ALLOWED_STATUS = ['not_started', 'preparing', 'applied', 'submitted', 'admitted', 'rejected']
+  const next = String(body?.status || '')
+  if (!ALLOWED_STATUS.includes(next)) {
+    return c.json({ success: false, message: '无效的申请状态' }, 400)
+  }
+
+  await db.prepare("UPDATE schools SET status = ?, updated_at = datetime('now') WHERE id = ?").bind(next, id).run()
+  const updatedSchool = await db.prepare('SELECT * FROM schools WHERE id = ?').bind(id).first()
+  return c.json({ success: true, message: '申请状态已更新', data: updatedSchool })
 })
 
 // DELETE /api/schools/:id

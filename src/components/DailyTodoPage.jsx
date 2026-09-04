@@ -15,18 +15,20 @@
 //
 // 关键设计判断：
 //   1. 不做"学生切换器"—— 需求明确说"不需要一个学生一个学生的切换"
-//   2. 逾期未完成的事项**置顶且不隐藏** —— 待办页最怕的就是漏掉已经过期的事
-//   3. 材料类待办支持就地勾选完成（有现成的 PUT /materials/:id/status），
-//      考试/发表这类"客观日期"不可勾选 —— 它们不是"做完"的概念
+//   2. 【新需求112 第2项】**今天的任务置顶**、逾期未完成的事项收纳到**底部**（仍显示、不隐藏），
+//      页面侧重点是"今天该做什么"
+//   3. 【新需求112 第3项】材料类与时间线事件类待办都支持就地标注完成
+//      （材料走 PUT /materials/:id/status，事件走 PUT /events/:id/toggle）；
+//      school 补齐项（未展开成事件的一审/二审等日期端）没有持久化位置，保持只读
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ListChecks, RefreshCw, AlertTriangle, Calendar, Users, Search,
-  Check, ExternalLink, ChevronDown, ChevronRight, Filter, School as SchoolIcon,
+  Check, ExternalLink, ChevronDown, ChevronRight, Filter, School as SchoolIcon, Zap,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
-import { todosAPI, materialsAPI } from '../services/api';
+import { todosAPI, materialsAPI, eventsAPI } from '../services/api';
 import {
   buildTodoItems, groupTodosByTask, bucketTodos, summarizeTodos, filterByHorizon,
   getKindMeta, TODO_KINDS, todayStr,
@@ -46,7 +48,7 @@ const DailyTodoPage = () => {
   const [kindFilter, setKindFilter] = useState('all');
   const [hideDone, setHideDone] = useState(true);
   // 【新需求111 第1项】关注视野：默认只看最近 3 天，避免"一股脑全显示"没有侧重点。
-  //   逾期未完成不受此限制（见 filterByHorizon），永远置顶显示。null = 查看全部。
+  //   逾期未完成不受此限制（见 filterByHorizon），始终保留在列表中。null = 查看全部。
   const [horizon, setHorizon] = useState(3);
   const [expanded, setExpanded] = useState(() => new Set());
   // 就地勾选后的本地覆盖，避免为了一个勾选重新拉取整页数据
@@ -118,15 +120,26 @@ const DailyTodoPage = () => {
     return tasks.filter(t => !t.allDone && !shownKeys.has(t.key)).length;
   }, [tasks, horizon]);
 
-  // ─── 材料就地勾选 ─────────────────────────────────────────────────────────
-  const toggleMaterial = async (task, stu) => {
-    if (task.source !== 'material') return;
+  // ─── 待办就地标注完成 ────────────────────────────────────────────────────
+  // 【新需求112 第3项】原来只有材料可勾选；现在**时间线事件**也可以在这里快速标注完成
+  //   （需求原话：「里面的待办项希望可以编辑，比如完成了可以在这里快速标注一下」）。
+  //   · material → PUT /materials/:id/status（幂等，传目标值）
+  //   · event    → PUT /events/:id/toggle（翻转；当前值已知，翻转即得目标值）
+  //   · school 补齐项没有持久化位置，不可勾选（渲染层已拦截）
+  const canToggle = (source) => source === 'material' || source === 'event';
+
+  const toggleTodo = async (task, stu) => {
+    if (!canToggle(stu.source)) return;
     const next = !stu.completed;
-    const key = `material:${stu.sourceId}`;
+    const key = `${stu.source}:${stu.sourceId}`;
     // 乐观更新
     setLocalDone(prev => new Map(prev).set(key, next));
     try {
-      await materialsAPI.updateStatus(stu.sourceId, next, user?.name || '');
+      if (stu.source === 'material') {
+        await materialsAPI.updateStatus(stu.sourceId, next, user?.name || '');
+      } else {
+        await eventsAPI.toggleComplete(stu.sourceId);
+      }
       showNotification?.(next ? '已标记完成' : '已取消完成', 'success');
     } catch (err) {
       // 失败回滚，不能让界面显示一个没落库的状态
@@ -188,14 +201,14 @@ const DailyTodoPage = () => {
     const isOpen = expanded.has(task.key);
     const list = isOpen ? task.students : task.students.slice(0, 6);
     const rest = task.students.length - list.length;
-    const canCheck = task.source === 'material';
+    const canCheck = canToggle(task.source);
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
         {list.map((s) => (
           <button
             key={`${s.studentId}-${s.sourceId}`}
             type="button"
-            onClick={canCheck ? () => toggleMaterial(task, s) : undefined}
+            onClick={canCheck ? () => toggleTodo(task, s) : undefined}
             title={canCheck
               ? (s.completed ? `${s.studentName}：已完成，点击取消` : `${s.studentName}：点击标记完成`)
               : `${s.studentName}（${s.studentId}）`}
@@ -278,11 +291,11 @@ const DailyTodoPage = () => {
               )}
             </div>
           </div>
-          {/* 学生端：材料类给一个勾选按钮；老师端：学生标签本身就是勾选入口 */}
+          {/* 学生端：材料/事件类给一个勾选按钮；老师端：学生标签本身就是勾选入口 */}
           {isStudent ? (
-            task.source === 'material' ? (
+            canToggle(task.source) ? (
               <button type="button"
-                onClick={() => toggleMaterial(task, task.students[0])}
+                onClick={() => toggleTodo(task, task.students[0])}
                 className="px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 flex-shrink-0"
                 style={{
                   background: task.allDone
@@ -353,7 +366,7 @@ const DailyTodoPage = () => {
               {isStudent ? '我的待办' : '学生待办总览'}
             </h2>
             <p className="text-xs mt-1" style={{ color: tokens.colors.text.muted }}>
-              {todayStr()} · {horizon != null ? `聚焦最近 ${horizon} 天（逾期未完成始终置顶）` : '显示全部待办'}
+              {todayStr()} · {horizon != null ? `聚焦最近 ${horizon} 天 · 今天的事在最上面` : '显示全部待办'}
               {!isStudent && raw?.students ? ` · 覆盖 ${raw.students.length} 名学生` : ''}
             </p>
           </div>
@@ -374,12 +387,23 @@ const DailyTodoPage = () => {
         </div>
       </div>
 
-      {/* 统计卡 */}
+      {/* 统计卡：今天的事是这页的主角，给唯一的高亮大卡 */}
       <div className="flex gap-3 flex-wrap">
-        {statCard('已逾期', summary.overdue, '#dc2626')}
-        {statCard('今天', summary.today, '#ea580c')}
+        <div className="glass-panel p-3 rounded-xl flex-1 min-w-[104px]"
+          style={{
+            boxShadow: `0 0 0 2px ${isDark ? 'rgba(234,88,12,0.55)' : 'rgba(234,88,12,0.40)'}`,
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(234,88,12,0.16), rgba(234,88,12,0.04))'
+              : 'linear-gradient(135deg, rgba(255,247,237,1), rgba(255,255,255,0))',
+          }}>
+          <div className="text-xs mb-1 flex items-center gap-1 font-semibold" style={{ color: '#ea580c' }}>
+            <Zap size={11} />今天要做
+          </div>
+          <div className="text-3xl font-bold" style={{ color: '#ea580c' }}>{summary.today}</div>
+        </div>
+        {statCard('明天', summary.tomorrow, '#d97706')}
         {statCard('7 天内', summary.week, '#d97706')}
-        {statCard('待办总数', summary.total, tokens.colors.text.primary)}
+        {statCard('已逾期', summary.overdue, '#dc2626')}
         {statCard('已完成', summary.done, '#16a34a')}
       </div>
 
@@ -458,32 +482,48 @@ const DailyTodoPage = () => {
         </div>
       ) : (
         <>
-          {buckets.map(bucket => (
-            <div key={bucket.id} className="space-y-2">
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-sm font-bold" style={{
-                  color: bucket.id === 'overdue' ? '#dc2626'
-                    : bucket.id === 'today' ? '#ea580c' : tokens.colors.text.secondary,
-                }}>
-                  {bucket.label}
-                </span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full" style={{
-                  background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                  color: tokens.colors.text.muted,
-                }}>
-                  {bucket.items.length}
-                </span>
-                {bucket.id === 'overdue' && (
-                  <span className="text-xs" style={{ color: '#dc2626' }}>
-                    这些事项已过期但未完成，请尽快确认
+          {buckets.map(bucket => {
+            // 【新需求112 第2项】侧重点设计：
+            //   · 今天 —— 全场唯一的高亮分区（描边 + 渐变底 + 更大标题），视线第一落点
+            //   · 已逾期 —— 统一收纳在列表最底部（bucketTodos 的顺序保证），
+            //     红色标题仍在但不再抢占首屏
+            const isToday = bucket.id === 'today';
+            const isOverdue = bucket.id === 'overdue';
+            return (
+              <div key={bucket.id}
+                className={isToday ? 'glass-panel p-3 rounded-2xl space-y-2' : 'space-y-2'}
+                style={isToday ? {
+                  boxShadow: `0 0 0 2px ${isDark ? 'rgba(234,88,12,0.50)' : 'rgba(234,88,12,0.35)'}`,
+                  background: isDark
+                    ? 'linear-gradient(180deg, rgba(234,88,12,0.10), rgba(234,88,12,0.02))'
+                    : 'linear-gradient(180deg, rgba(255,247,237,0.9), rgba(255,255,255,0))',
+                } : undefined}>
+                <div className="flex items-center gap-2 px-1">
+                  {isToday && <Zap size={14} style={{ color: '#ea580c' }} />}
+                  <span className={`${isToday ? 'text-base' : 'text-sm'} font-bold`} style={{
+                    color: isOverdue ? '#dc2626'
+                      : isToday ? '#ea580c' : tokens.colors.text.secondary,
+                  }}>
+                    {isToday ? '今天要做' : bucket.label}
                   </span>
-                )}
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{
+                    background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    color: tokens.colors.text.muted,
+                  }}>
+                    {bucket.items.length}
+                  </span>
+                  {isOverdue && (
+                    <span className="text-xs" style={{ color: '#dc2626' }}>
+                      已过期但未完成，确认后可就地勾选完成
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {bucket.items.map(taskRow)}
+                </div>
               </div>
-              <div className="space-y-2">
-                {bucket.items.map(taskRow)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {/* 【新需求111 第1项】视野已收窄时，底部提示还有多少被折叠的未来待办 */}
           {horizon != null && hiddenCount > 0 && (
             <div className="text-center pt-1">

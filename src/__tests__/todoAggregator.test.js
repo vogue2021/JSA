@@ -230,6 +230,22 @@ describe('sortTodos / bucketTodos / summarizeTodos', () => {
     expect(ids).not.toContain('week'); // 2~7 天内无数据
   });
 
+  // 【新需求112 第2项】展示顺序：今天置顶、已逾期置底（逾期项仍显示，只是不再抢首屏）
+  it('分桶顺序：今天在最前，已逾期在最后', () => {
+    const buckets = bucketTodos(groupTodosByTask(build()));
+    const ids = buckets.map(b => b.id);
+    expect(ids[0]).toBe('today');
+    expect(ids[ids.length - 1]).toBe('overdue');
+    expect(ids.indexOf('today')).toBeLessThan(ids.indexOf('tomorrow'));
+    expect(ids.indexOf('tomorrow')).toBeLessThan(ids.indexOf('later'));
+    expect(ids.indexOf('later')).toBeLessThan(ids.indexOf('overdue'));
+  });
+
+  it('统计卡含明天计数', () => {
+    const s = summarizeTodos(groupTodosByTask(build()));
+    expect(s.tomorrow).toBe(1);
+  });
+
   it('统计卡计数正确', () => {
     const s = summarizeTodos(groupTodosByTask(build()));
     expect(s.total).toBe(4);

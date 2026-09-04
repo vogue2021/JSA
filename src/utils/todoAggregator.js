@@ -388,14 +388,17 @@ export function sortTodos(list) {
   });
 }
 
-/** 时间范围分桶：今天 / 明天 / 本周(7天内) / 本月(30天内) / 更远 / 已逾期 */
+/** 时间范围分桶。
+ * 【新需求112 第2项】展示顺序调整：**今天的任务放最顶部**（每日待办的重点就是当天要做什么），
+ *   已逾期未完成的事项统一收纳到**最底部** —— 仍然显示、永不消失（需求109 的教训），
+ *   但不再抢占首屏视线。数组顺序即页面渲染顺序。 */
 export const TIME_BUCKETS = [
+  { id: 'today', label: '今天', match: (d, item) => d === 0 && !(item.overdue && !item.allDone) },
+  { id: 'tomorrow', label: '明天', match: (d, item) => d === 1 && !(item.overdue && !item.allDone) },
+  { id: 'week', label: '7 天内', match: (d, item) => d >= 2 && d <= 7 && !(item.overdue && !item.allDone) },
+  { id: 'month', label: '30 天内', match: (d, item) => d >= 8 && d <= 30 && !(item.overdue && !item.allDone) },
+  { id: 'later', label: '更远', match: (d, item) => d > 30 && !(item.overdue && !item.allDone) },
   { id: 'overdue', label: '已逾期', match: (d, item) => item.overdue && !item.allDone },
-  { id: 'today', label: '今天', match: (d) => d === 0 },
-  { id: 'tomorrow', label: '明天', match: (d) => d === 1 },
-  { id: 'week', label: '7 天内', match: (d) => d >= 2 && d <= 7 },
-  { id: 'month', label: '30 天内', match: (d) => d >= 8 && d <= 30 },
-  { id: 'later', label: '更远', match: (d) => d > 30 },
 ];
 
 /**
@@ -448,6 +451,8 @@ export function summarizeTodos(tasks) {
     total: tasks.length,
     overdue: pending.filter(t => t.overdue).length,
     today: pending.filter(t => t.daysLeft === 0).length,
+    // 【新需求112 第2项】统计卡新增"明天"一格
+    tomorrow: pending.filter(t => t.daysLeft === 1).length,
     week: pending.filter(t => t.daysLeft >= 0 && t.daysLeft <= 7).length,
     done: tasks.filter(t => t.allDone).length,
   };
