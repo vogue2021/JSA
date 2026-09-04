@@ -635,9 +635,10 @@ schools.put('/:id', async (c) => {
       }
       if (target) {
         matchedIds.add(target.id)
+        // 名称/截止日/链接跟随表单；completed/checked_by/checked_at 原样保留
         batchStatements.push(
-          db.prepare('UPDATE materials SET deadline = ?, url = ? WHERE id = ?')
-            .bind(deadline, url, target.id)
+          db.prepare('UPDATE materials SET item = ?, deadline = ?, url = ? WHERE id = ?')
+            .bind(name, deadline, url, target.id)
         )
       } else {
         batchStatements.push(
