@@ -4945,6 +4945,9 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                     style={{
                       borderTop: `1px solid ${tokens.colors.border.subtle}`,
                       ...(hasConflict ? { boxShadow: 'inset 3px 0 0 0 #dc2626' } : {}),
+                      // 【新需求113】终态行视觉区分与卡片视图口径一致：合格淡绿底 / 未合格降噪
+                      ...(school.status === 'admitted' ? { background: isDark ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.05)' } : {}),
+                      ...(school.status === 'rejected' ? { opacity: 0.72 } : {}),
                     }}
                   >
                     <td className="px-3 py-2">
@@ -4967,6 +4970,46 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${getStatusColor(school.status)}`}>
                         {getStatusText(school.status)}
                       </span>
+                      {/* 【新需求113】表格视图同样提供一键流转 —— 需求112 的按钮只在卡片视图有，
+                          习惯表格视图的用户会完全看不到该功能。表格里用更紧凑的文字按钮。 */}
+                      {canEditSchools && !SCHOOL_TERMINAL_STATUS.has(school.status) && (
+                        <div className="mt-1 flex items-center gap-1 flex-wrap">
+                          {SCHOOL_NEXT_STATUS[school.status] ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, SCHOOL_NEXT_STATUS[school.status]); }}
+                              disabled={!canEdit('schools')}
+                              title={!canEdit('schools') ? '您没有学校的编辑权限，请联系管理员开通' : `一键更新为「${getStatusText(SCHOOL_NEXT_STATUS[school.status])}」`}
+                              className="text-[11px] underline whitespace-nowrap"
+                              style={{ color: isDark ? '#93c5fd' : '#2563eb', opacity: canEdit('schools') ? 1 : 0.4 }}
+                            >
+                              → {getStatusText(SCHOOL_NEXT_STATUS[school.status])}
+                            </button>
+                          ) : school.status === 'submitted' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, 'admitted'); }}
+                                disabled={!canEdit('schools')}
+                                className="text-[11px] font-bold whitespace-nowrap"
+                                style={{ color: isDark ? '#4ade80' : '#15803d', opacity: canEdit('schools') ? 1 : 0.4 }}
+                              >
+                                合格
+                              </button>
+                              <span className="text-[11px]" style={{ color: tokens.colors.text.muted }}>/</span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleQuickSchoolStatus(school, 'rejected'); }}
+                                disabled={!canEdit('schools')}
+                                className="text-[11px] whitespace-nowrap"
+                                style={{ color: isDark ? '#f87171' : '#dc2626', opacity: canEdit('schools') ? 1 : 0.4 }}
+                              >
+                                未合格
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: tokens.colors.text.primary }}>{school.applicationStartDate || '-'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
