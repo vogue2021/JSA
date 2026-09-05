@@ -55,6 +55,19 @@ const DailyTodoPage = () => {
   const [expanded, setExpanded] = useState(() => new Set());
   // 就地勾选后的本地覆盖，避免为了一个勾选重新拉取整页数据
   const [localDone, setLocalDone] = useState(() => new Map());
+  // 【新需求120 第1项】分区折叠：内容多时一屏看不完、下滑不到底部。
+  //   默认只展开「今天 / 明天」（每日待办的侧重点），其余分区折叠为标题行，点击展开。
+  //   折叠的分区标题会显示条数；含预约提醒的折叠分区额外标出，防止提醒被折没。
+  const [collapsedBuckets, setCollapsedBuckets] = useState(() => new Set(['week', 'month', 'later', 'overdue']));
+  // 各学校时间线区块同样可折叠（默认展开——它是 116 的核心内容）
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  const toggleBucket = (id) => {
+    setCollapsedBuckets(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -513,6 +526,9 @@ const DailyTodoPage = () => {
             //     红色标题仍在但不再抢占首屏
             const isToday = bucket.id === 'today';
             const isOverdue = bucket.id === 'overdue';
+            // 【新需求120 第1项】分区折叠
+            const isCollapsed = collapsedBuckets.has(bucket.id);
+            const reminderCount = bucket.items.filter(t => t.kind === TODO_KINDS.REMINDER).length;
             return (
               <div key={bucket.id}
                 className={isToday ? 'glass-panel p-3 rounded-2xl space-y-2' : 'space-y-2'}
@@ -522,7 +538,11 @@ const DailyTodoPage = () => {
                     ? 'linear-gradient(180deg, rgba(234,88,12,0.10), rgba(234,88,12,0.02))'
                     : 'linear-gradient(180deg, rgba(255,247,237,0.9), rgba(255,255,255,0))',
                 } : undefined}>
-                <div className="flex items-center gap-2 px-1">
+                <button type="button" onClick={() => toggleBucket(bucket.id)}
+                  className="w-full flex items-center gap-2 px-1 text-left"
+                  title={isCollapsed ? '点击展开' : '点击收起'}>
+                  {isCollapsed ? <ChevronRight size={14} style={{ color: tokens.colors.text.muted }} />
+                    : <ChevronDown size={14} style={{ color: tokens.colors.text.muted }} />}
                   {isToday && <Zap size={14} style={{ color: '#ea580c' }} />}
                   <span className={`${isToday ? 'text-base' : 'text-sm'} font-bold`} style={{
                     color: isOverdue ? '#dc2626'
@@ -536,15 +556,24 @@ const DailyTodoPage = () => {
                   }}>
                     {bucket.items.length}
                   </span>
-                  {isOverdue && (
+                  {/* 折叠时若含预约提醒，必须标出来 —— 116/118 的提醒不能被折没 */}
+                  {isCollapsed && reminderCount > 0 && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded font-semibold inline-flex items-center gap-1"
+                      style={{ background: isDark ? 'rgba(13,148,136,0.20)' : 'rgba(13,148,136,0.12)', color: isDark ? '#2dd4bf' : '#0f766e' }}>
+                      <Bell size={10} />含 {reminderCount} 条提醒
+                    </span>
+                  )}
+                  {isOverdue && !isCollapsed && (
                     <span className="text-xs" style={{ color: '#dc2626' }}>
                       已过期但未完成，确认后可就地勾选完成
                     </span>
                   )}
-                </div>
-                <div className="space-y-2">
-                  {bucket.items.map(taskRow)}
-                </div>
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-2">
+                    {bucket.items.map(taskRow)}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -566,13 +595,18 @@ const DailyTodoPage = () => {
           老师端的需求已由上方"跨学生聚合的待办列表"覆盖，不再重复一个巨大矩阵。 */}
       {isStudent && schoolTimelines.length > 0 && (
         <div className="glass-panel p-4 rounded-2xl space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => setTimelineCollapsed(v => !v)}
+            className="w-full flex items-center gap-2 flex-wrap text-left"
+            title={timelineCollapsed ? '点击展开' : '点击收起'}>
+            {timelineCollapsed ? <ChevronRight size={14} style={{ color: tokens.colors.text.muted }} />
+              : <ChevronDown size={14} style={{ color: tokens.colors.text.muted }} />}
             <Clock size={15} style={{ color: tokens.colors.text.secondary }} />
             <span className="text-sm font-bold" style={{ color: tokens.colors.text.primary }}>各学校时间线</span>
             <span className="text-xs" style={{ color: tokens.colors.text.muted }}>
-              每所学校的出愿 / 考试 / 发表等全部关键日期
+              每所学校的出愿 / 考试 / 发表等全部关键日期（{schoolTimelines.length} 所）
             </span>
-          </div>
+          </button>
+          {!timelineCollapsed && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {schoolTimelines.map(st => (
               <div key={st.schoolId}
@@ -634,6 +668,7 @@ const DailyTodoPage = () => {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>

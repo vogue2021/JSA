@@ -111,8 +111,9 @@ function classifyEvent(ev) {
   return TODO_KINDS.OTHER;
 }
 
-/** 自定义日期标签 → 种类（复用与撞期检测一致的"考试类"判断口径） */
-function classifyCustomLabel(label) {
+/** 自定义日期标签 → 种类（复用与撞期检测一致的"考试类"判断口径）。
+ *  【新需求120】导出供 dailySchedule 判断"考试类自定义日期"。 */
+export function classifyCustomLabel(label) {
   const s = String(label || '');
   if (/截止|締切|提交|deadline/i.test(s)) return TODO_KINDS.APPLICATION_END;
   if (/考试|試験|面接|面试|一审|二审|審査|筆記|口述/.test(s)) return TODO_KINDS.EXAM;
@@ -144,8 +145,9 @@ function pick(obj, ...keys) {
   return '';
 }
 
-/** 解析 schools.extra_dates（兼容 JSON 字符串与已解析对象两种形态） */
-function parseExtraDates(sc) {
+/** 解析 schools.extra_dates（兼容 JSON 字符串与已解析对象两种形态）。
+ *  【新需求120】导出供 dailySchedule 复用，避免同一套解析口径两处漂移。 */
+export function parseExtraDates(sc) {
   const e = sc?.extra_dates || sc?.extraDates || {};
   if (typeof e === 'string') {
     try { return JSON.parse(e || '{}'); } catch { return {}; }

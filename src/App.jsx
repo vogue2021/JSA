@@ -12,7 +12,9 @@ import {
   // 【新需求107】学校页面表格视图的切换图标
   Table as TableIcon,
   // 【新需求109】每日待办菜单图标
-  ListChecks
+  ListChecks,
+  // 【新需求120 第2项】考务日程菜单图标
+  CalendarDays
 } from 'lucide-react';
 import { schoolsAPI, eventsAPI, materialsAPI, feedbackAPI, usersAPI, remindersAPI, schoolDatabaseAPI, studentsAPI } from './services/api';
 // 【新需求101】校内考撞期检测工具（与监管台共用同一套判定口径）
@@ -45,6 +47,8 @@ import AdminSupervisionPage from './components/AdminSupervisionPage';
 import MessagesPage from './components/MessagesPage';
 // 【新需求109】每日待办页面
 import DailyTodoPage from './components/DailyTodoPage';
+// 【新需求120 第2项】考务日程看板（仅 admin）
+import ScheduleBoardPage from './components/ScheduleBoardPage';
 import MessageBanner from './components/MessageBanner';
 import MessageGlobalPopup from './components/MessageGlobalPopup';
 import OnboardingTour from './components/common/OnboardingTour';
@@ -95,7 +99,8 @@ const MainApp = ({ user, onLogout, allUsers, setAllUsers, studentList, setStuden
   //   → 回退成默认 tab（dashboard）→ 表现为"点一次跳回仪表盘、点第二次才进得去"
   //   （第二次能进是因为 URL 已经是目标路径，setActiveTab 不再 navigate，同步 effect 也就不再触发）。
   //   supervision（监管台）此前正是漏在这里。
-  const validTabs = ['dashboard', 'todo', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'supervision', 'schooldb', 'resources', 'upcoming', 'messages', 'calendar', 'settings'];
+  // 【新需求120 第2项】schedule = 考务日程（admin 专属）
+  const validTabs = ['dashboard', 'todo', 'timeline', 'schools', 'checklist', 'students', 'profile', 'teachers', 'supervision', 'schooldb', 'resources', 'upcoming', 'messages', 'calendar', 'settings', 'schedule'];
 
   // 从 URL 路径提取当前 tab
   const getTabFromPath = () => {
@@ -5751,6 +5756,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
     //   学生看自己的；老师/管理员看名下学生的聚合视图（同一件事只占一行）。
     //   不设权限门槛：待办本身是只读聚合，可见范围已在后端按角色收窄。
     { id: 'todo', label: '每日待办', icon: ListChecks },
+    // 【新需求120 第2项】考务日程 —— 仅 admin：按天看全校哪些学校要报名/考试，用于排课
+    ...(user.role === 'admin' ? [{ id: 'schedule', label: '考务日程', icon: CalendarDays }] : []),
     // 时间线/学校/材料 - 老师需要对应权限，学生也可见
     ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_events') ? [{ id: 'timeline', label: '时间线', icon: Clock }] : []),
     ...(user.role === 'student' || user.role === 'admin' || hasPermission('manage_schools') ? [{ id: 'schools', label: '学校', icon: School }] : []),
@@ -6014,7 +6021,7 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
               const baseGroups = [
                 { label: '概览', ids: ['dashboard'] },
                 // 【新需求109】每日待办归入「学业管理」并置于最前 —— 它是每天第一个要看的页面
-                { label: '学业管理', ids: ['todo', 'timeline', 'schools', 'checklist'] },
+                { label: '学业管理', ids: ['todo', 'schedule', 'timeline', 'schools', 'checklist'] },
                 { label: '人员管理', ids: ['students', 'profile', 'teachers', 'supervision'] },
                 { label: '信息查询', ids: ['schooldb', 'resources', 'upcoming'] },
                 { label: '消息', ids: ['messages'] },
@@ -6471,6 +6478,8 @@ className="flex-1 py-2 rounded-lg font-semibold transition" style={{ background:
         {/* 【新需求109】每日待办：学生看自己，老师/管理员看名下学生聚合。
             数据自行从 /api/todos 拉取（跨学生聚合无法复用按单个学生加载的 studentData）。 */}
         {activeTab === 'todo' && <DailyTodoPage />}
+        {/* 【新需求120 第2项】考务日程：admin 专属（页面内部还有一道角色门禁） */}
+        {activeTab === 'schedule' && <ScheduleBoardPage />}
         {/* 【新需求77】消息中心 */}
         {activeTab === 'messages' && <MessagesPage />}
 
