@@ -20,6 +20,10 @@ import messagesRoutes from './routes/messages.js'
 import uploadRoutes from './routes/upload.js'
 // 【新需求109】每日待办聚合
 import todosRoutes from './routes/todos.js'
+// 【开放只读 API】供另一个系统实时调取生产数据（只读）
+import openRoutes from './routes/open.js'
+import apiKeysRoutes from './routes/apiKeys.js'
+import { apiKeyMiddleware } from './middleware/apiKey.js'
 
 const app = new Hono()
 
@@ -40,7 +44,8 @@ app.use('*', cors({
     return null
   },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  // 【开放只读 API】X-API-Key 供系统间调用；若对方系统是浏览器端调用需放行此头
+  allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
   credentials: true,
   maxAge: 86400,
 }))
@@ -80,6 +85,11 @@ app.use('/api/upload/image', authMiddleware)
 // 【新需求109】待办聚合接口需鉴权（范围控制依赖 user 上下文）
 app.use('/api/todos/*', authMiddleware)
 app.use('/api/todos', authMiddleware)
+// 【开放只读 API】/api/open/* 用 API Key 而非 JWT；只读数据供另一个系统实时调取
+app.use('/api/open/*', apiKeyMiddleware)
+// 【开放只读 API】API Key 的签发/列表/吊销走 admin 的 JWT（路由内再校验 admin 角色）
+app.use('/api/api-keys/*', authMiddleware)
+app.use('/api/api-keys', authMiddleware)
 // 注意：feedback 路由在内部自行处理鉴权（POST 允许匿名，GET/PATCH 需要 admin）
 // 不在这里挂载 authMiddleware，避免 Hono 路径匹配问题
 
@@ -99,6 +109,9 @@ app.route('/api/messages', messagesRoutes)
 app.route('/api/upload', uploadRoutes)
 // 【新需求109】挂载待办聚合路由
 app.route('/api/todos', todosRoutes)
+// 【开放只读 API】
+app.route('/api/open', openRoutes)
+app.route('/api/api-keys', apiKeysRoutes)
 
 // ─── 404 处理 ─────────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ success: false, message: '接口不存在' }, 404))
