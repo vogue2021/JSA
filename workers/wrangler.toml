@@ -3,6 +3,11 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+# 环境标识：生产为 production；staging 在下方 [env.staging.vars] 覆盖。
+# 目前唯一用途：开放 API 的乱码测试开关只在 staging 生效（见 routes/open.js）。
+ENVIRONMENT = "production"
+
 # ─── 生产环境（默认）─────────────────────────────────────────────────────────────
 # 部署命令：npx wrangler deploy
 [[d1_databases]]
@@ -20,6 +25,9 @@ bucket_name = "prd-mingxue"
 # 部署命令：npx wrangler deploy --env staging
 [env.staging]
 name = "jsa-api-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
