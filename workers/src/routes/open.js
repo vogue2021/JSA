@@ -17,6 +17,12 @@ import { Hono } from 'hono'
 
 const open = new Hono()
 
+/** 列表端点统一响应：先过测试变换（仅 staging 生效），count 反映实际返回条数 */
+function respondList(c, results) {
+  const out = applyTestTransforms(c, results || [])
+  return c.json({ success: true, data: out, meta: { count: out.length } })
+}
+
 // ─── 乱码测试开关（仅 staging 生效）─────────────────────────────────────────
 // 用途：本团队自测下游系统的数据清洗/容错能力 —— 模拟真实世界最常见的乱码成因。
 // ⚠️ 硬性保证：ENVIRONMENT 只在 staging 的 wrangler.toml 里是 'staging'，
@@ -39,12 +45,94 @@ function applyMojibake(value, transform) {
   return value
 }
 
-/** 请求带 ?mojibake=latin1|gbk 且当前是 staging 时，把响应里所有字符串字段转成乱码 */
-function maybeMojibake(c, data) {
+/** 请求带 ?mojibake=latin1|gbk 或 ?dirty=1 且当前是 staging 时，对响应做测试性污染 */
+function applyTestTransforms(c, data) {
   if (c.env.ENVIRONMENT !== 'staging') return data
+  // ?dirty=1 —— 真假混杂：部分记录正确，部分错乱（日期偏移/字段张冠李戴/状态翻转/混入虚构记录）
+  if (c.req.query('dirty') === '1') return applyDirtyMix(data)
   const transform = MOJIBAKE_MODES[c.req.query('mojibake') || '']
   if (!transform) return data
   return applyMojibake(data, transform)
+}
+
+// ─── 脏数据混合（仅 staging 生效，经 applyTestTransforms 调用）──────────────
+// 用途：自测下游系统的**校验/清洗能力**——不是所有数据都坏，而是好坏混在一起，
+//   看下游能不能识别出异常记录。污染是**确定性**的（同一数据每次结果一致，便于复现比对）。
+// ⚠️ 与 mojibake 同样被 ENVIRONMENT 硬守卫，生产环境永远返回真实数据。
+
+/** FNV-1a 哈希：给每条记录算一个稳定的"命运值"（导出仅供测试脚本使用） */
+export function fnv1a(str) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h >>> 0
+}
+
+const TEXT_FIELDS = ['name', 'student_name', 'item', 'title', 'program', 'name_ja']
+const STATUS_VALUES = ['not_started', 'preparing', 'applied', 'submitted', 'admitted', 'rejected']
+
+/** 把字符串里的 YYYY-MM-DD 日期偏移 N 天 */
+function shiftDatesInString(s, offsetDays) {
+  return s.replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m, d) => {
+    const t = new Date(Number(y), Number(m) - 1, Number(d) + offsetDays)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`
+  })
+}
+
+export function applyDirtyMix(data) {
+  if (!Array.isArray(data) || data.length === 0) return data
+  const out = []
+  data.forEach((row, i) => {
+    if (!row || typeof row !== 'object') { out.push(row); return }
+    const fate = fnv1a(JSON.stringify(row) + `#${i}`) % 100
+    if (fate < 50) {
+      out.push(row) // 一半记录保持正确
+    } else if (fate < 65) {
+      // 日期偏移 ±1~7 天（deterministic）
+      const offset = (fate % 7) - 3 || 7
+      const r = { ...row }
+      for (const [k, v] of Object.entries(r)) {
+        if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}/.test(v)) r[k] = shiftDatesInString(v, offset)
+      }
+      out.push(r)
+    } else if (fate < 80 && data.length > 1) {
+      // 张冠李戴：文本字段换成另一条记录的值（字段类型不变，内容错位）
+      const donor = data[(i + 1 + (fate % (data.length - 1))) % data.length]
+      const r = { ...row }
+      for (const f of TEXT_FIELDS) {
+        if (typeof r[f] === 'string' && typeof donor?.[f] === 'string') r[f] = donor[f]
+      }
+      out.push(r)
+    } else if (fate < 90) {
+      // 状态/完成标记翻转
+      const r = { ...row }
+      if ('completed' in r) r.completed = r.completed ? 0 : 1
+      if ('status' in r && typeof r.status === 'string') r.status = STATUS_VALUES[fate % STATUS_VALUES.length]
+      if ('is_active' in r) r.is_active = r.is_active ? 0 : 1
+      out.push(r)
+    } else {
+      // 记录重复（同一行出现两次 —— 下游不去重就会双倍计数）
+      out.push(row, row)
+    }
+  })
+  // 混入 1 条纯虚构记录（克隆首行，名字直接标明，日期打散）
+  const first = data[0]
+  if (first && typeof first === 'object') {
+    const fake = { ...first }
+    if (typeof fake.name === 'string') fake.name = '虚构记录-测试勿信'
+    if (typeof fake.title === 'string') fake.title = '虚构记录-测试勿信'
+    if (typeof fake.item === 'string') fake.item = '虚构记录-测试勿信'
+    if (typeof fake.student_id === 'string') fake.student_id = 'FAKE-TEST-001'
+    if (typeof fake.id === 'number') fake.id = fake.id + 900000000
+    for (const [k, v] of Object.entries(fake)) {
+      if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}/.test(v)) fake[k] = shiftDatesInString(v, 33)
+    }
+    out.push(fake)
+  }
+  return out
 }
 
 // 【新需求105】与 todos.js 同款孤儿账号守卫：user_id 有值但 users 表查不到 → 已删账号的学生
@@ -60,7 +148,7 @@ open.get('/students', async (c) => {
   if (studentId) { sql += ' AND student_id = ?'; params.push(studentId) }
   sql += ' ORDER BY student_id ASC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 // ─── 老师（基础字段；联系方式/住址/生日/照片属个人隐私，不对系统间同步开放）────
@@ -72,7 +160,7 @@ open.get('/teachers', async (c) => {
     FROM teachers t LEFT JOIN users u ON t.user_id = u.id
     ORDER BY t.teacher_id ASC
   `).all()
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 // ─── 志愿学校 ─────────────────────────────────────────────────────────────────
@@ -92,7 +180,7 @@ open.get('/schools', async (c) => {
       s.extra_dates = {}
     }
   })
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 // ─── 时间线事件 ───────────────────────────────────────────────────────────────
@@ -115,7 +203,7 @@ open.get('/events', async (c) => {
   }
   sql += ' ORDER BY date ASC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 // ─── 材料清单 ─────────────────────────────────────────────────────────────────
@@ -127,14 +215,14 @@ open.get('/materials', async (c) => {
   if (studentId) { sql += ' AND student_id = ?'; params.push(studentId) }
   sql += ' ORDER BY student_id ASC, deadline ASC'
   const { results } = await db.prepare(sql).bind(...params).all()
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 // ─── 学校信息库（招生参考数据）────────────────────────────────────────────────
 open.get('/school-database', async (c) => {
   const db = c.env.DB
   const { results } = await db.prepare('SELECT * FROM school_database ORDER BY name ASC').all()
-  return c.json({ success: true, data: maybeMojibake(c, results || []), meta: { count: (results || []).length } })
+  return respondList(c, results)
 })
 
 export default open
